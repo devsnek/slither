@@ -443,7 +443,8 @@ impl Agent {
 
     fn evaluate_statement_list(&mut self, nodes: Vec<Node>) -> Result<Value, Value> {
         let mut result = Value::Null;
-        for node in &nodes { // hoist declarations in block for TDZ
+        for node in &nodes {
+            // hoist declarations in block for TDZ
             let context = self.context();
             match node {
                 Node::LexicalDeclaration(name, _, mutable) => {
@@ -521,13 +522,11 @@ impl Agent {
             },
             Operator::Sub => f64_binop_f64!(f64::sub),
             Operator::LeftShift => {
-                f64_binop_f64!(|a: f64, b: f64| ((a.round() as i64)
-                    << b.round() as i64)
-                    as f64)
+                f64_binop_f64!(|a: f64, b: f64| ((a.round() as i64) << b.round() as i64) as f64)
             }
-            Operator::RightShift => f64_binop_f64!(|a: f64, b: f64| (a.round() as i64
-                >> b.round() as i64)
-                as f64),
+            Operator::RightShift => {
+                f64_binop_f64!(|a: f64, b: f64| (a.round() as i64 >> b.round() as i64) as f64)
+            }
             Operator::LessThan => f64_binop_bool!(f64::lt),
             Operator::GreaterThan => f64_binop_bool!(f64::gt),
             Operator::LessThanOrEqual => f64_binop_bool!(f64::le),
@@ -542,15 +541,15 @@ impl Agent {
             } else {
                 Value::True
             }),
-            Operator::BitwiseAND => f64_binop_f64!(|a: f64, b: f64| (a.round() as i64
-                & b.round() as i64)
-                as f64),
-            Operator::BitwiseXOR => f64_binop_f64!(|a: f64, b: f64| (a.round() as i64
-                ^ b.round() as i64)
-                as f64),
-            Operator::BitwiseOR => f64_binop_f64!(|a: f64, b: f64| (a.round() as i64
-                | b.round() as i64)
-                as f64),
+            Operator::BitwiseAND => {
+                f64_binop_f64!(|a: f64, b: f64| (a.round() as i64 & b.round() as i64) as f64)
+            }
+            Operator::BitwiseXOR => {
+                f64_binop_f64!(|a: f64, b: f64| (a.round() as i64 ^ b.round() as i64) as f64)
+            }
+            Operator::BitwiseOR => {
+                f64_binop_f64!(|a: f64, b: f64| (a.round() as i64 | b.round() as i64) as f64)
+            }
             _ => Err(new_error("unsupported op")),
         }
     }

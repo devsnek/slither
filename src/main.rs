@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate gc_derive;
-extern crate gc;
 extern crate clap;
+extern crate gc;
 
 mod intrinsics;
 mod module;
@@ -14,8 +14,7 @@ use module::{Agent, Module};
 fn main() {
     let matches = App::new("slither")
         .version("0.1")
-        .arg(Arg::with_name("filename")
-             .required(true))
+        .arg(Arg::with_name("filename").required(true))
         .get_matches();
 
     let filename = matches.value_of("filename").unwrap();
