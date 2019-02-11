@@ -1,0 +1,20 @@
+[package]
+name = "gc_derive"
+version = "0.3.2"
+authors = ["Manish Goregaokar <manishsmail@gmail.com>", "Michael Layzell <michael@thelayzells.com>"]
+
+description = "Garbage collector derive plugin for rust-gc"
+repository = "https://github.com/Manishearth/rust-gc"
+readme = "../README.md"
+license = "MPL-2.0"
+keywords = ["garbage", "macro", "memory"]
+
+[lib]
+name = "gc_derive"
+proc-macro = true
+
+[dependencies]
+syn = "0.15"
+proc-macro2 = "0.4"
+quote = "0.6"
+synstructure = "0.10"

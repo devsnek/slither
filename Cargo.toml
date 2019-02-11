@@ -1,0 +1,14 @@
+[package]
+name = "slither"
+version = "0.1.0"
+authors = ["Gus Caplan <me@gus.host>"]
+edition = "2018"
+
+[dependencies.gc]
+path = "rust-gc/gc"
+
+[dependencies.gc_derive]
+path = "rust-gc/gc_derive"
+
+[dependencies]
+clap = "2"
