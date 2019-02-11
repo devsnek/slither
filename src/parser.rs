@@ -321,8 +321,16 @@ impl<'a> Lexer<'a> {
     }
 }
 
+#[derive(PartialEq)]
+enum ParseScope {
+    TopLevel,
+    Block,
+    Function,
+}
+
 pub struct Parser<'a> {
     lexer: Lexer<'a>,
+    scope: Vec<ParseScope>,
 }
 
 macro_rules! binop_production {
@@ -350,6 +358,7 @@ impl<'a> Parser<'a> {
     pub fn parse(code: &'a str) -> Result<Node, Error> {
         let mut parser = Parser {
             lexer: Lexer::new(code),
+            scope: vec![ParseScope::TopLevel],
         };
         let mut nodes = Vec::new();
         loop {
@@ -412,7 +421,9 @@ impl<'a> Parser<'a> {
         };
         self.expect(Token::LeftParen)?;
         let args = self.parse_identifier_list(Token::RightParen)?;
+        self.scope.push(ParseScope::Function);
         let body = self.parse_block_statement()?;
+        self.scope.pop();
         Ok(if expression {
             Node::FunctionExpression(name, args, Box::new(body))
         } else {
@@ -423,13 +434,18 @@ impl<'a> Parser<'a> {
     fn parse_statement_list_item(&mut self) -> Result<Node, Error> {
         match self.lexer.peek() {
             None => Err(Error::NormalEOF),
-            Some(Token::LeftBrace) => self.parse_block_statement(),
+            Some(Token::LeftBrace) => {
+                self.scope.push(ParseScope::Block);
+                let b = self.parse_block_statement();
+                self.scope.pop();
+                b
+            }
             Some(Token::Let) | Some(Token::Const) => self.parse_lexical_declaration(),
             Some(Token::Function) => {
                 self.lexer.next();
                 self.parse_function(false)
             }
-            Some(Token::Return) => {
+            Some(Token::Return) if self.scope.last().unwrap() == &ParseScope::Function => {
                 self.lexer.next();
                 if self.eat(Token::Semicolon) {
                     Ok(Node::ReturnStatement(Box::new(Node::NullLiteral)))
@@ -484,7 +500,7 @@ impl<'a> Parser<'a> {
                     Ok(Node::IfStatement(Box::new(test), Box::new(consequent)))
                 }
             }
-            Some(Token::Import) => {
+            Some(Token::Import) if self.scope.last().unwrap() == &ParseScope::TopLevel => {
                 self.lexer.next();
                 match self.lexer.peek() {
                     // import "specifier";

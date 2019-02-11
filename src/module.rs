@@ -115,11 +115,14 @@ impl<'a> Module<'a> {
         if let Node::StatementList(list) = &module.ast {
             for node in list {
                 match &node {
-                    Node::LexicalDeclaration(name, _, mutable) => {
-                        module.context.environment.create(name, *mutable)?;
-                    }
-                    Node::FunctionDeclaration(name, _, _) => {
+                    Node::ImportDefaultDeclaration(_, name) => {
                         module.context.environment.create(name, false)?;
+                    }
+                    Node::ImportNamedDeclaration(_, names)
+                    | Node::ImportStandardDeclaration(_, names) => {
+                        for name in names {
+                            module.context.environment.create(name, false)?;
+                        }
                     }
                     _ => {}
                 }

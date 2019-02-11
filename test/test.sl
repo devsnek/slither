@@ -1,3 +1,7 @@
-const a = 5;
+function a() {
+  return 5;
+}
 
-a = 10;
+{
+  function b() {}
+}
