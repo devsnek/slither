@@ -31,8 +31,6 @@ pub enum Operator {
     Assign,
     Equal,
     NotEqual,
-    Question,
-    Colon,
     Typeof,
     Void,
 }
@@ -60,6 +58,7 @@ enum Token {
     Const,
     Semicolon,
     Colon,
+    Question,
     Dot,
     Comma,
     Throw,
@@ -205,6 +204,7 @@ impl<'a> Lexer<'a> {
                     ')' => Some(Token::RightParen),
                     ':' => Some(Token::Colon),
                     ';' => Some(Token::Semicolon),
+                    '?' => Some(Token::Question),
                     '.' => Some(Token::Dot),
                     ',' => Some(Token::Comma),
                     '+' => Some(match self.chars.peek() {
@@ -774,10 +774,22 @@ impl<'a> Parser<'a> {
     fn parse_conditional_expression(&mut self) -> Result<Node, Error> {
         let lhs = self.parse_logical_or_expression()?;
 
-        if self.eat(Token::Operator(Operator::Question)) {
+        if self.eat(Token::Question) {
             let consequent = self.parse_assignment_expression()?;
-            self.expect(Token::Operator(Operator::Colon))?;
+            self.expect(Token::Colon)?;
             let alternative = self.parse_assignment_expression()?;
+
+            match lhs {
+                Node::TrueLiteral => return Ok(consequent),
+                Node::NumberLiteral(n) => return if n > 0f64 { Ok(consequent) } else { Ok(alternative) },
+                Node::StringLiteral(s) => return if s.chars().count() > 0 { Ok(consequent) } else { Ok(alternative) },
+                Node::FalseLiteral => return Ok(alternative),
+                Node::NullLiteral => return Ok(alternative),
+                Node::ArrayLiteral(_) => return Ok(consequent),
+                Node::ObjectLiteral(_) => return Ok(consequent),
+                Node::UnaryExpression(Operator::Void, _) => return Ok(alternative),
+                _ => {}
+            }
             return Ok(Node::ConditionalExpression(
                 Box::new(lhs),
                 Box::new(consequent),

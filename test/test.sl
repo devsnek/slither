@@ -2,4 +2,4 @@
 
 "hi" + "bye";
 
-"hi" - "bye";
+true ? "good fold" : "bad fold";
