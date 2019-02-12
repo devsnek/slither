@@ -500,7 +500,14 @@ impl<'a> Parser<'a> {
             }
             Some(Token::Export) if self.scope.last().unwrap() == &ParseScope::TopLevel => {
                 self.lexer.next();
-                let decl = self.parse_lexical_declaration()?;
+                let decl = match self.lexer.peek() {
+                    Some(Token::Let) | Some(Token::Const) => self.parse_lexical_declaration(),
+                    Some(Token::Function) => {
+                        self.lexer.next();
+                        self.parse_function(false)
+                    }
+                    _ => Err(Error::UnexpectedToken),
+                }?;
                 Ok(Node::ExportDeclaration(Box::new(decl)))
             }
             Some(Token::Import) if self.scope.last().unwrap() == &ParseScope::TopLevel => {
@@ -902,9 +909,9 @@ impl<'a> Parser<'a> {
                     self.lexer.next();
                     self.parse_function(true)
                 }
-                Token::LeftBracket => {
-                    Ok(Node::ArrayLiteral(self.parse_expression_list(Token::RightBracket)?))
-                }
+                Token::LeftBracket => Ok(Node::ArrayLiteral(
+                    self.parse_expression_list(Token::RightBracket)?,
+                )),
                 Token::LeftBrace => {
                     let mut fields = Vec::new();
                     let mut start = true;

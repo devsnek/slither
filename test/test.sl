@@ -1,9 +1,8 @@
 import { print } from standard:debug;
+import { a, setA } from './a.sl';
 
-const b = [1, 2, 3];
+print(a);
 
-print(b[0]);
+setA(10);
 
-b.length = -1;
-
-print(b[0]);
+print(a);

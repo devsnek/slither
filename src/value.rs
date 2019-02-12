@@ -1,7 +1,9 @@
-use crate::module::Agent;
+use crate::module::{Agent, LexicalEnvironment};
 use crate::parser::Node;
 use gc::{Gc, GcCell};
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 pub fn new_error(message: &str) -> Value {
     let mut m = HashMap::new();
@@ -29,7 +31,7 @@ pub enum ObjectKind {
     Boolean(bool),
     String(String),
     Number(f64),
-    Function(Vec<String>, Box<Node>), // args, body
+    Function(Vec<String>, Box<Node>, Rc<RefCell<LexicalEnvironment>>), // args, body
     BuiltinFunction(BuiltinFunctionWrap),
 }
 
@@ -71,9 +73,12 @@ impl ObjectInfo {
         receiver: Gc<ObjectInfo>,
     ) -> Result<Value, Value> {
         match self {
-            ObjectInfo { kind: ObjectKind::Array, .. } => {
+            ObjectInfo {
+                kind: ObjectKind::Array,
+                ..
+            } => {
                 if let Value::Number(number_len) = value {
-                    let new_len = number_len as u32 as f64;
+                    let new_len = f64::from(number_len as u32);
                     if new_len != number_len {
                         Err(new_error("invalid array length"))
                     } else {
@@ -87,13 +92,11 @@ impl ObjectInfo {
                         if new_len > old_len {
                             self.properties
                                 .borrow_mut()
-                                .insert(property, Value::Number(new_len as f64));
+                                .insert(property, Value::Number(f64::from(new_len)));
                         } else if new_len < old_len {
                             while new_len < old_len {
                                 old_len -= 1;
-                                self.properties
-                                    .borrow_mut()
-                                    .remove(&old_len.to_string());
+                                self.properties.borrow_mut().remove(&old_len.to_string());
                             }
                         } else {
                             // nothing!
@@ -152,7 +155,7 @@ impl Value {
                 | ObjectKind::Boolean(_)
                 | ObjectKind::String(_)
                 | ObjectKind::Number(_) => "object",
-                ObjectKind::Function(_, _) | ObjectKind::BuiltinFunction(_) => "function",
+                ObjectKind::Function(_, _, _) | ObjectKind::BuiltinFunction(_) => "function",
             },
             _ => unreachable!(),
         }
@@ -267,9 +270,14 @@ pub fn new_number_object(agent: &Agent, v: f64) -> Value {
     }))
 }
 
-pub fn new_function(agent: &Agent, args: Vec<String>, body: Box<Node>) -> Value {
+pub fn new_function(
+    agent: &Agent,
+    args: Vec<String>,
+    body: Box<Node>,
+    env: Rc<RefCell<LexicalEnvironment>>,
+) -> Value {
     Value::Object(Gc::new(ObjectInfo {
-        kind: ObjectKind::Function(args, body),
+        kind: ObjectKind::Function(args, body, env),
         properties: GcCell::new(HashMap::new()),
         prototype: agent.intrinsics.function_prototype.clone(),
     }))

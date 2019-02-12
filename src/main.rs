@@ -26,4 +26,6 @@ fn main() {
     let c = agent.import(filename, referrer);
 
     println!("res {:?}", c);
+
+    std::process::exit(0);
 }

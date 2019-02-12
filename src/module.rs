@@ -1,28 +1,28 @@
 use crate::intrinsics::{
-    create_boolean_prototype, create_array_prototype,
-    create_function_prototype, create_number_prototype,
-    create_object_prototype, create_string_prototype,
+    create_array_prototype, create_boolean_prototype, create_function_prototype,
+    create_number_prototype, create_object_prototype, create_string_prototype,
 };
 use crate::parser::{Node, Operator, Parser};
 use crate::value::{
-    new_builtin_function,
-    new_boolean_object, new_array, new_error, new_function, new_number_object, new_object, new_string_object,
-    BuiltinFunctionWrap, ObjectKind, Value,
+    new_array, new_boolean_object, new_builtin_function, new_error, new_function,
+    new_number_object, new_object, new_string_object, BuiltinFunctionWrap, ObjectKind, Value,
 };
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::ops::{Div, Mul, Rem, Sub};
+use std::rc::Rc;
 
 #[derive(Debug)]
 struct Binding {
     value: Option<Value>,
     mutable: bool,
     exported: bool,
+    module: Option<Module>,
 }
 
 #[derive(Debug)]
-struct LexicalEnvironment {
-    parent: Option<*mut LexicalEnvironment>,
+pub struct LexicalEnvironment {
+    parent: Option<Rc<RefCell<LexicalEnvironment>>>,
     bindings: HashMap<String, Binding>,
 }
 
@@ -38,14 +38,20 @@ impl LexicalEnvironment {
         if self.bindings.contains_key(name) {
             true
         } else {
-            match self.parent {
+            match &self.parent {
                 None => false,
-                Some(r) => unsafe { (*r).has(name) },
+                Some(r) => r.borrow().has(name),
             }
         }
     }
 
-    fn create_binding(&mut self, name: &str, mutable: bool, exported: bool) -> Result<(), Value> {
+    fn create_binding(
+        &mut self,
+        name: &str,
+        mutable: bool,
+        exported: bool,
+        module: Option<Module>,
+    ) -> Result<(), Value> {
         if self.has(name) {
             Err(new_error("binding already declared"))
         } else {
@@ -55,6 +61,7 @@ impl LexicalEnvironment {
                     value: None,
                     mutable,
                     exported,
+                    module,
                 },
             );
             Ok(())
@@ -62,11 +69,15 @@ impl LexicalEnvironment {
     }
 
     fn create(&mut self, name: &str, mutable: bool) -> Result<(), Value> {
-        self.create_binding(name, mutable, false)
+        self.create_binding(name, mutable, false, None)
     }
 
     fn create_export(&mut self, name: &str, mutable: bool) -> Result<(), Value> {
-        self.create_binding(name, mutable, true)
+        self.create_binding(name, mutable, true, None)
+    }
+
+    fn create_import(&mut self, name: &str, module: Module) -> Result<(), Value> {
+        self.create_binding(name, false, false, Some(module))
     }
 
     fn set(&mut self, name: &str, value: Value) -> Result<(), Value> {
@@ -79,8 +90,8 @@ impl LexicalEnvironment {
                     Ok(())
                 }
             }
-            _ => match self.parent {
-                Some(r) => unsafe { (*r).set(name, value) },
+            _ => match &self.parent {
+                Some(r) => r.borrow_mut().set(name, value),
                 _ => Err(new_error("reference error")),
             },
         }
@@ -88,10 +99,15 @@ impl LexicalEnvironment {
 
     fn get(&self, name: &str) -> Result<Value, Value> {
         match self.bindings.get(name) {
+            Some(Binding {
+                value: None,
+                module: Some(m),
+                ..
+            }) => m.borrow().context.environment.borrow().get(name),
             Some(Binding { value: Some(v), .. }) => Ok(v.clone()),
             Some(Binding { value: None, .. }) => Err(new_error("reference error")),
-            _ => match self.parent {
-                Some(r) => unsafe { (*r).get(name) },
+            _ => match &self.parent {
+                Some(r) => r.borrow().get(name),
                 _ => Err(new_error("reference error")),
             },
         }
@@ -101,7 +117,16 @@ impl LexicalEnvironment {
 #[derive(Debug)]
 struct ExecutionContext {
     pub this: Option<Value>,
-    pub environment: LexicalEnvironment,
+    pub environment: Rc<RefCell<LexicalEnvironment>>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+enum ModuleStatus {
+    Uninstantiated,
+    Instantiating,
+    Instantiated,
+    Evaluating,
+    Evaluated,
 }
 
 #[derive(Debug)]
@@ -110,11 +135,109 @@ struct ModuleX {
     ast: Node,
     context: ExecutionContext,
     imports: HashSet<String>,
+    status: ModuleStatus,
+    dfs_index: u32,
+    dfs_ancestor_index: u32,
 }
 
+type Module = Rc<RefCell<ModuleX>>;
+
 fn print(_: &Agent, args: Vec<Value>) -> Result<Value, Value> {
-    dbg!(args);
+    for arg in args {
+        print!("{:?} ", arg);
+    }
+    print!("\n");
     Ok(Value::Null)
+}
+
+fn inner_module_instantiation(
+    agent: &Agent,
+    module: Module,
+    stack: &mut Vec<Module>,
+    mut index: u32,
+) -> Result<u32, Value> {
+    let status = module.borrow().status.clone();
+    match status {
+        ModuleStatus::Instantiating | ModuleStatus::Instantiated | ModuleStatus::Evaluated => {
+            Ok(index)
+        }
+        _ => {
+            assert!(module.borrow().status == ModuleStatus::Uninstantiated);
+            module.borrow_mut().status = ModuleStatus::Instantiating;
+            module.borrow_mut().dfs_index = index;
+            module.borrow_mut().dfs_ancestor_index = index;
+            index += 1;
+            stack.push(module.clone());
+            for import in module.borrow().imports.clone() {
+                let m = agent.load(import.as_str(), module.borrow().filename.as_str())?;
+                index = inner_module_instantiation(agent, m.clone(), stack, index)?;
+                if m.borrow().status == ModuleStatus::Instantiating {
+                    module.borrow_mut().dfs_ancestor_index = std::cmp::min(
+                        module.borrow().dfs_ancestor_index,
+                        m.borrow().dfs_ancestor_index,
+                    );
+                }
+            }
+            if module.borrow().dfs_ancestor_index == module.borrow().dfs_index {
+                let mut done = false;
+                while !done {
+                    let m = stack.pop().unwrap();
+                    m.borrow_mut().status = ModuleStatus::Instantiated;
+                    if m.borrow().filename == module.borrow().filename {
+                        done = true;
+                    }
+                }
+            }
+            Ok(index)
+        }
+    }
+}
+
+fn inner_module_evaluation(
+    agent: &Agent,
+    module: Module,
+    stack: &mut Vec<Module>,
+    mut index: u32,
+) -> Result<u32, Value> {
+    let status = module.borrow().status.clone();
+    if status == ModuleStatus::Evaluated {
+        // TODO: track evaluation error to bubble here
+        Ok(index)
+    } else if status == ModuleStatus::Evaluating {
+        Ok(index)
+    } else {
+        assert!(module.borrow().status == ModuleStatus::Instantiated);
+        module.borrow_mut().status = ModuleStatus::Evaluating;
+        module.borrow_mut().dfs_index = index;
+        module.borrow_mut().dfs_ancestor_index = index;
+        index += 1;
+        stack.push(module.clone());
+        for import in module.borrow().imports.clone() {
+            let m = agent.load(import.as_str(), module.borrow().filename.as_str())?;
+            index = inner_module_evaluation(agent, m.clone(), stack, index)?;
+            if m.borrow().status == ModuleStatus::Evaluating {
+                m.borrow_mut().dfs_ancestor_index = std::cmp::min(
+                    module.borrow().dfs_ancestor_index,
+                    m.borrow().dfs_ancestor_index,
+                );
+            }
+        }
+        {
+            let ast = module.borrow().ast.clone();
+            agent.evaluate(&mut module.borrow_mut().context, ast)?;
+        }
+        if module.borrow().dfs_ancestor_index == module.borrow().dfs_index {
+            let mut done = false;
+            while !done {
+                let m = stack.pop().unwrap();
+                m.borrow_mut().status = ModuleStatus::Evaluated;
+                if m.borrow().filename == module.borrow().filename {
+                    done = true;
+                }
+            }
+        }
+        Ok(index)
+    }
 }
 
 impl ModuleX {
@@ -124,22 +247,35 @@ impl ModuleX {
             filename: filename.to_string(),
             context: ExecutionContext {
                 this: None,
-                environment: LexicalEnvironment::new(),
+                environment: Rc::new(RefCell::new(LexicalEnvironment::new())),
             },
             ast: Parser::parse(&source)?,
             imports: HashSet::new(),
+            status: ModuleStatus::Uninstantiated,
+            dfs_index: 0,
+            dfs_ancestor_index: 0,
         };
 
         if let Node::StatementList(list) = &module.ast {
             for node in list {
                 match &node {
                     Node::ImportDefaultDeclaration(specifier, name) => {
-                        module.context.environment.create(name, false)?;
+                        let mr = agent.load(specifier, name)?;
+                        module
+                            .context
+                            .environment
+                            .borrow_mut()
+                            .create_import(name, mr)?;
                         module.imports.insert(specifier.to_string());
                     }
                     Node::ImportNamedDeclaration(specifier, names) => {
+                        let mr = agent.load(specifier, filename)?;
                         for name in names {
-                            module.context.environment.create(name, false)?;
+                            module
+                                .context
+                                .environment
+                                .borrow_mut()
+                                .create_import(name, mr.clone())?;
                             module.imports.insert(specifier.to_string());
                         }
                     }
@@ -147,8 +283,16 @@ impl ModuleX {
                         if specifier == "debug" {
                             for name in names {
                                 if name == "print" {
-                                    module.context.environment.create(name, false)?;
-                                    module.context.environment.set(name, new_builtin_function(agent, print))?;
+                                    module
+                                        .context
+                                        .environment
+                                        .borrow_mut()
+                                        .create(name, false)?;
+                                    module
+                                        .context
+                                        .environment
+                                        .borrow_mut()
+                                        .set(name, new_builtin_function(agent, print))?;
                                 } else {
                                     return Err(new_error("invalid standard module"));
                                 }
@@ -162,17 +306,22 @@ impl ModuleX {
                             module
                                 .context
                                 .environment
+                                .borrow_mut()
                                 .create_export(name.as_str(), mutable)?;
                         }
                         Node::FunctionDeclaration(name, args, body) => {
                             module
                                 .context
                                 .environment
+                                .borrow_mut()
                                 .create_export(name.as_str(), false)?;
-                            let value = new_function(agent,
-                                args,
-                                body);
-                            module.context.environment.set(name.as_str(), value)?;
+                            let value =
+                                new_function(agent, args, body, module.context.environment.clone());
+                            module
+                                .context
+                                .environment
+                                .borrow_mut()
+                                .set(name.as_str(), value)?;
                         }
                         _ => {}
                     },
@@ -198,7 +347,7 @@ pub struct Intrinsics {
 #[derive(Debug)]
 pub struct Agent {
     pub intrinsics: Intrinsics,
-    modules: RefCell<HashMap<String, ModuleX>>,
+    modules: RefCell<HashMap<String, Module>>,
 }
 
 impl Agent {
@@ -222,30 +371,33 @@ impl Agent {
         }
     }
 
-    fn load(&self, specifier: &str, referrer: &str) -> Result<String, Value> {
+    fn load(&self, specifier: &str, referrer: &str) -> Result<Module, Value> {
         let filename = std::path::Path::new(referrer)
             .parent()
             .unwrap()
             .join(specifier);
         let filename = filename.to_str().unwrap();
         if !self.modules.borrow().contains_key(filename) {
-            let module = ModuleX::new(filename, self)?;
-            let imports = module.imports.clone();
+            let module = Rc::new(RefCell::new(ModuleX::new(filename, self)?));
+            // let imports = module.imports.clone();
             self.modules
                 .borrow_mut()
-                .insert(filename.to_string(), module);
-            for import in imports {
-                self.load(import.as_str(), filename)?;
-            }
+                .insert(filename.to_string(), module.clone());
+            Ok(module)
+        // for import in imports {
+        //     self.load(import.as_str(), filename)?;
+        // }
+        } else {
+            let map = self.modules.borrow();
+            let module = map.get(filename).unwrap().clone();
+            Ok(module)
         }
-        Ok(filename.to_string())
     }
 
     pub fn import(&self, specifier: &str, referrer: &str) -> Result<(), Value> {
-        let filename = self.load(specifier, referrer)?;
-        let mut map = self.modules.borrow_mut();
-        let module = map.get_mut(&filename).unwrap();
-        self.evaluate(&mut module.context, module.ast.clone())?;
+        let module = self.load(specifier, referrer)?;
+        inner_module_instantiation(self, module.clone(), &mut Vec::new(), 0)?;
+        inner_module_evaluation(self, module.clone(), &mut Vec::new(), 0)?;
         Ok(())
     }
 
@@ -300,9 +452,9 @@ impl Agent {
             }
             Node::StatementList(nodes) => self.evaluate_statement_list(ctx, nodes),
             Node::BlockStatement(nodes) => {
-                let new = LexicalEnvironment::new();
-                let mut old = std::mem::replace(&mut ctx.environment, new);
-                ctx.environment.parent = Some(&mut old);
+                let new = Rc::new(RefCell::new(LexicalEnvironment::new()));
+                let old = std::mem::replace(&mut ctx.environment, new);
+                ctx.environment.borrow_mut().parent = Some(old.clone());
                 let result = self.evaluate_statement_list(ctx, nodes);
                 std::mem::replace(&mut ctx.environment, old);
                 result
@@ -321,11 +473,13 @@ impl Agent {
                     Ok(v) => Ok(v),
                     Err(Value::ReturnCompletion(_)) => result,
                     Err(e) => {
-                        let new = LexicalEnvironment::new();
-                        let mut old = std::mem::replace(&mut ctx.environment, new);
-                        ctx.environment.parent = Some(&mut old);
-                        ctx.environment.create(binding.as_str(), false)?;
-                        ctx.environment.set(binding.as_str(), e)?;
+                        let new = Rc::new(RefCell::new(LexicalEnvironment::new()));
+                        let old = std::mem::replace(&mut ctx.environment, new);
+                        ctx.environment.borrow_mut().parent = Some(old.clone());
+                        ctx.environment
+                            .borrow_mut()
+                            .create(binding.as_str(), false)?;
+                        ctx.environment.borrow_mut().set(binding.as_str(), e)?;
                         let r = self.evaluate(ctx, *catch_clause);
                         std::mem::replace(&mut ctx.environment, old);
                         r
@@ -382,16 +536,23 @@ impl Agent {
                 };
                 match &val {
                     Value::Object(o) => match &o.kind {
-                        ObjectKind::Function(params, body) => {
+                        ObjectKind::Function(params, body, parent_env) => {
                             let mut new_ctx = ExecutionContext {
                                 this: Some(this),
-                                environment: LexicalEnvironment::new(),
+                                environment: Rc::new(RefCell::new(LexicalEnvironment::new())),
                             };
+                            new_ctx.environment.borrow_mut().parent = Some(parent_env.clone());
                             for (i, arg) in args.iter().enumerate() {
                                 let binding = params[i].clone();
-                                let value = self.evaluate(&mut new_ctx, (*arg).clone())?;
-                                ctx.environment.create(binding.as_str(), false)?;
-                                ctx.environment.set(binding.as_str(), value)?;
+                                let value = self.evaluate(ctx, (*arg).clone())?;
+                                new_ctx
+                                    .environment
+                                    .borrow_mut()
+                                    .create(binding.as_str(), false)?;
+                                new_ctx
+                                    .environment
+                                    .borrow_mut()
+                                    .set(binding.as_str(), value)?;
                             }
                             let r = self.evaluate(&mut new_ctx, *body.clone());
                             match &r {
@@ -442,7 +603,9 @@ impl Agent {
                     }
                     Node::Identifier(name) => {
                         let rval = self.evaluate(ctx, *right)?;
-                        ctx.environment.set(name.as_str(), rval.clone())?;
+                        ctx.environment
+                            .borrow_mut()
+                            .set(name.as_str(), rval.clone())?;
                         Ok(rval)
                     }
                     _ => Err(new_error("invalid left hand side")),
@@ -488,16 +651,18 @@ impl Agent {
             }
             Node::LexicalDeclaration(name, value, _) => {
                 let value = self.evaluate(ctx, *value)?;
-                ctx.environment.set(name.as_str(), value)?;
+                ctx.environment.borrow_mut().set(name.as_str(), value)?;
                 Ok(Value::Null)
             }
             Node::FunctionDeclaration(name, args, body) => {
-                let value = new_function(self, args, body);
-                ctx.environment.set(name.as_str(), value)?;
+                let value = new_function(self, args, body, ctx.environment.clone());
+                ctx.environment.borrow_mut().set(name.as_str(), value)?;
                 Ok(Value::Null)
             }
-            Node::FunctionExpression(_name, args, body) => Ok(new_function(self, args, body)),
-            Node::Identifier(name) => ctx.environment.get(name.as_str()),
+            Node::FunctionExpression(_name, args, body) => {
+                Ok(new_function(self, args, body, ctx.environment.clone()))
+            }
+            Node::Identifier(name) => ctx.environment.borrow().get(name.as_str()),
             Node::PropertyInitializer(_, _) => unreachable!(),
             Node::NewExpression(_) => unreachable!(),
             Node::ImportDeclaration(_)
@@ -521,10 +686,12 @@ impl Agent {
             // hoist declarations in block for TDZ
             match node {
                 Node::LexicalDeclaration(name, _, mutable) => {
-                    ctx.environment.create(name.as_str(), *mutable)?;
+                    ctx.environment
+                        .borrow_mut()
+                        .create(name.as_str(), *mutable)?;
                 }
                 Node::FunctionDeclaration(name, _, _) => {
-                    ctx.environment.create(name.as_str(), false)?;
+                    ctx.environment.borrow_mut().create(name.as_str(), false)?;
                 }
                 _ => {}
             }
@@ -544,10 +711,12 @@ impl Agent {
             } else {
                 Value::True
             }),
-            Operator::Sub => if let Value::Number(num) = value {
-                 Ok(Value::Number(-num))
-            } else {
-                Err(new_error("invalid number"))
+            Operator::Sub => {
+                if let Value::Number(num) = value {
+                    Ok(Value::Number(-num))
+                } else {
+                    Err(new_error("invalid number"))
+                }
             }
             _ => Err(new_error("unsupported op")),
         }
