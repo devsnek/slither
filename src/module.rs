@@ -200,10 +200,7 @@ fn inner_module_evaluation(
     mut index: u32,
 ) -> Result<u32, Value> {
     let status = module.borrow().status.clone();
-    if status == ModuleStatus::Evaluated {
-        // TODO: track evaluation error to bubble here
-        Ok(index)
-    } else if status == ModuleStatus::Evaluating {
+    if status == ModuleStatus::Evaluated || status == ModuleStatus::Evaluating {
         Ok(index)
     } else {
         assert!(module.borrow().status == ModuleStatus::Instantiated);
@@ -426,7 +423,7 @@ impl Agent {
                             o.set(len.to_string(), value, o.clone())?;
                             len += 1;
                         }
-                        o.set("length".to_string(), Value::Number(len as f64), o.clone())?;
+                        o.set("length".to_string(), Value::Number(f64::from(len)), o.clone())?;
                     }
                     _ => unreachable!(),
                 }
