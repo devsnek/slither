@@ -544,6 +544,11 @@ impl Agent {
             } else {
                 Value::True
             }),
+            Operator::Sub => if let Value::Number(num) = value {
+                 Ok(Value::Number(-num))
+            } else {
+                Err(new_error("invalid number"))
+            }
             _ => Err(new_error("unsupported op")),
         }
     }
