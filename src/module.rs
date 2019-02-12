@@ -1,11 +1,13 @@
 use crate::intrinsics::{
-    create_boolean_prototype, create_function_prototype, create_number_prototype,
+    create_boolean_prototype, create_array_prototype,
+    create_function_prototype, create_number_prototype,
     create_object_prototype, create_string_prototype,
 };
 use crate::parser::{Node, Operator, Parser};
 use crate::value::{
-    new_boolean_object, new_error, new_function, new_number_object, new_object, new_string_object,
-    BuiltinFunction, ObjectKind, Value,
+    new_builtin_function,
+    new_boolean_object, new_array, new_error, new_function, new_number_object, new_object, new_string_object,
+    BuiltinFunctionWrap, ObjectKind, Value,
 };
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -110,6 +112,11 @@ struct ModuleX {
     imports: HashSet<String>,
 }
 
+fn print(_: &Agent, args: Vec<Value>) -> Result<Value, Value> {
+    dbg!(args);
+    Ok(Value::Null)
+}
+
 impl ModuleX {
     fn new(filename: &str, agent: &Agent) -> Result<ModuleX, Value> {
         let source = std::fs::read_to_string(filename).expect("no such file");
@@ -130,11 +137,24 @@ impl ModuleX {
                         module.context.environment.create(name, false)?;
                         module.imports.insert(specifier.to_string());
                     }
-                    Node::ImportNamedDeclaration(specifier, names)
-                    | Node::ImportStandardDeclaration(specifier, names) => {
+                    Node::ImportNamedDeclaration(specifier, names) => {
                         for name in names {
                             module.context.environment.create(name, false)?;
                             module.imports.insert(specifier.to_string());
+                        }
+                    }
+                    Node::ImportStandardDeclaration(specifier, names) => {
+                        if specifier == "debug" {
+                            for name in names {
+                                if name == "print" {
+                                    module.context.environment.create(name, false)?;
+                                    module.context.environment.set(name, new_builtin_function(agent, print))?;
+                                } else {
+                                    return Err(new_error("invalid standard module"));
+                                }
+                            }
+                        } else {
+                            return Err(new_error("invalid standard module"));
                         }
                     }
                     Node::ExportDeclaration(decl) => match *decl.clone() {
@@ -149,11 +169,9 @@ impl ModuleX {
                                 .context
                                 .environment
                                 .create_export(name.as_str(), false)?;
-                            let value = new_function(
+                            let value = new_function(agent,
                                 args,
-                                body,
-                                agent.intrinsics.function_prototype.clone(),
-                            );
+                                body);
                             module.context.environment.set(name.as_str(), value)?;
                         }
                         _ => {}
@@ -170,6 +188,7 @@ impl ModuleX {
 #[derive(Debug)]
 pub struct Intrinsics {
     pub object_prototype: Value,
+    pub array_prototype: Value,
     pub function_prototype: Value,
     pub boolean_prototype: Value,
     pub string_prototype: Value,
@@ -185,6 +204,7 @@ pub struct Agent {
 impl Agent {
     pub fn new() -> Agent {
         let object_prototype = create_object_prototype();
+        let array_prototype = create_array_prototype(object_prototype.clone());
         let function_prototype = create_function_prototype(object_prototype.clone());
         let boolean_prototype = create_boolean_prototype(object_prototype.clone());
         let number_prototype = create_number_prototype(object_prototype.clone());
@@ -192,6 +212,7 @@ impl Agent {
         Agent {
             intrinsics: Intrinsics {
                 object_prototype,
+                array_prototype,
                 function_prototype,
                 boolean_prototype,
                 number_prototype,
@@ -243,6 +264,22 @@ impl Agent {
             Node::NullLiteral => Ok(Value::Null),
             Node::TrueLiteral => Ok(Value::True),
             Node::FalseLiteral => Ok(Value::False),
+            Node::ArrayLiteral(nodes) => {
+                let array = new_array(self);
+                let mut len = 0;
+                match &array {
+                    Value::Object(o) => {
+                        for node in nodes {
+                            let value = self.evaluate(ctx, node)?;
+                            o.set(len.to_string(), value, o.clone())?;
+                            len += 1;
+                        }
+                        o.set("length".to_string(), Value::Number(len as f64), o.clone())?;
+                    }
+                    _ => unreachable!(),
+                }
+                Ok(array)
+            }
             Node::ObjectLiteral(list) => {
                 let obj = new_object(self.intrinsics.object_prototype.clone());
                 match &obj {
@@ -362,7 +399,7 @@ impl Agent {
                                 _ => r,
                             }
                         }
-                        ObjectKind::BuiltinFunction(BuiltinFunction(bfn)) => {
+                        ObjectKind::BuiltinFunction(BuiltinFunctionWrap(bfn)) => {
                             let mut values = Vec::new();
                             for arg in args {
                                 values.push(self.evaluate(ctx, arg)?);
@@ -455,15 +492,11 @@ impl Agent {
                 Ok(Value::Null)
             }
             Node::FunctionDeclaration(name, args, body) => {
-                let value = new_function(args, body, self.intrinsics.function_prototype.clone());
+                let value = new_function(self, args, body);
                 ctx.environment.set(name.as_str(), value)?;
                 Ok(Value::Null)
             }
-            Node::FunctionExpression(_name, args, body) => Ok(new_function(
-                args,
-                body,
-                self.intrinsics.function_prototype.clone(),
-            )),
+            Node::FunctionExpression(_name, args, body) => Ok(new_function(self, args, body)),
             Node::Identifier(name) => ctx.environment.get(name.as_str()),
             Node::PropertyInitializer(_, _) => unreachable!(),
             Node::NewExpression(_) => unreachable!(),

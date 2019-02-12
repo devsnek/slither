@@ -1,3 +1,9 @@
-import { a } from './a.sl';
+import { print } from standard:debug;
 
-a;
+const b = [1, 2, 3];
+
+print(b[0]);
+
+b.length = 0;
+
+print(b[0]);

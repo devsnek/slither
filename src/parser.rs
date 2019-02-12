@@ -84,6 +84,7 @@ pub enum Node {
     StatementList(Vec<Node>),
     PropertyInitializer(String, Box<Node>), // key, value
     ObjectLiteral(Vec<Node>),
+    ArrayLiteral(Vec<Node>),
     Identifier(String),
     BlockStatement(Vec<Node>),
     ReturnStatement(Box<Node>),
@@ -900,6 +901,9 @@ impl<'a> Parser<'a> {
                 Token::Function => {
                     self.lexer.next();
                     self.parse_function(true)
+                }
+                Token::LeftBracket => {
+                    Ok(Node::ArrayLiteral(self.parse_expression_list(Token::RightBracket)?))
                 }
                 Token::LeftBrace => {
                     let mut fields = Vec::new();

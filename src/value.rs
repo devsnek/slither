@@ -13,9 +13,10 @@ pub fn new_error(message: &str) -> Value {
     }))
 }
 
-pub struct BuiltinFunction(pub fn(&Agent, Vec<Value>) -> Result<Value, Value>);
+type BuiltinFunction = fn(&Agent, Vec<Value>) -> Result<Value, Value>;
+pub struct BuiltinFunctionWrap(pub BuiltinFunction);
 
-impl std::fmt::Debug for BuiltinFunction {
+impl std::fmt::Debug for BuiltinFunctionWrap {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(fmt, "builtin function")
     }
@@ -24,11 +25,12 @@ impl std::fmt::Debug for BuiltinFunction {
 #[derive(Finalize, Debug)]
 pub enum ObjectKind {
     Ordinary,
+    Array,
     Boolean(bool),
     String(String),
     Number(f64),
     Function(Vec<String>, Box<Node>), // args, body
-    BuiltinFunction(BuiltinFunction),
+    BuiltinFunction(BuiltinFunctionWrap),
 }
 
 // empty impl
@@ -68,23 +70,60 @@ impl ObjectInfo {
         value: Value,
         receiver: Gc<ObjectInfo>,
     ) -> Result<Value, Value> {
-        if self.properties.borrow().contains_key(&property) {
-            receiver
-                .properties
-                .borrow_mut()
-                .insert(property, value.clone());
-            Ok(value)
-        } else {
-            match &self.prototype {
-                Value::Object(oo) => oo.set(property, value, receiver),
-                Value::Null => {
+        match self {
+            ObjectInfo { kind: ObjectKind::Array, .. } => {
+                if let Value::Number(number_len) = value {
+                    let new_len = number_len as u32 as f64;
+                    if new_len != number_len {
+                        Err(new_error("invalid array length"))
+                    } else {
+                        let new_len = new_len as u32;
+                        let old_len = self.get("length".to_string())?;
+                        let mut old_len = match old_len {
+                            Value::Number(n) => n as u32,
+                            Value::Null => 0u32,
+                            _ => unreachable!(),
+                        };
+                        if new_len > old_len {
+                            self.properties
+                                .borrow_mut()
+                                .insert(property, Value::Number(new_len as f64));
+                        } else if new_len < old_len {
+                            while new_len < old_len {
+                                old_len -= 1;
+                                self.properties
+                                    .borrow_mut()
+                                    .remove(&old_len.to_string());
+                            }
+                        } else {
+                            // nothing!
+                        }
+                        Ok(Value::Number(number_len))
+                    }
+                } else {
+                    Err(new_error("invalid array length"))
+                }
+            }
+            _ => {
+                if self.properties.borrow().contains_key(&property) {
                     receiver
                         .properties
                         .borrow_mut()
                         .insert(property, value.clone());
                     Ok(value)
+                } else {
+                    match &self.prototype {
+                        Value::Object(oo) => oo.set(property, value, receiver),
+                        Value::Null => {
+                            receiver
+                                .properties
+                                .borrow_mut()
+                                .insert(property, value.clone());
+                            Ok(value)
+                        }
+                        _ => unreachable!(),
+                    }
                 }
-                _ => unreachable!(),
             }
         }
     }
@@ -109,6 +148,7 @@ impl Value {
             Value::String(_) => "string",
             Value::Object(o) => match o.kind {
                 ObjectKind::Ordinary
+                | ObjectKind::Array
                 | ObjectKind::Boolean(_)
                 | ObjectKind::String(_)
                 | ObjectKind::Number(_) => "object",
@@ -195,6 +235,14 @@ pub fn new_object(proto: Value) -> Value {
     }))
 }
 
+pub fn new_array(agent: &Agent) -> Value {
+    Value::Object(Gc::new(ObjectInfo {
+        kind: ObjectKind::Array,
+        properties: GcCell::new(HashMap::new()),
+        prototype: agent.intrinsics.array_prototype.clone(),
+    }))
+}
+
 pub fn new_boolean_object(agent: &Agent, v: bool) -> Value {
     Value::Object(Gc::new(ObjectInfo {
         kind: ObjectKind::Boolean(v),
@@ -219,10 +267,18 @@ pub fn new_number_object(agent: &Agent, v: f64) -> Value {
     }))
 }
 
-pub fn new_function(args: Vec<String>, body: Box<Node>, proto: Value) -> Value {
+pub fn new_function(agent: &Agent, args: Vec<String>, body: Box<Node>) -> Value {
     Value::Object(Gc::new(ObjectInfo {
         kind: ObjectKind::Function(args, body),
         properties: GcCell::new(HashMap::new()),
-        prototype: proto,
+        prototype: agent.intrinsics.function_prototype.clone(),
+    }))
+}
+
+pub fn new_builtin_function(agent: &Agent, bfn: BuiltinFunction) -> Value {
+    Value::Object(Gc::new(ObjectInfo {
+        kind: ObjectKind::BuiltinFunction(BuiltinFunctionWrap(bfn)),
+        properties: GcCell::new(HashMap::new()),
+        prototype: agent.intrinsics.function_prototype.clone(),
     }))
 }
