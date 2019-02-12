@@ -1,8 +1,5 @@
-import { print } from standard:debug;
-import { a, setA } from './a.sl';
+1 + 1;
 
-print(a);
+"hi" + "bye";
 
-setA(10);
-
-print(a);
+"hi" - "bye";

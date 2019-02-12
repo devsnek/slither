@@ -343,7 +343,7 @@ macro_rules! binop_production {
                     let op = op.clone();
                     self.lexer.next();
                     let rhs = self.$lower()?;
-                    lhs = self.build_binary_expression(lhs, op, rhs);
+                    lhs = self.build_binary_expression(lhs, op, rhs)?;
                 }
                 _ => {},
             }
@@ -625,8 +625,8 @@ impl<'a> Parser<'a> {
                 // lhs = lhs @ rhs;
                 self.lexer.next();
                 let rhs = self.parse_assignment_expression()?;
-                let rhs = self.build_binary_expression(lhs.clone(), $op, rhs);
-                lhs = self.build_binary_expression(lhs, Operator::Assign, rhs);
+                let rhs = self.build_binary_expression(lhs.clone(), $op, rhs)?;
+                lhs = self.build_binary_expression(lhs, Operator::Assign, rhs)?;
             }};
         }
 
@@ -634,7 +634,7 @@ impl<'a> Parser<'a> {
             Some(Token::Operator(Operator::Assign)) => {
                 self.lexer.next();
                 let rhs = self.parse_assignment_expression()?;
-                lhs = self.build_binary_expression(lhs, Operator::Assign, rhs);
+                lhs = self.build_binary_expression(lhs, Operator::Assign, rhs)?;
             }
             Some(Token::Operator(Operator::AddAssign)) => op_assign!(Operator::Add),
             Some(Token::Operator(Operator::SubAssign)) => op_assign!(Operator::Sub),
@@ -648,80 +648,127 @@ impl<'a> Parser<'a> {
         Ok(lhs)
     }
 
-    fn build_binary_expression(&self, left: Node, op: Operator, right: Node) -> Node {
-        if let Node::NumberLiteral(lnum) = left {
-            if let Node::NumberLiteral(rnum) = right {
-                match op {
-                    Operator::Add => Node::NumberLiteral(lnum + rnum),
-                    Operator::Sub => Node::NumberLiteral(lnum - rnum),
-                    Operator::Mul => Node::NumberLiteral(lnum * rnum),
-                    Operator::Div => Node::NumberLiteral(lnum / rnum),
+    fn build_binary_expression(
+        &self,
+        left: Node,
+        op: Operator,
+        right: Node,
+    ) -> Result<Node, Error> {
+        match op {
+            Operator::Assign
+            | Operator::AddAssign
+            | Operator::SubAssign
+            | Operator::MulAssign
+            | Operator::DivAssign
+            | Operator::PowAssign => match left {
+                Node::CallExpression(_, _)
+                | Node::UnaryExpression(_, _)
+                | Node::NullLiteral
+                | Node::TrueLiteral
+                | Node::FalseLiteral
+                | Node::ArrayLiteral(_)
+                | Node::ObjectLiteral(_)
+                | Node::NumberLiteral(_)
+                | Node::StringLiteral(_) => {
+                    return Err(Error::UnexpectedToken);
+                }
+                _ => {}
+            },
+            _ => {}
+        };
+
+        match &left {
+            Node::NumberLiteral(lnum) => match right {
+                Node::NumberLiteral(rnum) => match op {
+                    Operator::Add => return Ok(Node::NumberLiteral(lnum + rnum)),
+                    Operator::Sub => return Ok(Node::NumberLiteral(lnum - rnum)),
+                    Operator::Mul => return Ok(Node::NumberLiteral(lnum * rnum)),
+                    Operator::Div => return Ok(Node::NumberLiteral(lnum / rnum)),
                     Operator::BitwiseOR => {
-                        Node::NumberLiteral((lnum.round() as i64 | rnum.round() as i64) as f64)
+                        return Ok(Node::NumberLiteral(
+                            (lnum.round() as i64 | rnum.round() as i64) as f64,
+                        ));
                     }
                     Operator::BitwiseAND => {
-                        Node::NumberLiteral((lnum.round() as i64 & rnum.round() as i64) as f64)
+                        return Ok(Node::NumberLiteral(
+                            (lnum.round() as i64 & rnum.round() as i64) as f64,
+                        ));
                     }
                     Operator::BitwiseXOR => {
-                        Node::NumberLiteral((lnum.round() as i64 ^ rnum.round() as i64) as f64)
+                        return Ok(Node::NumberLiteral(
+                            (lnum.round() as i64 ^ rnum.round() as i64) as f64,
+                        ));
                     }
                     Operator::LeftShift => {
-                        Node::NumberLiteral(((lnum.round() as i64) << rnum.round() as i64) as f64)
+                        return Ok(Node::NumberLiteral(
+                            ((lnum.round() as i64) << rnum.round() as i64) as f64,
+                        ));
                     }
                     Operator::RightShift => {
-                        Node::NumberLiteral(((lnum.round() as i64) >> rnum.round() as i64) as f64)
+                        return Ok(Node::NumberLiteral(
+                            ((lnum.round() as i64) >> rnum.round() as i64) as f64,
+                        ));
                     }
-                    Operator::Pow => Node::NumberLiteral(lnum.powf(rnum)),
+                    Operator::Pow => return Ok(Node::NumberLiteral(lnum.powf(rnum))),
                     Operator::LessThan => {
-                        if lnum < rnum {
-                            Node::TrueLiteral
+                        if *lnum < rnum {
+                            return Ok(Node::TrueLiteral);
                         } else {
-                            Node::FalseLiteral
+                            return Ok(Node::FalseLiteral);
                         }
                     }
                     Operator::GreaterThan => {
-                        if lnum > rnum {
-                            Node::TrueLiteral
+                        if *lnum > rnum {
+                            return Ok(Node::TrueLiteral);
                         } else {
-                            Node::FalseLiteral
+                            return Ok(Node::FalseLiteral);
                         }
                     }
                     Operator::LessThanOrEqual => {
-                        if lnum <= rnum {
-                            Node::TrueLiteral
+                        if *lnum <= rnum {
+                            return Ok(Node::TrueLiteral);
                         } else {
-                            Node::FalseLiteral
+                            return Ok(Node::FalseLiteral);
                         }
                     }
                     Operator::GreaterThanOrEqual => {
-                        if lnum >= rnum {
-                            Node::TrueLiteral
+                        if *lnum >= rnum {
+                            return Ok(Node::TrueLiteral);
                         } else {
-                            Node::FalseLiteral
+                            return Ok(Node::FalseLiteral);
                         }
                     }
                     Operator::Equal => {
-                        if lnum == rnum {
-                            Node::TrueLiteral
+                        if *lnum == rnum {
+                            return Ok(Node::TrueLiteral);
                         } else {
-                            Node::FalseLiteral
+                            return Ok(Node::FalseLiteral);
                         }
                     }
                     Operator::NotEqual => {
-                        if lnum == rnum {
-                            Node::FalseLiteral
+                        if *lnum == rnum {
+                            return Ok(Node::FalseLiteral);
                         } else {
-                            Node::TrueLiteral
+                            return Ok(Node::TrueLiteral);
                         }
                     }
-                    _ => Node::BinaryExpression(Box::new(left), op, Box::new(right)),
-                }
-            } else {
-                Node::BinaryExpression(Box::new(left), op, Box::new(right))
-            }
-        } else {
-            Node::BinaryExpression(Box::new(left), op, Box::new(right))
-        }
+                    _ => {}
+                },
+                _ => {}
+            },
+            Node::StringLiteral(lstr) => match &right {
+                Node::StringLiteral(rstr) => match op {
+                    Operator::Add => {
+                        return Ok(Node::StringLiteral(format!("{}{}", lstr, rstr)));
+                    }
+                    _ => {}
+                },
+                _ => {}
+            },
+            _ => {}
+        };
+
+        Ok(Node::BinaryExpression(Box::new(left), op, Box::new(right)))
     }
 
     fn parse_conditional_expression(&mut self) -> Result<Node, Error> {

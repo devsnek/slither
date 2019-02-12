@@ -253,6 +253,8 @@ impl ModuleX {
             dfs_ancestor_index: 0,
         };
 
+        println!("ast {:?}", module.ast);
+
         if let Node::StatementList(list) = &module.ast {
             for node in list {
                 match &node {
@@ -423,7 +425,11 @@ impl Agent {
                             o.set(len.to_string(), value, o.clone())?;
                             len += 1;
                         }
-                        o.set("length".to_string(), Value::Number(f64::from(len)), o.clone())?;
+                        o.set(
+                            "length".to_string(),
+                            Value::Number(f64::from(len)),
+                            o.clone(),
+                        )?;
                     }
                     _ => unreachable!(),
                 }
