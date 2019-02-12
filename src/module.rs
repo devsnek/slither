@@ -7,13 +7,15 @@ use crate::value::{
     new_boolean_object, new_error, new_function, new_number_object, new_object, new_string_object,
     BuiltinFunction, ObjectKind, Value,
 };
-use std::collections::HashMap;
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
 use std::ops::{Div, Mul, Rem, Sub};
 
 #[derive(Debug)]
 struct Binding {
     value: Option<Value>,
     mutable: bool,
+    exported: bool,
 }
 
 #[derive(Debug)]
@@ -41,7 +43,7 @@ impl LexicalEnvironment {
         }
     }
 
-    fn create(&mut self, name: &str, mutable: bool) -> Result<(), Value> {
+    fn create_binding(&mut self, name: &str, mutable: bool, exported: bool) -> Result<(), Value> {
         if self.has(name) {
             Err(new_error("binding already declared"))
         } else {
@@ -50,10 +52,19 @@ impl LexicalEnvironment {
                 Binding {
                     value: None,
                     mutable,
+                    exported,
                 },
             );
             Ok(())
         }
+    }
+
+    fn create(&mut self, name: &str, mutable: bool) -> Result<(), Value> {
+        self.create_binding(name, mutable, false)
+    }
+
+    fn create_export(&mut self, name: &str, mutable: bool) -> Result<(), Value> {
+        self.create_binding(name, mutable, true)
     }
 
     fn set(&mut self, name: &str, value: Value) -> Result<(), Value> {
@@ -92,51 +103,67 @@ struct ExecutionContext {
 }
 
 #[derive(Debug)]
-pub struct Module<'a> {
-    agent: &'a mut Agent,
+struct ModuleX {
     filename: String,
     ast: Node,
     context: ExecutionContext,
+    imports: HashSet<String>,
 }
 
-impl<'a> Module<'a> {
-    pub fn new(agent: &'a mut Agent, filename: &str) -> Result<Module<'a>, Value> {
+impl ModuleX {
+    fn new(filename: &str, agent: &Agent) -> Result<ModuleX, Value> {
         let source = std::fs::read_to_string(filename).expect("no such file");
-        let mut module = Module {
-            agent,
+        let mut module = ModuleX {
             filename: filename.to_string(),
             context: ExecutionContext {
                 this: None,
                 environment: LexicalEnvironment::new(),
             },
             ast: Parser::parse(&source)?,
+            imports: HashSet::new(),
         };
 
         if let Node::StatementList(list) = &module.ast {
             for node in list {
                 match &node {
-                    Node::ImportDefaultDeclaration(_, name) => {
+                    Node::ImportDefaultDeclaration(specifier, name) => {
                         module.context.environment.create(name, false)?;
+                        module.imports.insert(specifier.to_string());
                     }
-                    Node::ImportNamedDeclaration(_, names)
-                    | Node::ImportStandardDeclaration(_, names) => {
+                    Node::ImportNamedDeclaration(specifier, names)
+                    | Node::ImportStandardDeclaration(specifier, names) => {
                         for name in names {
                             module.context.environment.create(name, false)?;
+                            module.imports.insert(specifier.to_string());
                         }
                     }
+                    Node::ExportDeclaration(decl) => match *decl.clone() {
+                        Node::LexicalDeclaration(name, _, mutable) => {
+                            module
+                                .context
+                                .environment
+                                .create_export(name.as_str(), mutable)?;
+                        }
+                        Node::FunctionDeclaration(name, args, body) => {
+                            module
+                                .context
+                                .environment
+                                .create_export(name.as_str(), false)?;
+                            let value = new_function(
+                                args,
+                                body,
+                                agent.intrinsics.function_prototype.clone(),
+                            );
+                            module.context.environment.set(name.as_str(), value)?;
+                        }
+                        _ => {}
+                    },
                     _ => {}
                 }
             }
         }
 
         Ok(module)
-    }
-
-    pub fn evaluate(&mut self) -> Result<Value, Value> {
-        self.agent.execution_context_stack.push(&mut self.context);
-        let r = self.agent.evaluate(self.ast.clone());
-        self.agent.execution_context_stack.pop(); // TODO: assert this is the same context
-        r
     }
 }
 
@@ -152,7 +179,7 @@ pub struct Intrinsics {
 #[derive(Debug)]
 pub struct Agent {
     pub intrinsics: Intrinsics,
-    execution_context_stack: Vec<*mut ExecutionContext>,
+    modules: RefCell<HashMap<String, ModuleX>>,
 }
 
 impl Agent {
@@ -170,30 +197,47 @@ impl Agent {
                 number_prototype,
                 string_prototype,
             },
-            execution_context_stack: Vec::new(),
+            modules: RefCell::new(HashMap::new()),
         }
     }
 
-    fn context(&mut self) -> &mut ExecutionContext {
-        unsafe {
-            let r = self.execution_context_stack.last_mut().expect("no ctx");
-            &mut **r
+    fn load(&self, specifier: &str, referrer: &str) -> Result<String, Value> {
+        let filename = std::path::Path::new(referrer)
+            .parent()
+            .unwrap()
+            .join(specifier);
+        let filename = filename.to_str().unwrap();
+        if !self.modules.borrow().contains_key(filename) {
+            let module = ModuleX::new(filename, self)?;
+            let imports = module.imports.clone();
+            self.modules
+                .borrow_mut()
+                .insert(filename.to_string(), module);
+            for import in imports {
+                self.load(import.as_str(), filename)?;
+            }
         }
+        Ok(filename.to_string())
     }
 
-    fn evaluate(&mut self, node: Node) -> Result<Value, Value> {
+    pub fn import(&self, specifier: &str, referrer: &str) -> Result<(), Value> {
+        let filename = self.load(specifier, referrer)?;
+        let mut map = self.modules.borrow_mut();
+        let module = map.get_mut(&filename).unwrap();
+        self.evaluate(&mut module.context, module.ast.clone())?;
+        Ok(())
+    }
+
+    fn evaluate(&self, ctx: &mut ExecutionContext, node: Node) -> Result<Value, Value> {
         match node {
-            Node::ReturnStatement(expr) => {
-                Err(Value::ReturnCompletion(Box::new(self.evaluate(*expr)?)))
-            }
-            Node::ThrowStatement(expr) => Err(self.evaluate(*expr)?),
-            Node::ThisExpression => {
-                let context = self.context();
-                match &context.this {
-                    None => Err(new_error("invalid this")),
-                    Some(v) => Ok(v.clone()),
-                }
-            }
+            Node::ReturnStatement(expr) => Err(Value::ReturnCompletion(Box::new(
+                self.evaluate(ctx, *expr)?,
+            ))),
+            Node::ThrowStatement(expr) => Err(self.evaluate(ctx, *expr)?),
+            Node::ThisExpression => match &ctx.this {
+                None => Err(new_error("invalid this")),
+                Some(v) => Ok(v.clone()),
+            },
             Node::NumberLiteral(n) => Ok(Value::Number(n)),
             Node::StringLiteral(s) => Ok(Value::String(s)),
             Node::NullLiteral => Ok(Value::Null),
@@ -206,7 +250,7 @@ impl Agent {
                         for init in list {
                             match init {
                                 Node::PropertyInitializer(key, expr) => {
-                                    let value = self.evaluate(*expr)?;
+                                    let value = self.evaluate(ctx, *expr)?;
                                     o.set(key, value, o.clone())?;
                                 }
                                 _ => unreachable!(),
@@ -217,72 +261,68 @@ impl Agent {
                 }
                 Ok(obj)
             }
-            Node::StatementList(nodes) => self.evaluate_statement_list(nodes),
+            Node::StatementList(nodes) => self.evaluate_statement_list(ctx, nodes),
             Node::BlockStatement(nodes) => {
-                let ctx = self.context();
                 let new = LexicalEnvironment::new();
                 let mut old = std::mem::replace(&mut ctx.environment, new);
                 ctx.environment.parent = Some(&mut old);
-                let result = self.evaluate_statement_list(nodes);
-                let ctx = self.context();
+                let result = self.evaluate_statement_list(ctx, nodes);
                 std::mem::replace(&mut ctx.environment, old);
                 result
             }
             Node::TryStatement(try_clause, catch_clause) => {
-                let result = self.evaluate(*try_clause);
+                let result = self.evaluate(ctx, *try_clause);
                 match result {
                     Ok(v) => Ok(v),
                     Err(Value::ReturnCompletion(_)) => result,
-                    Err(_) => self.evaluate(*catch_clause),
+                    Err(_) => self.evaluate(ctx, *catch_clause),
                 }
             }
             Node::BoundTryStatement(try_clause, binding, catch_clause) => {
-                let result = self.evaluate(*try_clause);
+                let result = self.evaluate(ctx, *try_clause);
                 match result {
                     Ok(v) => Ok(v),
                     Err(Value::ReturnCompletion(_)) => result,
                     Err(e) => {
-                        let ctx = self.context();
                         let new = LexicalEnvironment::new();
                         let mut old = std::mem::replace(&mut ctx.environment, new);
                         ctx.environment.parent = Some(&mut old);
                         ctx.environment.create(binding.as_str(), false)?;
                         ctx.environment.set(binding.as_str(), e)?;
-                        let r = self.evaluate(*catch_clause);
-                        let ctx = self.context();
+                        let r = self.evaluate(ctx, *catch_clause);
                         std::mem::replace(&mut ctx.environment, old);
                         r
                     }
                 }
             }
             Node::IfStatement(test, consequent) => {
-                if self.evaluate(*test)?.is_truthy() {
-                    self.evaluate(*consequent)
+                if self.evaluate(ctx, *test)?.is_truthy() {
+                    self.evaluate(ctx, *consequent)
                 } else {
                     Ok(Value::Null)
                 }
             }
             Node::IfElseStatement(test, consequent, alternative) => {
-                if self.evaluate(*test)?.is_truthy() {
-                    self.evaluate(*consequent)
+                if self.evaluate(ctx, *test)?.is_truthy() {
+                    self.evaluate(ctx, *consequent)
                 } else {
-                    self.evaluate(*alternative)
+                    self.evaluate(ctx, *alternative)
                 }
             }
             Node::ConditionalExpression(test, consequent, alternative) => {
-                if self.evaluate(*test)?.is_truthy() {
-                    self.evaluate(*consequent)
+                if self.evaluate(ctx, *test)?.is_truthy() {
+                    self.evaluate(ctx, *consequent)
                 } else {
-                    self.evaluate(*alternative)
+                    self.evaluate(ctx, *alternative)
                 }
             }
-            Node::ExpressionStatement(expr) => self.evaluate(*expr),
+            Node::ExpressionStatement(expr) => self.evaluate(ctx, *expr),
             Node::CallExpression(name, args) => {
                 let this;
                 let val;
                 match *name.clone() {
                     Node::MemberExpression(base, property) => {
-                        let base = self.evaluate(*base)?;
+                        let base = self.evaluate(ctx, *base)?;
                         this = self.to_object(base)?;
                         val = match &this {
                             Value::Object(o) => o.get(property),
@@ -290,9 +330,9 @@ impl Agent {
                         }?;
                     }
                     Node::ComputedMemberExpression(base, property) => {
-                        let base = self.evaluate(*base)?;
+                        let base = self.evaluate(ctx, *base)?;
                         this = self.to_object(base)?;
-                        let property = self.evaluate(*property)?.to_string()?;
+                        let property = self.evaluate(ctx, *property)?.to_string()?;
                         val = match &this {
                             Value::Object(o) => o.get(property),
                             _ => Err(new_error("invalid left hand side")),
@@ -300,26 +340,23 @@ impl Agent {
                     }
                     _ => {
                         this = Value::Null;
-                        val = self.evaluate(*name)?;
+                        val = self.evaluate(ctx, *name)?;
                     }
                 };
                 match &val {
                     Value::Object(o) => match &o.kind {
                         ObjectKind::Function(params, body) => {
-                            let mut ctx = ExecutionContext {
+                            let mut new_ctx = ExecutionContext {
                                 this: Some(this),
                                 environment: LexicalEnvironment::new(),
                             };
-                            self.execution_context_stack.push(&mut ctx);
                             for (i, arg) in args.iter().enumerate() {
                                 let binding = params[i].clone();
-                                let value = self.evaluate((*arg).clone())?;
-                                let ctx = self.context();
+                                let value = self.evaluate(&mut new_ctx, (*arg).clone())?;
                                 ctx.environment.create(binding.as_str(), false)?;
                                 ctx.environment.set(binding.as_str(), value)?;
                             }
-                            let r = self.evaluate(*body.clone());
-                            self.execution_context_stack.pop();
+                            let r = self.evaluate(&mut new_ctx, *body.clone());
                             match &r {
                                 Err(Value::ReturnCompletion(v)) => Ok(*v.clone()),
                                 _ => r,
@@ -328,7 +365,7 @@ impl Agent {
                         ObjectKind::BuiltinFunction(BuiltinFunction(bfn)) => {
                             let mut values = Vec::new();
                             for arg in args {
-                                values.push(self.evaluate(arg)?);
+                                values.push(self.evaluate(ctx, arg)?);
                             }
                             bfn(self, values)
                         }
@@ -338,66 +375,65 @@ impl Agent {
                 }
             }
             Node::UnaryExpression(op, expr) => {
-                let value = self.evaluate(*expr)?;
+                let value = self.evaluate(ctx, *expr)?;
                 self.evaluate_unop(op, value)
             }
             Node::BinaryExpression(left, op, right) => match op {
                 Operator::Assign => match *left {
                     Node::MemberExpression(base, property) => {
-                        let base = self.evaluate(*base)?;
+                        let base = self.evaluate(ctx, *base)?;
                         let base = self.to_object(base)?;
                         match &base {
                             Value::Object(o) => {
-                                let rval = self.evaluate(*right)?;
+                                let rval = self.evaluate(ctx, *right)?;
                                 o.set(property, rval, o.clone())
                             }
                             _ => Err(new_error("invalid left hand side")),
                         }
                     }
                     Node::ComputedMemberExpression(base, property) => {
-                        let base = self.evaluate(*base)?;
+                        let base = self.evaluate(ctx, *base)?;
                         let base = self.to_object(base)?;
-                        let key = self.evaluate(*property)?.to_string()?;
+                        let key = self.evaluate(ctx, *property)?.to_string()?;
                         match &base {
                             Value::Object(o) => {
-                                let rval = self.evaluate(*right)?;
+                                let rval = self.evaluate(ctx, *right)?;
                                 o.set(key, rval, o.clone())
                             }
                             _ => Err(new_error("invalid left hand side")),
                         }
                     }
                     Node::Identifier(name) => {
-                        let rval = self.evaluate(*right)?;
-                        let ctx = self.context();
+                        let rval = self.evaluate(ctx, *right)?;
                         ctx.environment.set(name.as_str(), rval.clone())?;
                         Ok(rval)
                     }
                     _ => Err(new_error("invalid left hand side")),
                 },
                 Operator::LogicalAND => {
-                    let lval = self.evaluate(*left)?;
+                    let lval = self.evaluate(ctx, *left)?;
                     if lval.is_truthy() {
-                        self.evaluate(*right)
+                        self.evaluate(ctx, *right)
                     } else {
                         Ok(lval)
                     }
                 }
                 Operator::LogicalOR => {
-                    let lval = self.evaluate(*left)?;
+                    let lval = self.evaluate(ctx, *left)?;
                     if lval.is_truthy() {
                         Ok(lval)
                     } else {
-                        self.evaluate(*right)
+                        self.evaluate(ctx, *right)
                     }
                 }
                 _ => {
-                    let lval = self.evaluate(*left)?;
-                    let rval = self.evaluate(*right)?;
+                    let lval = self.evaluate(ctx, *left)?;
+                    let rval = self.evaluate(ctx, *right)?;
                     self.evaluate_binop(op, lval, rval)
                 }
             },
             Node::MemberExpression(base, property) => {
-                let base = self.evaluate(*base)?;
+                let base = self.evaluate(ctx, *base)?;
                 let base = self.to_object(base)?;
                 match &base {
                     Value::Object(o) => o.get(property),
@@ -405,24 +441,22 @@ impl Agent {
                 }
             }
             Node::ComputedMemberExpression(base, property) => {
-                let base = self.evaluate(*base)?;
+                let base = self.evaluate(ctx, *base)?;
                 let base = self.to_object(base)?;
-                let property = self.evaluate(*property)?.to_string()?;
+                let property = self.evaluate(ctx, *property)?.to_string()?;
                 match &base {
                     Value::Object(o) => o.get(property),
                     _ => Err(new_error("member expression base must be object")),
                 }
             }
             Node::LexicalDeclaration(name, value, _) => {
-                let value = self.evaluate(*value)?;
-                let ctx = self.context();
+                let value = self.evaluate(ctx, *value)?;
                 ctx.environment.set(name.as_str(), value)?;
                 Ok(Value::Null)
             }
             Node::FunctionDeclaration(name, args, body) => {
                 let value = new_function(args, body, self.intrinsics.function_prototype.clone());
-                let context = self.context();
-                context.environment.set(name.as_str(), value)?;
+                ctx.environment.set(name.as_str(), value)?;
                 Ok(Value::Null)
             }
             Node::FunctionExpression(_name, args, body) => Ok(new_function(
@@ -430,42 +464,45 @@ impl Agent {
                 body,
                 self.intrinsics.function_prototype.clone(),
             )),
-            Node::Identifier(name) => {
-                let ctx = self.context();
-                ctx.environment.get(name.as_str())
-            }
+            Node::Identifier(name) => ctx.environment.get(name.as_str()),
             Node::PropertyInitializer(_, _) => unreachable!(),
             Node::NewExpression(_) => unreachable!(),
-            Node::ImportDeclaration(_) => unreachable!(),
-            Node::ImportDefaultDeclaration(_, _) => unreachable!(),
-            Node::ImportNamedDeclaration(_, _) => unreachable!(),
-            Node::ImportStandardDeclaration(_, _) => unreachable!(),
-            Node::ExportDeclaration(_) => unreachable!(),
+            Node::ImportDeclaration(_)
+            | Node::ImportDefaultDeclaration(_, _)
+            | Node::ImportNamedDeclaration(_, _)
+            | Node::ImportStandardDeclaration(_, _) => Ok(Value::Null),
+            Node::ExportDeclaration(decl) => match *decl {
+                Node::FunctionDeclaration(_, _, _) => Ok(Value::Null),
+                _ => self.evaluate(ctx, *decl),
+            },
         }
     }
 
-    fn evaluate_statement_list(&mut self, nodes: Vec<Node>) -> Result<Value, Value> {
+    fn evaluate_statement_list(
+        &self,
+        ctx: &mut ExecutionContext,
+        nodes: Vec<Node>,
+    ) -> Result<Value, Value> {
         let mut result = Value::Null;
         for node in &nodes {
             // hoist declarations in block for TDZ
-            let context = self.context();
             match node {
                 Node::LexicalDeclaration(name, _, mutable) => {
-                    context.environment.create(name.as_str(), *mutable)?;
+                    ctx.environment.create(name.as_str(), *mutable)?;
                 }
                 Node::FunctionDeclaration(name, _, _) => {
-                    context.environment.create(name.as_str(), false)?;
+                    ctx.environment.create(name.as_str(), false)?;
                 }
                 _ => {}
             }
         }
         for node in nodes {
-            result = self.evaluate(node)?;
+            result = self.evaluate(ctx, node)?;
         }
         Ok(result)
     }
 
-    fn evaluate_unop(&mut self, op: Operator, value: Value) -> Result<Value, Value> {
+    fn evaluate_unop(&self, op: Operator, value: Value) -> Result<Value, Value> {
         match op {
             Operator::Typeof => Ok(Value::String(value.type_of().to_string())),
             Operator::Void => Ok(Value::Null),
@@ -478,7 +515,7 @@ impl Agent {
         }
     }
 
-    fn evaluate_binop(&mut self, op: Operator, left: Value, right: Value) -> Result<Value, Value> {
+    fn evaluate_binop(&self, op: Operator, left: Value, right: Value) -> Result<Value, Value> {
         macro_rules! f64_binop_f64 {
             ($fn:expr) => {
                 match left {

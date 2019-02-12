@@ -9,7 +9,7 @@ mod parser;
 mod value;
 
 use clap::{App, Arg};
-use module::{Agent, Module};
+use module::Agent;
 
 fn main() {
     let matches = App::new("slither")
@@ -18,10 +18,12 @@ fn main() {
         .get_matches();
 
     let filename = matches.value_of("filename").unwrap();
+    let referrer = std::env::current_dir().unwrap().join("slither");
+    let referrer = referrer.to_str().unwrap();
 
-    let mut agent = Agent::new();
+    let agent = Agent::new();
 
-    let module = Module::new(&mut agent, filename);
+    let c = agent.import(filename, referrer);
 
-    println!("res {:?}", module.unwrap().evaluate());
+    println!("res {:?}", c);
 }

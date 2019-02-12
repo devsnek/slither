@@ -341,11 +341,8 @@ macro_rules! binop_production {
                 Some(Token::Operator(op)) if $( op == &$op )||* => {
                     let op = op.clone();
                     self.lexer.next();
-                    lhs = Node::BinaryExpression(
-                        Box::new(lhs),
-                        op,
-                        Box::new(self.$lower()?),
-                    );
+                    let rhs = self.$lower()?;
+                    lhs = self.build_binary_expression(lhs, op, rhs);
                 }
                 _ => {},
             }
@@ -500,6 +497,11 @@ impl<'a> Parser<'a> {
                     Ok(Node::IfStatement(Box::new(test), Box::new(consequent)))
                 }
             }
+            Some(Token::Export) if self.scope.last().unwrap() == &ParseScope::TopLevel => {
+                self.lexer.next();
+                let decl = self.parse_lexical_declaration()?;
+                Ok(Node::ExportDeclaration(Box::new(decl)))
+            }
             Some(Token::Import) if self.scope.last().unwrap() == &ParseScope::TopLevel => {
                 self.lexer.next();
                 match self.lexer.peek() {
@@ -541,11 +543,6 @@ impl<'a> Parser<'a> {
                         };
                         self.expect(Token::Semicolon)?;
                         Ok(Node::ImportDefaultDeclaration(specifier, binding))
-                    }
-                    Some(Token::Export) => {
-                        self.lexer.next();
-                        let decl = self.parse_lexical_declaration()?;
-                        Ok(Node::ExportDeclaration(Box::new(decl)))
                     }
                     _ => Err(Error::UnexpectedToken),
                 }
@@ -612,7 +609,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_assignment_expression(&mut self) -> Result<Node, Error> {
-        let lhs = self.parse_conditional_expression()?;
+        let mut lhs = self.parse_conditional_expression()?;
 
         macro_rules! op_assign {
             ($op:expr) => {{
@@ -620,22 +617,16 @@ impl<'a> Parser<'a> {
                 // lhs = lhs @ rhs;
                 self.lexer.next();
                 let rhs = self.parse_assignment_expression()?;
-                return Ok(Node::BinaryExpression(
-                    Box::new(lhs.clone()),
-                    Operator::Assign,
-                    Box::new(Node::BinaryExpression(Box::new(lhs), $op, Box::new(rhs))),
-                ));
+                let rhs = self.build_binary_expression(lhs.clone(), $op, rhs);
+                lhs = self.build_binary_expression(lhs, Operator::Assign, rhs);
             }};
         }
 
         match self.lexer.peek() {
             Some(Token::Operator(Operator::Assign)) => {
                 self.lexer.next();
-                return Ok(Node::BinaryExpression(
-                    Box::new(lhs),
-                    Operator::Assign,
-                    Box::new(self.parse_assignment_expression()?),
-                ));
+                let rhs = self.parse_assignment_expression()?;
+                lhs = self.build_binary_expression(lhs, Operator::Assign, rhs);
             }
             Some(Token::Operator(Operator::AddAssign)) => op_assign!(Operator::Add),
             Some(Token::Operator(Operator::SubAssign)) => op_assign!(Operator::Sub),
@@ -647,6 +638,82 @@ impl<'a> Parser<'a> {
         }
 
         Ok(lhs)
+    }
+
+    fn build_binary_expression(&self, left: Node, op: Operator, right: Node) -> Node {
+        if let Node::NumberLiteral(lnum) = left {
+            if let Node::NumberLiteral(rnum) = right {
+                match op {
+                    Operator::Add => Node::NumberLiteral(lnum + rnum),
+                    Operator::Sub => Node::NumberLiteral(lnum - rnum),
+                    Operator::Mul => Node::NumberLiteral(lnum * rnum),
+                    Operator::Div => Node::NumberLiteral(lnum / rnum),
+                    Operator::BitwiseOR => {
+                        Node::NumberLiteral((lnum.round() as i64 | rnum.round() as i64) as f64)
+                    }
+                    Operator::BitwiseAND => {
+                        Node::NumberLiteral((lnum.round() as i64 & rnum.round() as i64) as f64)
+                    }
+                    Operator::BitwiseXOR => {
+                        Node::NumberLiteral((lnum.round() as i64 ^ rnum.round() as i64) as f64)
+                    }
+                    Operator::LeftShift => {
+                        Node::NumberLiteral(((lnum.round() as i64) << rnum.round() as i64) as f64)
+                    }
+                    Operator::RightShift => {
+                        Node::NumberLiteral(((lnum.round() as i64) >> rnum.round() as i64) as f64)
+                    }
+                    Operator::Pow => Node::NumberLiteral(lnum.powf(rnum)),
+                    Operator::LessThan => {
+                        if lnum < rnum {
+                            Node::TrueLiteral
+                        } else {
+                            Node::FalseLiteral
+                        }
+                    }
+                    Operator::GreaterThan => {
+                        if lnum > rnum {
+                            Node::TrueLiteral
+                        } else {
+                            Node::FalseLiteral
+                        }
+                    }
+                    Operator::LessThanOrEqual => {
+                        if lnum <= rnum {
+                            Node::TrueLiteral
+                        } else {
+                            Node::FalseLiteral
+                        }
+                    }
+                    Operator::GreaterThanOrEqual => {
+                        if lnum >= rnum {
+                            Node::TrueLiteral
+                        } else {
+                            Node::FalseLiteral
+                        }
+                    }
+                    Operator::Equal => {
+                        if lnum == rnum {
+                            Node::TrueLiteral
+                        } else {
+                            Node::FalseLiteral
+                        }
+                    }
+                    Operator::NotEqual => {
+                        if lnum == rnum {
+                            Node::FalseLiteral
+                        } else {
+                            Node::TrueLiteral
+                        }
+                    }
+                    _ => Node::BinaryExpression(Box::new(left), op, Box::new(right)),
+                }
+            } else {
+                Node::BinaryExpression(Box::new(left), op, Box::new(right))
+            }
+        } else {
+            Node::BinaryExpression(Box::new(left), op, Box::new(right))
+        }
     }
 
     fn parse_conditional_expression(&mut self) -> Result<Node, Error> {

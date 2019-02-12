@@ -13,7 +13,7 @@ pub fn new_error(message: &str) -> Value {
     }))
 }
 
-pub struct BuiltinFunction(pub fn(&mut Agent, Vec<Value>) -> Result<Value, Value>);
+pub struct BuiltinFunction(pub fn(&Agent, Vec<Value>) -> Result<Value, Value>);
 
 impl std::fmt::Debug for BuiltinFunction {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -124,7 +124,7 @@ impl Value {
             Value::True => true,
             Value::False => false,
             Value::String(s) => s.chars().count() > 0,
-            Value::Number(n) => *n != -0.0f64,
+            Value::Number(n) => *n != 0.0f64,
             Value::Object(_) => true,
             _ => unreachable!(),
         }

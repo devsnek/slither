@@ -1,7 +1,3 @@
-function a() {
-  return 5;
-}
+import { a } from './a.sl';
 
-{
-  function b() {}
-}
+a;
