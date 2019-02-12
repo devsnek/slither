@@ -489,12 +489,20 @@ impl<'a> Parser<'a> {
                 let consequent = self.parse_block_statement()?;
                 if self.eat(Token::Else) {
                     let alternative = self.parse_block_statement()?;
+                    match self.fold_conditional(test.clone(), consequent.clone(), alternative.clone()) {
+                        Ok(n) => return Ok(n),
+                        Err(_) => {}
+                    }
                     Ok(Node::IfElseStatement(
                         Box::new(test),
                         Box::new(consequent),
                         Box::new(alternative),
                     ))
                 } else {
+                    match self.fold_conditional(test.clone(), consequent.clone(), Node::ExpressionStatement(Box::new(Node::NullLiteral))) {
+                        Ok(n) => return Ok(n),
+                        Err(_) => {}
+                    }
                     Ok(Node::IfStatement(Box::new(test), Box::new(consequent)))
                 }
             }
@@ -771,6 +779,20 @@ impl<'a> Parser<'a> {
         Ok(Node::BinaryExpression(Box::new(left), op, Box::new(right)))
     }
 
+    fn fold_conditional(&self, test: Node, consequent: Node, alternative: Node) -> Result<Node, ()> {
+        match test {
+            Node::TrueLiteral => return Ok(consequent),
+            Node::NumberLiteral(n) => return if n > 0f64 { Ok(consequent) } else { Ok(alternative) },
+            Node::StringLiteral(s) => return if s.chars().count() > 0 { Ok(consequent) } else { Ok(alternative) },
+            Node::FalseLiteral => return Ok(alternative),
+            Node::NullLiteral => return Ok(alternative),
+            Node::ArrayLiteral(_) => return Ok(consequent),
+            Node::ObjectLiteral(_) => return Ok(consequent),
+            Node::UnaryExpression(Operator::Void, _) => return Ok(alternative),
+            _ => Err(()),
+        }
+    }
+
     fn parse_conditional_expression(&mut self) -> Result<Node, Error> {
         let lhs = self.parse_logical_or_expression()?;
 
@@ -778,17 +800,9 @@ impl<'a> Parser<'a> {
             let consequent = self.parse_assignment_expression()?;
             self.expect(Token::Colon)?;
             let alternative = self.parse_assignment_expression()?;
-
-            match lhs {
-                Node::TrueLiteral => return Ok(consequent),
-                Node::NumberLiteral(n) => return if n > 0f64 { Ok(consequent) } else { Ok(alternative) },
-                Node::StringLiteral(s) => return if s.chars().count() > 0 { Ok(consequent) } else { Ok(alternative) },
-                Node::FalseLiteral => return Ok(alternative),
-                Node::NullLiteral => return Ok(alternative),
-                Node::ArrayLiteral(_) => return Ok(consequent),
-                Node::ObjectLiteral(_) => return Ok(consequent),
-                Node::UnaryExpression(Operator::Void, _) => return Ok(alternative),
-                _ => {}
+            match self.fold_conditional(lhs.clone(), consequent.clone(), alternative.clone()) {
+                Ok(n) => return Ok(n),
+                Err(_) => {}
             }
             return Ok(Node::ConditionalExpression(
                 Box::new(lhs),

@@ -253,8 +253,6 @@ impl ModuleX {
             dfs_ancestor_index: 0,
         };
 
-        println!("ast {:?}", module.ast);
-
         if let Node::StatementList(list) = &module.ast {
             for node in list {
                 match &node {

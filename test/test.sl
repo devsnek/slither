@@ -1,5 +1,9 @@
-1 + 1;
+if (false) {
+  1 + 1;
 
-"hi" + "bye";
+  "hi" + "bye";
 
-true ? "good fold" : "bad fold";
+  true ? "good fold" : "bad fold";
+} else {
+  10;
+}
