@@ -5,10 +5,11 @@ use gc::{Gc, GcCell};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+pub use std::sync::atomic::{AtomicU64, Ordering};
 
 pub fn new_error(message: &str) -> Value {
     let mut m = HashMap::new();
-    m.insert("message".to_string(), Value::String(message.to_string()));
+    m.insert(ObjectKey::from("message"), Value::String(message.to_string()));
     Value::Object(Gc::new(ObjectInfo {
         kind: ObjectKind::Ordinary,
         properties: GcCell::new(m),
@@ -57,25 +58,31 @@ unsafe impl gc::Trace for ObjectKind {
 #[derive(Trace, Finalize, Debug)]
 pub struct ObjectInfo {
     pub kind: ObjectKind,
-    pub properties: GcCell<HashMap<String, Value>>,
+    pub properties: GcCell<HashMap<ObjectKey, Value>>,
     pub prototype: Value,
 }
 
 impl ObjectInfo {
-    pub fn get(&self, property: String) -> Result<Value, Value> {
+    pub fn get(&self, property: ObjectKey) -> Result<Value, Value> {
         match self.properties.borrow().get(&property) {
             Some(v) => Ok(v.clone()),
-            _ => match &self.prototype {
-                Value::Object(oo) => oo.get(property),
-                Value::Null => Ok(Value::Null),
-                _ => unreachable!(),
-            },
+            _ => {
+                if let ObjectKey::Symbol(Symbol(_, true)) = property { // don't traverse for private symbol
+                    Ok(Value::Null)
+                } else {
+                    match &self.prototype {
+                        Value::Object(oo) => oo.get(property),
+                        Value::Null => Ok(Value::Null),
+                        _ => unreachable!(),
+                    }
+                }
+            }
         }
     }
 
     pub fn set(
         &self,
-        property: String,
+        property: ObjectKey,
         value: Value,
         receiver: Gc<ObjectInfo>,
     ) -> Result<Value, Value> {
@@ -83,14 +90,14 @@ impl ObjectInfo {
             ObjectInfo {
                 kind: ObjectKind::Array,
                 ..
-            } => {
+            } if property == ObjectKey::from("length") => {
                 if let Value::Number(number_len) = value {
                     let new_len = f64::from(number_len as u32);
                     if new_len != number_len {
                         Err(new_error("invalid array length"))
                     } else {
                         let new_len = new_len as u32;
-                        let old_len = self.get("length".to_string())?;
+                        let old_len = self.get(ObjectKey::from("length"))?;
                         let mut old_len = match old_len {
                             Value::Number(n) => n as u32,
                             Value::Null => 0u32,
@@ -103,7 +110,7 @@ impl ObjectInfo {
                         } else if new_len < old_len {
                             while new_len < old_len {
                                 old_len -= 1;
-                                self.properties.borrow_mut().remove(&old_len.to_string());
+                                self.properties.borrow_mut().remove(&ObjectKey::from(old_len));
                             }
                         } else {
                             // nothing!
@@ -115,7 +122,11 @@ impl ObjectInfo {
                 }
             }
             _ => {
-                if self.properties.borrow().contains_key(&property) {
+                let mut own = false;
+                if let ObjectKey::Symbol(Symbol(_, true)) = property {
+                    own = true;
+                }
+                if own || self.properties.borrow().contains_key(&property) {
                     receiver
                         .properties
                         .borrow_mut()
@@ -139,6 +150,34 @@ impl ObjectInfo {
     }
 }
 
+static SYMBOL_COUNTER: AtomicU64 = AtomicU64::new(0);
+#[derive(Debug, Clone, Trace, Finalize, Hash, PartialEq, Eq)]
+pub struct Symbol(u64, bool); // id, private
+
+#[derive(Trace, Finalize, Hash, Debug, PartialEq, Eq)]
+pub enum ObjectKey {
+    String(String),
+    Symbol(Symbol),
+}
+
+impl From<String> for ObjectKey {
+    fn from(s: String) -> Self {
+        ObjectKey::String(s)
+    }
+}
+
+impl From<&str> for ObjectKey {
+    fn from(s: &str) -> Self {
+        ObjectKey::String(s.to_string())
+    }
+}
+
+impl From<u32> for ObjectKey {
+    fn from(n: u32) -> Self {
+        ObjectKey::String(n.to_string())
+    }
+}
+
 #[derive(Debug, Clone, Trace, Finalize)]
 pub enum Value {
     Null,
@@ -146,11 +185,18 @@ pub enum Value {
     False,
     String(String),
     Number(f64),
+    Symbol(Symbol),
     Object(Gc<ObjectInfo>),
     ReturnCompletion(Box<Value>),
 }
 
 impl Value {
+    pub fn new_symbol(private: bool) -> Value {
+        let s = Symbol(SYMBOL_COUNTER.load(Ordering::Relaxed), private);
+        SYMBOL_COUNTER.fetch_add(1, Ordering::Relaxed);
+        Value::Symbol(s)
+    }
+
     pub fn type_of(&self) -> &str {
         match &self {
             Value::Null => "null",
@@ -176,15 +222,12 @@ impl Value {
         }
     }
 
-    pub fn to_string(&self) -> Result<String, Value> {
+    pub fn to_object_key(&self) -> Result<ObjectKey, Value> {
         match self {
-            Value::Null => Ok("null".to_string()),
-            Value::True => Ok("true".to_string()),
-            Value::False => Ok("false".to_string()),
-            Value::String(s) => Ok(s.clone()),
-            Value::Number(n) => Ok(n.to_string()),
-            Value::Object(_) => Ok("[object Object]".to_string()),
-            _ => Err(new_error("cannot convert to string")),
+            Value::Symbol(s) => Ok(ObjectKey::Symbol(s.clone())),
+            Value::String(s) => Ok(ObjectKey::String(s.clone())),
+            Value::Number(n) => Ok(ObjectKey::String(n.to_string())),
+            _ => Err(new_error("cannot convert to object key")),
         }
     }
 }

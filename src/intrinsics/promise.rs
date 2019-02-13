@@ -1,5 +1,5 @@
 use crate::module::{call, Agent, ExecutionContext};
-use crate::value::{new_builtin_function, new_error, ObjectInfo, ObjectKind, Value};
+use crate::value::{new_builtin_function, new_error, ObjectInfo, ObjectKind, ObjectKey, Value};
 use gc::{Gc, GcCell};
 use std::collections::HashMap;
 
@@ -31,9 +31,11 @@ pub struct PromiseReaction {
 
 fn promise_resolve_function(
     _agent: &Agent,
-    _ctx: &mut ExecutionContext,
+    ctx: &mut ExecutionContext,
     _args: Vec<Value>,
 ) -> Result<Value, Value> {
+    let f = ctx.function.clone().unwrap();
+    f.type_of();
     Ok(Value::Null)
 }
 fn promise_reject_function(
@@ -79,8 +81,12 @@ pub fn create_promise(agent: &Agent, prototype: Value) -> Value {
     let p = new_builtin_function(agent, promise);
 
     if let Value::Object(o) = &p {
-        o.set("prototype".to_string(), prototype, o.clone())
+        o.set(ObjectKey::from("prototype"), prototype.clone(), o.clone())
             .expect("failed to set prototype on promise constructor");
+        if let Value::Object(pt) = &prototype {
+            pt.set(ObjectKey::from("constructor"), p.clone(), pt.clone())
+                .expect("failed to set constructor on promise prototype");
+        }
     } else {
         unreachable!();
     }

@@ -1,12 +1,13 @@
 use crate::intrinsics::{
     create_array_prototype, create_boolean_prototype, create_function_prototype,
     create_number_prototype, create_object_prototype, create_promise, create_promise_prototype,
-    create_string_prototype,
+    create_string_prototype, create_symbol_prototype, create_symbol,
 };
 use crate::parser::{Node, Operator, Parser};
 use crate::value::{
     new_array, new_boolean_object, new_builtin_function, new_error, new_function,
     new_number_object, new_object, new_string_object, BuiltinFunctionWrap, ObjectKind, Value,
+    ObjectKey,
 };
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -118,6 +119,7 @@ impl LexicalEnvironment {
 #[derive(Debug)]
 pub struct ExecutionContext {
     pub this: Option<Value>,
+    pub function: Option<Value>,
     pub environment: Rc<RefCell<LexicalEnvironment>>,
 }
 
@@ -245,6 +247,7 @@ impl ModuleX {
             filename: filename.to_string(),
             context: ExecutionContext {
                 this: None,
+                function: None,
                 environment: Rc::new(RefCell::new(LexicalEnvironment::new())),
             },
             ast: Parser::parse(&source)?,
@@ -253,6 +256,9 @@ impl ModuleX {
             dfs_index: 0,
             dfs_ancestor_index: 0,
         };
+
+
+        module.context.environment.borrow_mut().parent = Some(agent.root_env.clone());
 
         if let Node::StatementList(list) = &module.ast {
             for node in list {
@@ -292,21 +298,6 @@ impl ModuleX {
                                 .environment
                                 .borrow_mut()
                                 .set("print", new_builtin_function(agent, print))?;
-                        }
-                        "async" => {
-                            if names.len() != 1 || names[0] != "Promise" {
-                                return Err(new_error("unknown item from debug"));
-                            }
-                            module
-                                .context
-                                .environment
-                                .borrow_mut()
-                                .create("Promise", false)?;
-                            module
-                                .context
-                                .environment
-                                .borrow_mut()
-                                .set("Promise", agent.intrinsics.promise.clone())?;
                         }
                         _ => return Err(new_error("unknown standard module")),
                     },
@@ -355,6 +346,7 @@ pub fn call(
             ObjectKind::Function(params, body, parent_env) => {
                 let mut new_ctx = ExecutionContext {
                     this: Some(v),
+                    function: Some(f.clone()),
                     environment: Rc::new(RefCell::new(LexicalEnvironment::new())),
                 };
                 new_ctx.environment.borrow_mut().parent = Some(parent_env.clone());
@@ -391,7 +383,7 @@ pub fn construct(
 ) -> Result<Value, Value> {
     match &c {
         Value::Object(o) => {
-            let mut prototype = o.get("prototype".to_string())?;
+            let mut prototype = o.get(ObjectKey::from("prototype"))?;
             if prototype.type_of() != "object" {
                 prototype = a.intrinsics.object_prototype.clone();
             }
@@ -425,12 +417,15 @@ pub struct Intrinsics {
     pub number_prototype: Value,
     pub promise_prototype: Value,
     pub promise: Value,
+    pub symbol_prototype: Value,
+    pub symbol: Value,
 }
 
 #[derive(Debug)]
 pub struct Agent {
     pub intrinsics: Intrinsics,
     modules: RefCell<HashMap<String, Module>>,
+    root_env: Rc<RefCell<LexicalEnvironment>>,
     job_queue: RefCell<Vec<Job>>,
 }
 
@@ -443,6 +438,7 @@ impl Agent {
         let number_prototype = create_number_prototype(object_prototype.clone());
         let string_prototype = create_string_prototype(object_prototype.clone());
         let promise_prototype = create_promise_prototype(object_prototype.clone());
+        let symbol_prototype = create_symbol_prototype(object_prototype.clone());
         let mut agent = Agent {
             intrinsics: Intrinsics {
                 object_prototype,
@@ -453,13 +449,27 @@ impl Agent {
                 string_prototype,
                 promise_prototype,
                 promise: Value::Null,
+                symbol_prototype,
+                symbol: Value::Null,
             },
+            root_env: Rc::new(RefCell::new(LexicalEnvironment::new())),
             modules: RefCell::new(HashMap::new()),
             job_queue: RefCell::new(Vec::new()),
         };
 
         agent.intrinsics.promise =
             create_promise(&agent, agent.intrinsics.promise_prototype.clone());
+        agent.intrinsics.symbol =
+            create_symbol(&agent, agent.intrinsics.symbol_prototype.clone());
+
+        {
+            let mut env = agent.root_env.borrow_mut();
+            env.create("Promise", true).unwrap();
+            env.set("Promise", agent.intrinsics.promise.clone()).unwrap();
+
+            env.create("Symbol", true).unwrap();
+            env.set("Symbol", agent.intrinsics.symbol.clone()).unwrap();
+        }
 
         agent
     }
@@ -525,11 +535,11 @@ impl Agent {
                     Value::Object(o) => {
                         for node in nodes {
                             let value = self.evaluate(ctx, node)?;
-                            o.set(len.to_string(), value, o.clone())?;
+                            o.set(ObjectKey::from(len), value, o.clone())?;
                             len += 1;
                         }
                         o.set(
-                            "length".to_string(),
+                            ObjectKey::from("length"),
                             Value::Number(f64::from(len)),
                             o.clone(),
                         )?;
@@ -546,7 +556,7 @@ impl Agent {
                             match init {
                                 Node::PropertyInitializer(key, expr) => {
                                     let value = self.evaluate(ctx, *expr)?;
-                                    o.set(key, value, o.clone())?;
+                                    o.set(ObjectKey::from(key), value, o.clone())?;
                                 }
                                 _ => unreachable!(),
                             }
@@ -622,14 +632,14 @@ impl Agent {
                         let base = self.evaluate(ctx, *base)?;
                         this = self.to_object(base)?;
                         val = match &this {
-                            Value::Object(o) => o.get(property),
+                            Value::Object(o) => o.get(ObjectKey::from(property)),
                             _ => Err(new_error("invalid left hand side")),
                         }?;
                     }
                     Node::ComputedMemberExpression(base, property) => {
                         let base = self.evaluate(ctx, *base)?;
                         this = self.to_object(base)?;
-                        let property = self.evaluate(ctx, *property)?.to_string()?;
+                        let property = self.evaluate(ctx, *property)?.to_object_key()?;
                         val = match &this {
                             Value::Object(o) => o.get(property),
                             _ => Err(new_error("invalid left hand side")),
@@ -698,7 +708,7 @@ impl Agent {
                         match &base {
                             Value::Object(o) => {
                                 let rval = self.evaluate(ctx, *right)?;
-                                o.set(property, rval, o.clone())
+                                o.set(ObjectKey::from(property), rval, o.clone())
                             }
                             _ => Err(new_error("invalid left hand side")),
                         }
@@ -706,7 +716,7 @@ impl Agent {
                     Node::ComputedMemberExpression(base, property) => {
                         let base = self.evaluate(ctx, *base)?;
                         let base = self.to_object(base)?;
-                        let key = self.evaluate(ctx, *property)?.to_string()?;
+                        let key = self.evaluate(ctx, *property)?.to_object_key()?;
                         match &base {
                             Value::Object(o) => {
                                 let rval = self.evaluate(ctx, *right)?;
@@ -750,14 +760,14 @@ impl Agent {
                 let base = self.evaluate(ctx, *base)?;
                 let base = self.to_object(base)?;
                 match &base {
-                    Value::Object(o) => o.get(property),
+                    Value::Object(o) => o.get(ObjectKey::from(property)),
                     _ => Err(new_error("member expression base must be object")),
                 }
             }
             Node::ComputedMemberExpression(base, property) => {
                 let base = self.evaluate(ctx, *base)?;
                 let base = self.to_object(base)?;
-                let property = self.evaluate(ctx, *property)?.to_string()?;
+                let property = self.evaluate(ctx, *property)?.to_object_key()?;
                 match &base {
                     Value::Object(o) => o.get(property),
                     _ => Err(new_error("member expression base must be object")),
