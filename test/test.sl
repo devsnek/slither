@@ -1,10 +1,24 @@
-if (false) {
-  import "owo";
-  1 + 1;
+import { Promise } from standard:async;
+import { print } from standard:debug;
 
-  "hi" + "bye";
+/*
+let p = new Promise(function(resolve, reject) {
+  print('inside promise!');
+  resolve(5);
+});
 
-  true ? "good fold" : "bad fold";
-} else {
-  10;
+print(p);
+*/
+
+function X() {
+  this.x = 5;
 }
+
+X.prototype = {
+  meme() {
+    return this.x;
+  },
+};
+
+let x = new X();
+print(x.meme());

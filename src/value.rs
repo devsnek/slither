@@ -1,4 +1,5 @@
-use crate::module::{Agent, LexicalEnvironment};
+use crate::intrinsics::promise::{PromiseReaction, PromiseState};
+use crate::module::{Agent, ExecutionContext, LexicalEnvironment};
 use crate::parser::Node;
 use gc::{Gc, GcCell};
 use std::cell::RefCell;
@@ -15,7 +16,7 @@ pub fn new_error(message: &str) -> Value {
     }))
 }
 
-type BuiltinFunction = fn(&Agent, Vec<Value>) -> Result<Value, Value>;
+type BuiltinFunction = fn(&Agent, &mut ExecutionContext, Vec<Value>) -> Result<Value, Value>;
 pub struct BuiltinFunctionWrap(pub BuiltinFunction);
 
 impl std::fmt::Debug for BuiltinFunctionWrap {
@@ -33,6 +34,12 @@ pub enum ObjectKind {
     Number(f64),
     Function(Vec<String>, Box<Node>, Rc<RefCell<LexicalEnvironment>>), // args, body
     BuiltinFunction(BuiltinFunctionWrap),
+    Promise(
+        PromiseState,
+        Value,
+        Vec<PromiseReaction>,
+        Vec<PromiseReaction>,
+    ), // state, result, fulfill reactions, reject reactions
 }
 
 // empty impl
@@ -150,12 +157,8 @@ impl Value {
             Value::Number(_) => "number",
             Value::String(_) => "string",
             Value::Object(o) => match o.kind {
-                ObjectKind::Ordinary
-                | ObjectKind::Array
-                | ObjectKind::Boolean(_)
-                | ObjectKind::String(_)
-                | ObjectKind::Number(_) => "object",
                 ObjectKind::Function(_, _, _) | ObjectKind::BuiltinFunction(_) => "function",
+                _ => "object",
             },
             _ => unreachable!(),
         }

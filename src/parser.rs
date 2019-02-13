@@ -71,6 +71,7 @@ enum Token {
     Export,
     Default,
     From,
+    Async,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -191,6 +192,7 @@ impl<'a> Lexer<'a> {
                             "export" => Token::Export,
                             "default" => Token::Default,
                             "from" => Token::From,
+                            "async" => Token::Async,
                             "typeof" => Token::Operator(Operator::Typeof),
                             "void" => Token::Operator(Operator::Void),
                             _ => Token::Identifier(ident),
@@ -240,13 +242,31 @@ impl<'a> Lexer<'a> {
                             _ => Token::Operator(Operator::Mul),
                         },
                     }),
-                    '/' => Some(match self.chars.peek() {
+                    '/' => match self.chars.peek() {
                         Some('=') => {
                             self.chars.next();
-                            Token::Operator(Operator::DivAssign)
+                            Some(Token::Operator(Operator::DivAssign))
                         }
-                        _ => Token::Operator(Operator::Div),
-                    }),
+                        Some('*') => {
+                            loop {
+                                if let Some('*') = self.chars.next() {
+                                    if let Some('/') = self.chars.next() {
+                                        break;
+                                    }
+                                }
+                            }
+                            self.next()
+                        }
+                        Some('/') => {
+                            loop {
+                                if let Some('\n') = self.chars.next() {
+                                    break;
+                                }
+                            }
+                            self.next()
+                        }
+                        _ => Some(Token::Operator(Operator::Div)),
+                    },
                     '%' => Some(match self.chars.peek() {
                         Some('=') => {
                             self.chars.next();
@@ -406,7 +426,7 @@ impl<'a> Parser<'a> {
                     break;
                 }
             }
-            identifiers.push(self.parse_identifier()?);
+            identifiers.push(self.parse_identifier(false)?);
         }
         Ok(identifiers)
     }
@@ -414,12 +434,12 @@ impl<'a> Parser<'a> {
     fn parse_function(&mut self, expression: bool) -> Result<Node, Error> {
         let name = if expression {
             if let Some(Token::Identifier(_)) = self.lexer.peek() {
-                Some(self.parse_identifier()?)
+                Some(self.parse_identifier(false)?)
             } else {
                 None
             }
         } else {
-            Some(self.parse_identifier()?)
+            Some(self.parse_identifier(false)?)
         };
         self.expect(Token::LeftParen)?;
         let args = self.parse_identifier_list(Token::RightParen)?;
@@ -463,7 +483,7 @@ impl<'a> Parser<'a> {
                 self.expect(Token::Catch)?;
                 let mut binding = None;
                 if self.eat(Token::LeftParen) {
-                    binding = Some(self.parse_identifier()?);
+                    binding = Some(self.parse_identifier(false)?);
                     self.expect(Token::RightParen)?;
                 }
                 let catch_clause = self.parse_block_statement(ParseScope::Block)?;
@@ -487,7 +507,11 @@ impl<'a> Parser<'a> {
                 let consequent = self.parse_block_statement(ParseScope::Block)?;
                 if self.eat(Token::Else) {
                     let alternative = self.parse_block_statement(ParseScope::Block)?;
-                    match self.fold_conditional(test.clone(), consequent.clone(), alternative.clone()) {
+                    match self.fold_conditional(
+                        test.clone(),
+                        consequent.clone(),
+                        alternative.clone(),
+                    ) {
                         Ok(n) => return Ok(n),
                         Err(_) => {}
                     }
@@ -497,7 +521,11 @@ impl<'a> Parser<'a> {
                         Box::new(alternative),
                     ))
                 } else {
-                    match self.fold_conditional(test.clone(), consequent.clone(), Node::ExpressionStatement(Box::new(Node::NullLiteral))) {
+                    match self.fold_conditional(
+                        test.clone(),
+                        consequent.clone(),
+                        Node::ExpressionStatement(Box::new(Node::NullLiteral)),
+                    ) {
                         Ok(n) => return Ok(n),
                         Err(_) => {}
                     }
@@ -540,7 +568,7 @@ impl<'a> Parser<'a> {
                             }
                             Some(Token::Identifier(ref s)) if s == "standard" => {
                                 self.expect(Token::Colon)?;
-                                let namespace = self.parse_identifier()?;
+                                let namespace = self.parse_identifier(true)?;
                                 self.expect(Token::Semicolon)?;
                                 Ok(Node::ImportStandardDeclaration(namespace, bindings))
                             }
@@ -549,7 +577,7 @@ impl<'a> Parser<'a> {
                     }
                     // import binding from "specifier";
                     Some(Token::Identifier(_)) => {
-                        let binding = self.parse_identifier()?;
+                        let binding = self.parse_identifier(false)?;
                         self.expect(Token::From)?;
                         let specifier = match self.lexer.next() {
                             Some(Token::StringLiteral(s)) => s,
@@ -573,7 +601,7 @@ impl<'a> Parser<'a> {
         match self.lexer.peek() {
             Some(Token::Let) | Some(Token::Const) => {
                 let decl = self.lexer.next().unwrap();
-                let name = self.parse_identifier()?;
+                let name = self.parse_identifier(false)?;
                 self.expect(Token::Operator(Operator::Assign))?;
                 let value = self.parse_assignment_expression()?;
                 self.expect(Token::Semicolon)?;
@@ -618,9 +646,10 @@ impl<'a> Parser<'a> {
         self.parse_assignment_expression()
     }
 
-    fn parse_identifier(&mut self) -> Result<String, Error> {
+    fn parse_identifier(&mut self, allow_async: bool) -> Result<String, Error> {
         match self.lexer.next() {
             Some(Token::Identifier(name)) => Ok(name),
+            Some(Token::Async) if allow_async => Ok("async".to_string()),
             _ => Err(Error::UnexpectedToken),
         }
     }
@@ -780,11 +809,28 @@ impl<'a> Parser<'a> {
         Ok(Node::BinaryExpression(Box::new(left), op, Box::new(right)))
     }
 
-    fn fold_conditional(&self, test: Node, consequent: Node, alternative: Node) -> Result<Node, ()> {
+    fn fold_conditional(
+        &self,
+        test: Node,
+        consequent: Node,
+        alternative: Node,
+    ) -> Result<Node, ()> {
         match test {
             Node::TrueLiteral => return Ok(consequent),
-            Node::NumberLiteral(n) => return if n > 0f64 { Ok(consequent) } else { Ok(alternative) },
-            Node::StringLiteral(s) => return if s.chars().count() > 0 { Ok(consequent) } else { Ok(alternative) },
+            Node::NumberLiteral(n) => {
+                return if n > 0f64 {
+                    Ok(consequent)
+                } else {
+                    Ok(alternative)
+                };
+            }
+            Node::StringLiteral(s) => {
+                return if s.chars().count() > 0 {
+                    Ok(consequent)
+                } else {
+                    Ok(alternative)
+                };
+            }
             Node::FalseLiteral => return Ok(alternative),
             Node::NullLiteral => return Ok(alternative),
             Node::ArrayLiteral(_) => return Ok(consequent),
@@ -801,9 +847,8 @@ impl<'a> Parser<'a> {
             let consequent = self.parse_assignment_expression()?;
             self.expect(Token::Colon)?;
             let alternative = self.parse_assignment_expression()?;
-            match self.fold_conditional(lhs.clone(), consequent.clone(), alternative.clone()) {
-                Ok(n) => return Ok(n),
-                Err(_) => {}
+            if let Ok(n) = self.fold_conditional(lhs.clone(), consequent.clone(), alternative.clone()) {
+                return Ok(n)
             }
             return Ok(Node::ConditionalExpression(
                 Box::new(lhs),
@@ -942,7 +987,7 @@ impl<'a> Parser<'a> {
 
         loop {
             if self.eat(Token::Dot) {
-                let property = self.parse_identifier()?;
+                let property = self.parse_identifier(true)?;
                 base = Node::MemberExpression(Box::new(base), property);
             } else if self.eat(Token::LeftBracket) {
                 let property = self.parse_expression()?;
@@ -979,10 +1024,7 @@ impl<'a> Parser<'a> {
                 Token::StringLiteral(v) => Ok(Node::StringLiteral(v)),
                 Token::NumberLiteral(v) => Ok(Node::NumberLiteral(v)),
                 Token::Identifier(v) => Ok(Node::Identifier(v)),
-                Token::Function => {
-                    self.lexer.next();
-                    self.parse_function(true)
-                }
+                Token::Function => self.parse_function(true),
                 Token::LeftBracket => Ok(Node::ArrayLiteral(
                     self.parse_expression_list(Token::RightBracket)?,
                 )),
@@ -998,7 +1040,7 @@ impl<'a> Parser<'a> {
                                 break;
                             }
                         }
-                        let name = self.parse_identifier()?;
+                        let name = self.parse_identifier(true)?;
                         let mut init;
                         if self.eat(Token::Colon) {
                             init = self.parse_expression()?;

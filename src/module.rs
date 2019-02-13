@@ -1,6 +1,7 @@
 use crate::intrinsics::{
     create_array_prototype, create_boolean_prototype, create_function_prototype,
-    create_number_prototype, create_object_prototype, create_string_prototype,
+    create_number_prototype, create_object_prototype, create_promise, create_promise_prototype,
+    create_string_prototype,
 };
 use crate::parser::{Node, Operator, Parser};
 use crate::value::{
@@ -115,7 +116,7 @@ impl LexicalEnvironment {
 }
 
 #[derive(Debug)]
-struct ExecutionContext {
+pub struct ExecutionContext {
     pub this: Option<Value>,
     pub environment: Rc<RefCell<LexicalEnvironment>>,
 }
@@ -142,7 +143,7 @@ struct ModuleX {
 
 type Module = Rc<RefCell<ModuleX>>;
 
-fn print(_: &Agent, args: Vec<Value>) -> Result<Value, Value> {
+fn print(_: &Agent, _ctx: &mut ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
     for arg in args {
         print!("{:?} ", arg);
     }
@@ -276,28 +277,39 @@ impl ModuleX {
                             module.imports.insert(specifier.to_string());
                         }
                     }
-                    Node::ImportStandardDeclaration(specifier, names) => {
-                        if specifier == "debug" {
-                            for name in names {
-                                if name == "print" {
-                                    module
-                                        .context
-                                        .environment
-                                        .borrow_mut()
-                                        .create(name, false)?;
-                                    module
-                                        .context
-                                        .environment
-                                        .borrow_mut()
-                                        .set(name, new_builtin_function(agent, print))?;
-                                } else {
-                                    return Err(new_error("invalid standard module"));
-                                }
+                    Node::ImportStandardDeclaration(specifier, names) => match specifier.as_str() {
+                        "debug" => {
+                            if names.len() != 1 || names[0] != "print" {
+                                return Err(new_error("unknown item from debug"));
                             }
-                        } else {
-                            return Err(new_error("invalid standard module"));
+                            module
+                                .context
+                                .environment
+                                .borrow_mut()
+                                .create("print", false)?;
+                            module
+                                .context
+                                .environment
+                                .borrow_mut()
+                                .set("print", new_builtin_function(agent, print))?;
                         }
-                    }
+                        "async" => {
+                            if names.len() != 1 || names[0] != "Promise" {
+                                return Err(new_error("unknown item from debug"));
+                            }
+                            module
+                                .context
+                                .environment
+                                .borrow_mut()
+                                .create("Promise", false)?;
+                            module
+                                .context
+                                .environment
+                                .borrow_mut()
+                                .set("Promise", agent.intrinsics.promise.clone())?;
+                        }
+                        _ => return Err(new_error("unknown standard module")),
+                    },
                     Node::ExportDeclaration(decl) => match *decl.clone() {
                         Node::LexicalDeclaration(name, _, mutable) => {
                             module
@@ -331,6 +343,78 @@ impl ModuleX {
     }
 }
 
+pub fn call(
+    a: &Agent,
+    ctx: &mut ExecutionContext,
+    f: Value,
+    v: Value,
+    args: Vec<Value>,
+) -> Result<Value, Value> {
+    match &f {
+        Value::Object(o) => match &o.kind {
+            ObjectKind::Function(params, body, parent_env) => {
+                let mut new_ctx = ExecutionContext {
+                    this: Some(v),
+                    environment: Rc::new(RefCell::new(LexicalEnvironment::new())),
+                };
+                new_ctx.environment.borrow_mut().parent = Some(parent_env.clone());
+                for (i, value) in args.iter().enumerate() {
+                    let binding = params[i].clone();
+                    new_ctx
+                        .environment
+                        .borrow_mut()
+                        .create(binding.as_str(), false)?;
+                    new_ctx
+                        .environment
+                        .borrow_mut()
+                        .set(binding.as_str(), value.clone())?;
+                }
+                let r = a.evaluate(&mut new_ctx, *body.clone());
+                match &r {
+                    Err(Value::ReturnCompletion(v)) => Ok(*v.clone()),
+                    Err(_) => r,
+                    _ => Ok(Value::Null),
+                }
+            }
+            ObjectKind::BuiltinFunction(BuiltinFunctionWrap(bfn)) => bfn(a, ctx, args),
+            _ => Err(new_error("not a function")),
+        },
+        _ => Err(new_error("not a function")),
+    }
+}
+
+pub fn construct(
+    a: &Agent,
+    ctx: &mut ExecutionContext,
+    c: Value,
+    args: Vec<Value>,
+) -> Result<Value, Value> {
+    match &c {
+        Value::Object(o) => {
+            let mut prototype = o.get("prototype".to_string())?;
+            if prototype.type_of() != "object" {
+                prototype = a.intrinsics.object_prototype.clone();
+            }
+            let this = new_object(prototype);
+            match &o.kind {
+                ObjectKind::Function(_, _, _) | ObjectKind::BuiltinFunction(_) => {
+                    let r = call(a, ctx, c, this.clone(), args)?;
+                    if r.type_of() == "object" {
+                        Ok(r)
+                    } else {
+                        Ok(this)
+                    }
+                }
+                _ => Err(new_error("not a function")),
+            }
+        }
+        _ => Err(new_error("not a function")),
+    }
+}
+
+#[derive(Debug)]
+struct Job {}
+
 #[derive(Debug)]
 pub struct Intrinsics {
     pub object_prototype: Value,
@@ -339,12 +423,15 @@ pub struct Intrinsics {
     pub boolean_prototype: Value,
     pub string_prototype: Value,
     pub number_prototype: Value,
+    pub promise_prototype: Value,
+    pub promise: Value,
 }
 
 #[derive(Debug)]
 pub struct Agent {
     pub intrinsics: Intrinsics,
     modules: RefCell<HashMap<String, Module>>,
+    job_queue: RefCell<Vec<Job>>,
 }
 
 impl Agent {
@@ -355,7 +442,8 @@ impl Agent {
         let boolean_prototype = create_boolean_prototype(object_prototype.clone());
         let number_prototype = create_number_prototype(object_prototype.clone());
         let string_prototype = create_string_prototype(object_prototype.clone());
-        Agent {
+        let promise_prototype = create_promise_prototype(object_prototype.clone());
+        let mut agent = Agent {
             intrinsics: Intrinsics {
                 object_prototype,
                 array_prototype,
@@ -363,9 +451,17 @@ impl Agent {
                 boolean_prototype,
                 number_prototype,
                 string_prototype,
+                promise_prototype,
+                promise: Value::Null,
             },
             modules: RefCell::new(HashMap::new()),
-        }
+            job_queue: RefCell::new(Vec::new()),
+        };
+
+        agent.intrinsics.promise =
+            create_promise(&agent, agent.intrinsics.promise_prototype.clone());
+
+        agent
     }
 
     fn load(&self, specifier: &str, referrer: &str) -> Result<Module, Value> {
@@ -381,9 +477,6 @@ impl Agent {
                 .borrow_mut()
                 .insert(filename.to_string(), module.clone());
             Ok(module)
-        // for import in imports {
-        //     self.load(import.as_str(), filename)?;
-        // }
         } else {
             let map = self.modules.borrow();
             let module = map.get(filename).unwrap().clone();
@@ -396,6 +489,18 @@ impl Agent {
         inner_module_instantiation(self, module.clone(), &mut Vec::new(), 0)?;
         inner_module_evaluation(self, module.clone(), &mut Vec::new(), 0)?;
         Ok(())
+    }
+
+    pub fn run_jobs(&self) {
+        /*
+        loop {
+            let job = self.job_queue.borrow_mut().pop();
+            match job {
+                Some(job) => {}
+                None => break,
+            }
+        }
+        */
     }
 
     fn evaluate(&self, ctx: &mut ExecutionContext, node: Node) -> Result<Value, Value> {
@@ -535,6 +640,12 @@ impl Agent {
                         val = self.evaluate(ctx, *name)?;
                     }
                 };
+                let mut values = Vec::new();
+                for arg in args {
+                    values.push(self.evaluate(ctx, arg.clone())?);
+                }
+                call(self, ctx, val, this, values)
+                /*
                 match &val {
                     Value::Object(o) => match &o.kind {
                         ObjectKind::Function(params, body, parent_env) => {
@@ -543,6 +654,7 @@ impl Agent {
                                 environment: Rc::new(RefCell::new(LexicalEnvironment::new())),
                             };
                             new_ctx.environment.borrow_mut().parent = Some(parent_env.clone());
+                            let mut args = Vec::new();
                             for (i, arg) in args.iter().enumerate() {
                                 let binding = params[i].clone();
                                 let value = self.evaluate(ctx, (*arg).clone())?;
@@ -572,6 +684,7 @@ impl Agent {
                     },
                     _ => Err(new_error("not a function")),
                 }
+                */
             }
             Node::UnaryExpression(op, expr) => {
                 let value = self.evaluate(ctx, *expr)?;
@@ -665,7 +778,24 @@ impl Agent {
             }
             Node::Identifier(name) => ctx.environment.borrow().get(name.as_str()),
             Node::PropertyInitializer(_, _) => unreachable!(),
-            Node::NewExpression(_) => unreachable!(),
+            Node::NewExpression(expr) => {
+                let mut constructor;
+                let mut values;
+                match *expr {
+                    Node::CallExpression(callee, args) => {
+                        constructor = self.evaluate(ctx, *callee)?;
+                        values = Vec::new();
+                        for arg in args {
+                            values.push(self.evaluate(ctx, arg.clone())?);
+                        }
+                    }
+                    _ => {
+                        constructor = self.evaluate(ctx, *expr)?;
+                        values = vec![];
+                    }
+                }
+                construct(self, ctx, constructor, values)
+            }
             Node::ImportDeclaration(_)
             | Node::ImportDefaultDeclaration(_, _)
             | Node::ImportNamedDeclaration(_, _)

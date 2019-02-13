@@ -29,5 +29,7 @@ fn main() {
 
     println!("res {:?}", c);
 
+    agent.run_jobs();
+
     std::process::exit(0);
 }
