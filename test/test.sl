@@ -1,9 +1,8 @@
 import { print } from standard:debug;
 
-const s = Symbol();
+const p = new Promise(function(resolve, reject) {
+  print("in promise");
+  resolve(5);
+});
 
-const o = {};
-
-o[s] = 5;
-
-print(o[s]);
+print("owo");

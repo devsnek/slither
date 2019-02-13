@@ -847,8 +847,10 @@ impl<'a> Parser<'a> {
             let consequent = self.parse_assignment_expression()?;
             self.expect(Token::Colon)?;
             let alternative = self.parse_assignment_expression()?;
-            if let Ok(n) = self.fold_conditional(lhs.clone(), consequent.clone(), alternative.clone()) {
-                return Ok(n)
+            if let Ok(n) =
+                self.fold_conditional(lhs.clone(), consequent.clone(), alternative.clone())
+            {
+                return Ok(n);
             }
             return Ok(Node::ConditionalExpression(
                 Box::new(lhs),

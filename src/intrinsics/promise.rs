@@ -1,7 +1,7 @@
-use crate::module::{call, Agent, ExecutionContext};
-use crate::value::{new_builtin_function, new_error, ObjectInfo, ObjectKind, ObjectKey, Value};
-use gc::{Gc, GcCell};
-use std::collections::HashMap;
+use crate::module::{call, get, set, Agent, ExecutionContext};
+use crate::value::{
+    new_builtin_function, new_custom_object, new_error, new_object, ObjectKey, Value,
+};
 
 #[derive(Debug)]
 pub struct PromiseCapability {
@@ -29,49 +29,99 @@ pub struct PromiseReaction {
     handler: Value,
 }
 
-fn promise_resolve_function(
+fn trigger_promise_reactions(
     _agent: &Agent,
-    ctx: &mut ExecutionContext,
-    _args: Vec<Value>,
-) -> Result<Value, Value> {
-    let f = ctx.function.clone().unwrap();
-    f.type_of();
-    Ok(Value::Null)
-}
-fn promise_reject_function(
-    _agent: &Agent,
-    _ctx: &mut ExecutionContext,
-    _args: Vec<Value>,
+    _reactions: Value,
+    _argument: Value,
 ) -> Result<Value, Value> {
     Ok(Value::Null)
 }
 
-fn promise(agent: &Agent, ctx: &mut ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
+fn reject_promise(agent: &Agent, promise: Value, reason: Value) -> Result<Value, Value> {
+    let reactions = promise.get_slot("reject reactions")?;
+    promise.set_slot("result", reason.clone())?;
+    promise.set_slot("fulfill reactions", Value::Null)?;
+    promise.set_slot("reject reactions", Value::Null)?;
+    trigger_promise_reactions(agent, reactions, reason)
+}
+
+fn fulfill_promise(agent: &Agent, promise: Value, value: Value) -> Result<Value, Value> {
+    let reactions = promise.get_slot("fulfill reactions")?;
+    promise.set_slot("result", value.clone())?;
+    promise.set_slot("fulfill reactions", Value::Null)?;
+    promise.set_slot("reject reactions", Value::Null)?;
+    trigger_promise_reactions(agent, reactions, value)
+}
+
+fn promise_resolve_function(
+    agent: &Agent,
+    ctx: &mut ExecutionContext,
+    args: Vec<Value>,
+) -> Result<Value, Value> {
+    let f = ctx.function.clone().unwrap();
+
+    let already_resolved = f.get_slot("already resolved")?;
+    if get(&already_resolved, &ObjectKey::from("resolved"))? == Value::True {
+        return Ok(Value::Null);
+    } else {
+        set(&already_resolved, &ObjectKey::from("resolved"), Value::True)?;
+    }
+
+    let promise = f.get_slot("promise")?;
+    let resolution = args.get(0).unwrap_or(&Value::Null).clone();
+    if promise == resolution {
+        reject_promise(
+            agent,
+            promise,
+            new_error("cannot resolve a promise with itself"),
+        )
+    } else {
+        fulfill_promise(agent, promise, resolution)
+    }
+}
+
+fn promise_reject_function(
+    agent: &Agent,
+    ctx: &mut ExecutionContext,
+    args: Vec<Value>,
+) -> Result<Value, Value> {
+    let f = ctx.function.clone().unwrap();
+
+    let already_resolved = f.get_slot("already resolved")?;
+    if get(&already_resolved, &ObjectKey::from("resolved"))? == Value::True {
+        return Ok(Value::Null);
+    } else {
+        set(&already_resolved, &ObjectKey::from("resolved"), Value::True)?;
+    }
+
+    let promise = f.get_slot("promise")?;
+    let resolution = args.get(0).unwrap_or(&Value::Null).clone();
+    reject_promise(agent, promise, resolution)
+}
+
+fn promise(agent: &Agent, _ctx: &mut ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
     let executor = args[0].clone();
 
     if executor.type_of() != "function" {
         return Err(new_error("executor must be a function"));
     }
 
-    let promise = Value::Object(Gc::new(ObjectInfo {
-        kind: ObjectKind::Promise(PromiseState::Pending, Value::Null, Vec::new(), Vec::new()),
-        properties: GcCell::new(HashMap::new()),
-        prototype: agent.intrinsics.promise_prototype.clone(),
-    }));
+    let promise = new_custom_object(agent.intrinsics.promise_prototype.clone());
+
+    let already_resolved = new_object(Value::Null);
 
     let resolve = new_builtin_function(agent, promise_resolve_function);
-    let reject = new_builtin_function(agent, promise_reject_function);
+    resolve.set_slot("promise", promise.clone())?;
+    resolve.set_slot("already resolved", already_resolved.clone())?;
 
-    let result = call(
-        agent,
-        ctx,
-        executor,
-        Value::Null,
-        vec![resolve, reject.clone()],
-    );
+    let reject = new_builtin_function(agent, promise_reject_function);
+    reject.set_slot("promise", promise.clone())?;
+    reject.set_slot("already resolved", already_resolved)?;
+
+    let result = call(agent, executor, Value::Null, vec![resolve, reject.clone()]);
 
     if let Err(e) = result {
-        call(agent, ctx, reject, Value::Null, vec![e])?;
+        call(agent, reject, Value::Null, vec![e])?;
     }
 
     Ok(promise)
@@ -80,16 +130,8 @@ fn promise(agent: &Agent, ctx: &mut ExecutionContext, args: Vec<Value>) -> Resul
 pub fn create_promise(agent: &Agent, prototype: Value) -> Value {
     let p = new_builtin_function(agent, promise);
 
-    if let Value::Object(o) = &p {
-        o.set(ObjectKey::from("prototype"), prototype.clone(), o.clone())
-            .expect("failed to set prototype on promise constructor");
-        if let Value::Object(pt) = &prototype {
-            pt.set(ObjectKey::from("constructor"), p.clone(), pt.clone())
-                .expect("failed to set constructor on promise prototype");
-        }
-    } else {
-        unreachable!();
-    }
+    set(&p, &ObjectKey::from("prototype"), prototype.clone()).unwrap();
+    set(&prototype, &ObjectKey::from("constructor"), p.clone()).unwrap();
 
     return p;
 }

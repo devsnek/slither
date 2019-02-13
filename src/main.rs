@@ -1,4 +1,3 @@
-#![feature(integer_atomics)]
 #![allow(clippy::float_cmp)]
 
 #[macro_use]
@@ -30,7 +29,7 @@ fn main() {
 
     println!("res {:?}", c);
 
-    agent.run_jobs();
+    // agent.run_jobs();
 
     std::process::exit(0);
 }

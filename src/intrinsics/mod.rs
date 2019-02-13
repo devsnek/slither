@@ -6,8 +6,8 @@ mod object_prototype;
 pub mod promise;
 mod promise_prototype;
 mod string_prototype;
-mod symbol_prototype;
 mod symbol;
+mod symbol_prototype;
 
 pub use array_prototype::create_array_prototype;
 pub use boolean_prototype::create_boolean_prototype;
@@ -17,5 +17,5 @@ pub use object_prototype::create_object_prototype;
 pub use promise::create_promise;
 pub use promise_prototype::create_promise_prototype;
 pub use string_prototype::create_string_prototype;
-pub use symbol_prototype::create_symbol_prototype;
 pub use symbol::create_symbol;
+pub use symbol_prototype::create_symbol_prototype;

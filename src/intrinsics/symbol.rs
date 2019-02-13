@@ -1,8 +1,8 @@
 use crate::module::{Agent, ExecutionContext};
-use crate::value::{new_builtin_function, Value, ObjectKey};
+use crate::value::{new_builtin_function, ObjectKey, Value};
 
 fn symbol(_agent: &Agent, _ctx: &mut ExecutionContext, _args: Vec<Value>) -> Result<Value, Value> {
-    Ok(Value::new_symbol(false))
+    Ok(Value::new_symbol())
 }
 
 pub fn create_symbol(agent: &Agent, prototype: Value) -> Value {

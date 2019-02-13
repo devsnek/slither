@@ -1,15 +1,15 @@
-use crate::intrinsics::promise::{PromiseReaction, PromiseState};
 use crate::module::{Agent, ExecutionContext, LexicalEnvironment};
 use crate::parser::Node;
 use gc::{Gc, GcCell};
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
-pub use std::sync::atomic::{AtomicU64, Ordering};
+pub use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub fn new_error(message: &str) -> Value {
     let mut m = HashMap::new();
-    m.insert(ObjectKey::from("message"), Value::String(message.to_string()));
+    m.insert(
+        ObjectKey::from("message"),
+        Value::String(message.to_string()),
+    );
     Value::Object(Gc::new(ObjectInfo {
         kind: ObjectKind::Ordinary,
         properties: GcCell::new(m),
@@ -18,6 +18,7 @@ pub fn new_error(message: &str) -> Value {
 }
 
 type BuiltinFunction = fn(&Agent, &mut ExecutionContext, Vec<Value>) -> Result<Value, Value>;
+#[derive(Finalize)]
 pub struct BuiltinFunctionWrap(pub BuiltinFunction);
 
 impl std::fmt::Debug for BuiltinFunctionWrap {
@@ -33,26 +34,50 @@ pub enum ObjectKind {
     Boolean(bool),
     String(String),
     Number(f64),
-    Function(Vec<String>, Box<Node>, Rc<RefCell<LexicalEnvironment>>), // args, body
-    BuiltinFunction(BuiltinFunctionWrap),
-    Promise(
-        PromiseState,
-        Value,
-        Vec<PromiseReaction>,
-        Vec<PromiseReaction>,
-    ), // state, result, fulfill reactions, reject reactions
+    Function(Vec<String>, Box<Node>, Gc<GcCell<LexicalEnvironment>>), // args, body, parent_env
+    Custom(GcCell<HashMap<String, Value>>),
+    BuiltinFunction(BuiltinFunctionWrap, GcCell<HashMap<String, Value>>),
 }
 
 // empty impl
 unsafe impl gc::Trace for ObjectKind {
     #[inline]
-    unsafe fn trace(&self) {}
+    unsafe fn trace(&self) {
+        match self {
+            ObjectKind::Function(_, _, v) => gc::Trace::trace(v),
+            ObjectKind::Custom(v) => gc::Trace::trace(v),
+            ObjectKind::BuiltinFunction(_, v) => gc::Trace::trace(v),
+            _ => {}
+        }
+    }
     #[inline]
-    unsafe fn root(&self) {}
+    unsafe fn root(&self) {
+        match self {
+            ObjectKind::Function(_, _, v) => gc::Trace::root(v),
+            ObjectKind::Custom(v) => gc::Trace::root(v),
+            ObjectKind::BuiltinFunction(_, v) => gc::Trace::root(v),
+            _ => {}
+        }
+    }
     #[inline]
-    unsafe fn unroot(&self) {}
+    unsafe fn unroot(&self) {
+        match self {
+            ObjectKind::Function(_, _, v) => gc::Trace::unroot(v),
+            ObjectKind::Custom(v) => gc::Trace::unroot(v),
+            ObjectKind::BuiltinFunction(_, v) => gc::Trace::unroot(v),
+            _ => {}
+        }
+    }
     #[inline]
-    fn finalize_glue(&self) {}
+    fn finalize_glue(&self) {
+        gc::Trace::finalize(self);
+        match self {
+            ObjectKind::Function(_, _, v) => gc::Trace::finalize_glue(v),
+            ObjectKind::Custom(v) => gc::Trace::finalize_glue(v),
+            ObjectKind::BuiltinFunction(_, v) => gc::Trace::finalize_glue(v),
+            _ => {}
+        }
+    }
 }
 
 #[derive(Trace, Finalize, Debug)]
@@ -67,7 +92,8 @@ impl ObjectInfo {
         match self.properties.borrow().get(&property) {
             Some(v) => Ok(v.clone()),
             _ => {
-                if let ObjectKey::Symbol(Symbol(_, true)) = property { // don't traverse for private symbol
+                if let ObjectKey::Symbol(Symbol(_, true)) = property {
+                    // don't traverse for private symbol
                     Ok(Value::Null)
                 } else {
                     match &self.prototype {
@@ -110,7 +136,9 @@ impl ObjectInfo {
                         } else if new_len < old_len {
                             while new_len < old_len {
                                 old_len -= 1;
-                                self.properties.borrow_mut().remove(&ObjectKey::from(old_len));
+                                self.properties
+                                    .borrow_mut()
+                                    .remove(&ObjectKey::from(old_len));
                             }
                         } else {
                             // nothing!
@@ -150,11 +178,19 @@ impl ObjectInfo {
     }
 }
 
-static SYMBOL_COUNTER: AtomicU64 = AtomicU64::new(0);
+static SYMBOL_COUNTER: AtomicUsize = AtomicUsize::new(0);
 #[derive(Debug, Clone, Trace, Finalize, Hash, PartialEq, Eq)]
-pub struct Symbol(u64, bool); // id, private
+pub struct Symbol(usize, bool); // id, private
 
-#[derive(Trace, Finalize, Hash, Debug, PartialEq, Eq)]
+impl Symbol {
+    pub fn new(private: bool) -> Symbol {
+        let s = Symbol(SYMBOL_COUNTER.load(Ordering::Relaxed), private);
+        SYMBOL_COUNTER.fetch_add(1, Ordering::Relaxed);
+        s
+    }
+}
+
+#[derive(Trace, Finalize, Hash, Debug, PartialEq, Eq, Clone)]
 pub enum ObjectKey {
     String(String),
     Symbol(Symbol),
@@ -191,10 +227,8 @@ pub enum Value {
 }
 
 impl Value {
-    pub fn new_symbol(private: bool) -> Value {
-        let s = Symbol(SYMBOL_COUNTER.load(Ordering::Relaxed), private);
-        SYMBOL_COUNTER.fetch_add(1, Ordering::Relaxed);
-        Value::Symbol(s)
+    pub fn new_symbol() -> Value {
+        Value::Symbol(Symbol::new(false))
     }
 
     pub fn type_of(&self) -> &str {
@@ -203,7 +237,7 @@ impl Value {
             Value::Number(_) => "number",
             Value::String(_) => "string",
             Value::Object(o) => match o.kind {
-                ObjectKind::Function(_, _, _) | ObjectKind::BuiltinFunction(_) => "function",
+                ObjectKind::Function(_, _, _) | ObjectKind::BuiltinFunction(_, _) => "function",
                 _ => "object",
             },
             _ => unreachable!(),
@@ -228,6 +262,36 @@ impl Value {
             Value::String(s) => Ok(ObjectKey::String(s.clone())),
             Value::Number(n) => Ok(ObjectKey::String(n.to_string())),
             _ => Err(new_error("cannot convert to object key")),
+        }
+    }
+
+    pub fn get_slot(&self, property: &str) -> Result<Value, Value> {
+        if let Value::Object(o) = self {
+            match &o.kind {
+                ObjectKind::Custom(cell) | ObjectKind::BuiltinFunction(_, cell) => {
+                    match cell.borrow().get(property) {
+                        Some(v) => Ok(v.clone()),
+                        _ => Err(new_error("invalid slot access")),
+                    }
+                }
+                _ => Err(new_error("invalid slot access")),
+            }
+        } else {
+            Err(new_error("invalid slot access"))
+        }
+    }
+
+    pub fn set_slot(&self, property: &str, value: Value) -> Result<(), Value> {
+        if let Value::Object(o) = self {
+            match &o.kind {
+                ObjectKind::Custom(cell) | ObjectKind::BuiltinFunction(_, cell) => {
+                    cell.borrow_mut().insert(property.to_string(), value);
+                    Ok(())
+                }
+                _ => Err(new_error("invalid slot access")),
+            }
+        } else {
+            Err(new_error("invalid slot access"))
         }
     }
 }
@@ -284,6 +348,14 @@ pub fn new_object(proto: Value) -> Value {
     }))
 }
 
+pub fn new_custom_object(proto: Value) -> Value {
+    Value::Object(Gc::new(ObjectInfo {
+        kind: ObjectKind::Custom(GcCell::new(HashMap::new())),
+        properties: GcCell::new(HashMap::new()),
+        prototype: proto,
+    }))
+}
+
 pub fn new_array(agent: &Agent) -> Value {
     Value::Object(Gc::new(ObjectInfo {
         kind: ObjectKind::Array,
@@ -320,7 +392,7 @@ pub fn new_function(
     agent: &Agent,
     args: Vec<String>,
     body: Box<Node>,
-    env: Rc<RefCell<LexicalEnvironment>>,
+    env: Gc<GcCell<LexicalEnvironment>>,
 ) -> Value {
     Value::Object(Gc::new(ObjectInfo {
         kind: ObjectKind::Function(args, body, env),
@@ -331,7 +403,7 @@ pub fn new_function(
 
 pub fn new_builtin_function(agent: &Agent, bfn: BuiltinFunction) -> Value {
     Value::Object(Gc::new(ObjectInfo {
-        kind: ObjectKind::BuiltinFunction(BuiltinFunctionWrap(bfn)),
+        kind: ObjectKind::BuiltinFunction(BuiltinFunctionWrap(bfn), GcCell::new(HashMap::new())),
         properties: GcCell::new(HashMap::new()),
         prototype: agent.intrinsics.function_prototype.clone(),
     }))
