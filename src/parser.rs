@@ -322,7 +322,7 @@ impl<'a> Lexer<'a> {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy)]
 enum ParseScope {
     TopLevel,
     Block,
@@ -331,7 +331,7 @@ enum ParseScope {
 
 pub struct Parser<'a> {
     lexer: Lexer<'a>,
-    scope: Vec<ParseScope>,
+    scope_stack: Vec<ParseScope>,
 }
 
 macro_rules! binop_production {
@@ -356,7 +356,7 @@ impl<'a> Parser<'a> {
     pub fn parse(code: &'a str) -> Result<Node, Error> {
         let mut parser = Parser {
             lexer: Lexer::new(code),
-            scope: vec![ParseScope::TopLevel],
+            scope_stack: vec![ParseScope::TopLevel],
         };
         let mut nodes = Vec::new();
         loop {
@@ -369,6 +369,10 @@ impl<'a> Parser<'a> {
             }
         }
         Ok(Node::StatementList(nodes))
+    }
+
+    fn scope(&self) -> ParseScope {
+        return *self.scope_stack.last().unwrap();
     }
 
     fn eat(&mut self, token: Token) -> bool {
@@ -419,9 +423,7 @@ impl<'a> Parser<'a> {
         };
         self.expect(Token::LeftParen)?;
         let args = self.parse_identifier_list(Token::RightParen)?;
-        self.scope.push(ParseScope::Function);
-        let body = self.parse_block_statement()?;
-        self.scope.pop();
+        let body = self.parse_block_statement(ParseScope::Function)?;
         Ok(if expression {
             Node::FunctionExpression(name, args, Box::new(body))
         } else {
@@ -430,20 +432,16 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_statement_list_item(&mut self) -> Result<Node, Error> {
+        let scope = self.scope();
         match self.lexer.peek() {
             None => Err(Error::NormalEOF),
-            Some(Token::LeftBrace) => {
-                self.scope.push(ParseScope::Block);
-                let b = self.parse_block_statement();
-                self.scope.pop();
-                b
-            }
+            Some(Token::LeftBrace) => self.parse_block_statement(ParseScope::Block),
             Some(Token::Let) | Some(Token::Const) => self.parse_lexical_declaration(),
             Some(Token::Function) => {
                 self.lexer.next();
                 self.parse_function(false)
             }
-            Some(Token::Return) if self.scope.last().unwrap() == &ParseScope::Function => {
+            Some(Token::Return) if scope == ParseScope::Function => {
                 self.lexer.next();
                 if self.eat(Token::Semicolon) {
                     Ok(Node::ReturnStatement(Box::new(Node::NullLiteral)))
@@ -461,14 +459,14 @@ impl<'a> Parser<'a> {
             }
             Some(Token::Try) => {
                 self.lexer.next();
-                let try_clause = self.parse_block_statement()?;
+                let try_clause = self.parse_block_statement(ParseScope::Block)?;
                 self.expect(Token::Catch)?;
                 let mut binding = None;
                 if self.eat(Token::LeftParen) {
                     binding = Some(self.parse_identifier()?);
                     self.expect(Token::RightParen)?;
                 }
-                let catch_clause = self.parse_block_statement()?;
+                let catch_clause = self.parse_block_statement(ParseScope::Block)?;
                 match binding {
                     Some(b) => Ok(Node::BoundTryStatement(
                         Box::new(try_clause),
@@ -486,9 +484,9 @@ impl<'a> Parser<'a> {
                 self.expect(Token::LeftParen)?;
                 let test = self.parse_expression()?;
                 self.expect(Token::RightParen)?;
-                let consequent = self.parse_block_statement()?;
+                let consequent = self.parse_block_statement(ParseScope::Block)?;
                 if self.eat(Token::Else) {
-                    let alternative = self.parse_block_statement()?;
+                    let alternative = self.parse_block_statement(ParseScope::Block)?;
                     match self.fold_conditional(test.clone(), consequent.clone(), alternative.clone()) {
                         Ok(n) => return Ok(n),
                         Err(_) => {}
@@ -506,7 +504,7 @@ impl<'a> Parser<'a> {
                     Ok(Node::IfStatement(Box::new(test), Box::new(consequent)))
                 }
             }
-            Some(Token::Export) if self.scope.last().unwrap() == &ParseScope::TopLevel => {
+            Some(Token::Export) if scope == ParseScope::TopLevel => {
                 self.lexer.next();
                 let decl = match self.lexer.peek() {
                     Some(Token::Let) | Some(Token::Const) => self.parse_lexical_declaration(),
@@ -518,7 +516,7 @@ impl<'a> Parser<'a> {
                 }?;
                 Ok(Node::ExportDeclaration(Box::new(decl)))
             }
-            Some(Token::Import) if self.scope.last().unwrap() == &ParseScope::TopLevel => {
+            Some(Token::Import) if scope == ParseScope::TopLevel => {
                 self.lexer.next();
                 match self.lexer.peek() {
                     // import "specifier";
@@ -593,18 +591,21 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_block_statement(&mut self) -> Result<Node, Error> {
+    fn parse_block_statement(&mut self, scope: ParseScope) -> Result<Node, Error> {
         self.expect(Token::LeftBrace)?;
+        self.scope_stack.push(scope);
         let mut nodes = Vec::new();
         while !self.eat(Token::RightBrace) {
             match self.parse_statement_list_item() {
                 Ok(node) => nodes.push(node),
                 Err(Error::NormalEOF) => break,
                 Err(e) => {
+                    self.scope_stack.pop();
                     return Err(e);
                 }
             }
         }
+        self.scope_stack.pop();
         Ok(Node::BlockStatement(nodes))
     }
 

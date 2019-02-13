@@ -1,4 +1,5 @@
 if (false) {
+  import "owo";
   1 + 1;
 
   "hi" + "bye";
