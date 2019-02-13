@@ -392,7 +392,7 @@ impl<'a> Parser<'a> {
     }
 
     fn scope(&self) -> ParseScope {
-        return *self.scope_stack.last().unwrap();
+        *self.scope_stack.last().unwrap()
     }
 
     fn eat(&mut self, token: Token) -> bool {
@@ -507,13 +507,10 @@ impl<'a> Parser<'a> {
                 let consequent = self.parse_block_statement(ParseScope::Block)?;
                 if self.eat(Token::Else) {
                     let alternative = self.parse_block_statement(ParseScope::Block)?;
-                    match self.fold_conditional(
-                        test.clone(),
-                        consequent.clone(),
-                        alternative.clone(),
-                    ) {
-                        Ok(n) => return Ok(n),
-                        Err(_) => {}
+                    if let Ok(n) =
+                        self.fold_conditional(test.clone(), consequent.clone(), alternative.clone())
+                    {
+                        return Ok(n);
                     }
                     Ok(Node::IfElseStatement(
                         Box::new(test),
@@ -521,13 +518,12 @@ impl<'a> Parser<'a> {
                         Box::new(alternative),
                     ))
                 } else {
-                    match self.fold_conditional(
+                    if let Ok(n) = self.fold_conditional(
                         test.clone(),
                         consequent.clone(),
                         Node::ExpressionStatement(Box::new(Node::NullLiteral)),
                     ) {
-                        Ok(n) => return Ok(n),
-                        Err(_) => {}
+                        return Ok(n);
                     }
                     Ok(Node::IfStatement(Box::new(test), Box::new(consequent)))
                 }
@@ -716,91 +712,89 @@ impl<'a> Parser<'a> {
         };
 
         match &left {
-            Node::NumberLiteral(lnum) => match right {
-                Node::NumberLiteral(rnum) => match op {
-                    Operator::Add => return Ok(Node::NumberLiteral(lnum + rnum)),
-                    Operator::Sub => return Ok(Node::NumberLiteral(lnum - rnum)),
-                    Operator::Mul => return Ok(Node::NumberLiteral(lnum * rnum)),
-                    Operator::Div => return Ok(Node::NumberLiteral(lnum / rnum)),
-                    Operator::BitwiseOR => {
-                        return Ok(Node::NumberLiteral(
-                            (lnum.round() as i64 | rnum.round() as i64) as f64,
-                        ));
-                    }
-                    Operator::BitwiseAND => {
-                        return Ok(Node::NumberLiteral(
-                            (lnum.round() as i64 & rnum.round() as i64) as f64,
-                        ));
-                    }
-                    Operator::BitwiseXOR => {
-                        return Ok(Node::NumberLiteral(
-                            (lnum.round() as i64 ^ rnum.round() as i64) as f64,
-                        ));
-                    }
-                    Operator::LeftShift => {
-                        return Ok(Node::NumberLiteral(
-                            ((lnum.round() as i64) << rnum.round() as i64) as f64,
-                        ));
-                    }
-                    Operator::RightShift => {
-                        return Ok(Node::NumberLiteral(
-                            ((lnum.round() as i64) >> rnum.round() as i64) as f64,
-                        ));
-                    }
-                    Operator::Pow => return Ok(Node::NumberLiteral(lnum.powf(rnum))),
-                    Operator::LessThan => {
-                        if *lnum < rnum {
-                            return Ok(Node::TrueLiteral);
-                        } else {
-                            return Ok(Node::FalseLiteral);
+            Node::NumberLiteral(lnum) => {
+                if let Node::NumberLiteral(rnum) = right {
+                    match op {
+                        Operator::Add => return Ok(Node::NumberLiteral(lnum + rnum)),
+                        Operator::Sub => return Ok(Node::NumberLiteral(lnum - rnum)),
+                        Operator::Mul => return Ok(Node::NumberLiteral(lnum * rnum)),
+                        Operator::Div => return Ok(Node::NumberLiteral(lnum / rnum)),
+                        Operator::BitwiseOR => {
+                            return Ok(Node::NumberLiteral(
+                                (lnum.round() as i64 | rnum.round() as i64) as f64,
+                            ));
                         }
-                    }
-                    Operator::GreaterThan => {
-                        if *lnum > rnum {
-                            return Ok(Node::TrueLiteral);
-                        } else {
-                            return Ok(Node::FalseLiteral);
+                        Operator::BitwiseAND => {
+                            return Ok(Node::NumberLiteral(
+                                (lnum.round() as i64 & rnum.round() as i64) as f64,
+                            ));
                         }
-                    }
-                    Operator::LessThanOrEqual => {
-                        if *lnum <= rnum {
-                            return Ok(Node::TrueLiteral);
-                        } else {
-                            return Ok(Node::FalseLiteral);
+                        Operator::BitwiseXOR => {
+                            return Ok(Node::NumberLiteral(
+                                (lnum.round() as i64 ^ rnum.round() as i64) as f64,
+                            ));
                         }
-                    }
-                    Operator::GreaterThanOrEqual => {
-                        if *lnum >= rnum {
-                            return Ok(Node::TrueLiteral);
-                        } else {
-                            return Ok(Node::FalseLiteral);
+                        Operator::LeftShift => {
+                            return Ok(Node::NumberLiteral(
+                                ((lnum.round() as i64) << rnum.round() as i64) as f64,
+                            ));
                         }
-                    }
-                    Operator::Equal => {
-                        if *lnum == rnum {
-                            return Ok(Node::TrueLiteral);
-                        } else {
-                            return Ok(Node::FalseLiteral);
+                        Operator::RightShift => {
+                            return Ok(Node::NumberLiteral(
+                                ((lnum.round() as i64) >> rnum.round() as i64) as f64,
+                            ));
                         }
-                    }
-                    Operator::NotEqual => {
-                        if *lnum == rnum {
-                            return Ok(Node::FalseLiteral);
-                        } else {
-                            return Ok(Node::TrueLiteral);
+                        Operator::Pow => return Ok(Node::NumberLiteral(lnum.powf(rnum))),
+                        Operator::LessThan => {
+                            if *lnum < rnum {
+                                return Ok(Node::TrueLiteral);
+                            } else {
+                                return Ok(Node::FalseLiteral);
+                            }
                         }
+                        Operator::GreaterThan => {
+                            if *lnum > rnum {
+                                return Ok(Node::TrueLiteral);
+                            } else {
+                                return Ok(Node::FalseLiteral);
+                            }
+                        }
+                        Operator::LessThanOrEqual => {
+                            if *lnum <= rnum {
+                                return Ok(Node::TrueLiteral);
+                            } else {
+                                return Ok(Node::FalseLiteral);
+                            }
+                        }
+                        Operator::GreaterThanOrEqual => {
+                            if *lnum >= rnum {
+                                return Ok(Node::TrueLiteral);
+                            } else {
+                                return Ok(Node::FalseLiteral);
+                            }
+                        }
+                        Operator::Equal => {
+                            if *lnum == rnum {
+                                return Ok(Node::TrueLiteral);
+                            } else {
+                                return Ok(Node::FalseLiteral);
+                            }
+                        }
+                        Operator::NotEqual => {
+                            if *lnum == rnum {
+                                return Ok(Node::FalseLiteral);
+                            } else {
+                                return Ok(Node::TrueLiteral);
+                            }
+                        }
+                        _ => {}
                     }
-                    _ => {}
-                },
-                _ => {}
-            },
+                }
+            }
             Node::StringLiteral(lstr) => match &right {
-                Node::StringLiteral(rstr) => match op {
-                    Operator::Add => {
-                        return Ok(Node::StringLiteral(format!("{}{}", lstr, rstr)));
-                    }
-                    _ => {}
-                },
+                Node::StringLiteral(rstr) if Operator::Add == op => {
+                    return Ok(Node::StringLiteral(format!("{}{}", lstr, rstr)));
+                }
                 _ => {}
             },
             _ => {}
@@ -816,26 +810,26 @@ impl<'a> Parser<'a> {
         alternative: Node,
     ) -> Result<Node, ()> {
         match test {
-            Node::TrueLiteral => return Ok(consequent),
+            Node::TrueLiteral => Ok(consequent),
             Node::NumberLiteral(n) => {
-                return if n > 0f64 {
+                if n > 0f64 {
                     Ok(consequent)
                 } else {
                     Ok(alternative)
-                };
+                }
             }
             Node::StringLiteral(s) => {
-                return if s.chars().count() > 0 {
+                if s.chars().count() > 0 {
                     Ok(consequent)
                 } else {
                     Ok(alternative)
-                };
+                }
             }
-            Node::FalseLiteral => return Ok(alternative),
-            Node::NullLiteral => return Ok(alternative),
-            Node::ArrayLiteral(_) => return Ok(consequent),
-            Node::ObjectLiteral(_) => return Ok(consequent),
-            Node::UnaryExpression(Operator::Void, _) => return Ok(alternative),
+            Node::FalseLiteral => Ok(alternative),
+            Node::NullLiteral => Ok(alternative),
+            Node::ArrayLiteral(_) => Ok(consequent),
+            Node::ObjectLiteral(_) => Ok(consequent),
+            Node::UnaryExpression(Operator::Void, _) => Ok(alternative),
             _ => Err(()),
         }
     }

@@ -388,12 +388,7 @@ pub fn call(a: &Agent, f: Value, v: Value, args: Vec<Value>) -> Result<Value, Va
     }
 }
 
-pub fn construct(
-    a: &Agent,
-    ctx: &mut ExecutionContext,
-    c: Value,
-    args: Vec<Value>,
-) -> Result<Value, Value> {
+pub fn construct(a: &Agent, c: Value, args: Vec<Value>) -> Result<Value, Value> {
     match &c {
         Value::Object(o) => {
             let mut prototype = o.get(ObjectKey::from("prototype"))?;
@@ -526,18 +521,6 @@ impl Agent {
         inner_module_instantiation(self, module.clone(), &mut Vec::new(), 0)?;
         inner_module_evaluation(self, module.clone(), &mut Vec::new(), 0)?;
         Ok(())
-    }
-
-    pub fn run_jobs(&self) {
-        /*
-        loop {
-            let job = self.job_queue.borrow_mut().pop();
-            match job {
-                Some(job) => {}
-                None => break,
-            }
-        }
-        */
     }
 
     fn evaluate(&self, ctx: &mut ExecutionContext, node: Node) -> Result<Value, Value> {
@@ -769,7 +752,7 @@ impl Agent {
                         values = vec![];
                     }
                 }
-                construct(self, ctx, constructor, values)
+                construct(self, constructor, values)
             }
             Node::ImportDeclaration(_)
             | Node::ImportDefaultDeclaration(_, _)

@@ -133,5 +133,5 @@ pub fn create_promise(agent: &Agent, prototype: Value) -> Value {
     set(&p, &ObjectKey::from("prototype"), prototype.clone()).unwrap();
     set(&prototype, &ObjectKey::from("constructor"), p.clone()).unwrap();
 
-    return p;
+    p
 }
