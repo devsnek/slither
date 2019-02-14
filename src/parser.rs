@@ -37,7 +37,7 @@ pub enum Operator {
 
 #[derive(Debug, PartialEq, Clone)]
 enum Token {
-    NumberLiteral(f64),
+    FloatLiteral(f64),
     StringLiteral(String),
     Identifier(String),
     Operator(Operator),
@@ -79,7 +79,7 @@ pub enum Node {
     NullLiteral,
     TrueLiteral,
     FalseLiteral,
-    NumberLiteral(f64),
+    FloatLiteral(f64),
     StringLiteral(String),
     StatementList(Vec<Node>),
     PropertyInitializer(String, Box<Node>), // key, value
@@ -148,8 +148,8 @@ impl<'a> Lexer<'a> {
                                 _ => break,
                             }
                         }
-                        let num = str.parse::<f64>().expect("Invalid number");
-                        Some(Token::NumberLiteral(num))
+                        let num = str.parse::<f64>().expect("Invalid float");
+                        Some(Token::FloatLiteral(num))
                     }
                     '"' | '\'' => {
                         let mut str = String::new();
@@ -730,7 +730,7 @@ impl<'a> Parser<'a> {
                 | Node::FalseLiteral
                 | Node::ArrayLiteral(_)
                 | Node::ObjectLiteral(_)
-                | Node::NumberLiteral(_)
+                | Node::FloatLiteral(_)
                 | Node::StringLiteral(_) => {
                     return Err(Error::UnexpectedToken);
                 }
@@ -740,39 +740,39 @@ impl<'a> Parser<'a> {
         };
 
         match &left {
-            Node::NumberLiteral(lnum) => {
-                if let Node::NumberLiteral(rnum) = right {
+            Node::FloatLiteral(lnum) => {
+                if let Node::FloatLiteral(rnum) = right {
                     match op {
-                        Operator::Add => return Ok(Node::NumberLiteral(lnum + rnum)),
-                        Operator::Sub => return Ok(Node::NumberLiteral(lnum - rnum)),
-                        Operator::Mul => return Ok(Node::NumberLiteral(lnum * rnum)),
-                        Operator::Div => return Ok(Node::NumberLiteral(lnum / rnum)),
+                        Operator::Add => return Ok(Node::FloatLiteral(lnum + rnum)),
+                        Operator::Sub => return Ok(Node::FloatLiteral(lnum - rnum)),
+                        Operator::Mul => return Ok(Node::FloatLiteral(lnum * rnum)),
+                        Operator::Div => return Ok(Node::FloatLiteral(lnum / rnum)),
                         Operator::BitwiseOR => {
-                            return Ok(Node::NumberLiteral(
+                            return Ok(Node::FloatLiteral(
                                 (lnum.round() as i64 | rnum.round() as i64) as f64,
                             ));
                         }
                         Operator::BitwiseAND => {
-                            return Ok(Node::NumberLiteral(
+                            return Ok(Node::FloatLiteral(
                                 (lnum.round() as i64 & rnum.round() as i64) as f64,
                             ));
                         }
                         Operator::BitwiseXOR => {
-                            return Ok(Node::NumberLiteral(
+                            return Ok(Node::FloatLiteral(
                                 (lnum.round() as i64 ^ rnum.round() as i64) as f64,
                             ));
                         }
                         Operator::LeftShift => {
-                            return Ok(Node::NumberLiteral(
+                            return Ok(Node::FloatLiteral(
                                 ((lnum.round() as i64) << rnum.round() as i64) as f64,
                             ));
                         }
                         Operator::RightShift => {
-                            return Ok(Node::NumberLiteral(
+                            return Ok(Node::FloatLiteral(
                                 ((lnum.round() as i64) >> rnum.round() as i64) as f64,
                             ));
                         }
-                        Operator::Pow => return Ok(Node::NumberLiteral(lnum.powf(rnum))),
+                        Operator::Pow => return Ok(Node::FloatLiteral(lnum.powf(rnum))),
                         Operator::LessThan => {
                             if *lnum < rnum {
                                 return Ok(Node::TrueLiteral);
@@ -839,7 +839,7 @@ impl<'a> Parser<'a> {
     ) -> Result<Node, ()> {
         match test {
             Node::TrueLiteral => Ok(consequent),
-            Node::NumberLiteral(n) => {
+            Node::FloatLiteral(n) => {
                 if n > 0f64 {
                     Ok(consequent)
                 } else {
@@ -1046,7 +1046,7 @@ impl<'a> Parser<'a> {
                     Box::new(self.parse_unary_expression()?),
                 )),
                 Token::StringLiteral(v) => Ok(Node::StringLiteral(v)),
-                Token::NumberLiteral(v) => Ok(Node::NumberLiteral(v)),
+                Token::FloatLiteral(v) => Ok(Node::FloatLiteral(v)),
                 Token::Identifier(v) => Ok(Node::Identifier(v)),
                 Token::Function => self.parse_function(true),
                 Token::LeftBracket => Ok(Node::ArrayLiteral(

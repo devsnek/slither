@@ -33,7 +33,7 @@ pub enum ObjectKind {
     Array,
     Boolean(bool),
     String(String),
-    Number(f64),
+    Float(f64),
     Function(Vec<String>, Box<Node>, Gc<GcCell<LexicalEnvironment>>), // args, body, parent_env
     Custom(Gc<GcCell<HashMap<String, Value>>>), // internal slots
     BuiltinFunction(BuiltinFunctionWrap, Gc<GcCell<HashMap<String, Value>>>), // fn, internal slots
@@ -117,22 +117,22 @@ impl ObjectInfo {
                 kind: ObjectKind::Array,
                 ..
             } if property == ObjectKey::from("length") => {
-                if let Value::Number(number_len) = value {
-                    let new_len = f64::from(number_len as u32);
-                    if new_len != number_len {
+                if let Value::Float(float_len) = value {
+                    let new_len = f64::from(float_len as u32);
+                    if new_len != float_len {
                         Err(new_error("invalid array length"))
                     } else {
                         let new_len = new_len as u32;
                         let old_len = self.get(ObjectKey::from("length"))?;
                         let mut old_len = match old_len {
-                            Value::Number(n) => n as u32,
+                            Value::Float(n) => n as u32,
                             Value::Null => 0u32,
                             _ => unreachable!(),
                         };
                         if new_len > old_len {
                             self.properties
                                 .borrow_mut()
-                                .insert(property, Value::Number(f64::from(new_len)));
+                                .insert(property, Value::Float(f64::from(new_len)));
                         } else if new_len < old_len {
                             while new_len < old_len {
                                 old_len -= 1;
@@ -143,7 +143,7 @@ impl ObjectInfo {
                         } else {
                             // nothing!
                         }
-                        Ok(Value::Number(number_len))
+                        Ok(Value::Float(float_len))
                     }
                 } else {
                     Err(new_error("invalid array length"))
@@ -220,7 +220,7 @@ pub enum Value {
     True,
     False,
     String(String),
-    Number(f64),
+    Float(f64),
     Symbol(Symbol),
     Object(Gc<ObjectInfo>),
     ReturnCompletion(Box<Value>),
@@ -239,7 +239,7 @@ impl Value {
     pub fn type_of(&self) -> &str {
         match &self {
             Value::Null => "null",
-            Value::Number(_) => "number",
+            Value::Float(_) => "float",
             Value::String(_) => "string",
             Value::Object(o) => match o.kind {
                 ObjectKind::Function(_, _, _) | ObjectKind::BuiltinFunction(_, _) => "function",
@@ -255,7 +255,7 @@ impl Value {
             Value::True => true,
             Value::False => false,
             Value::String(s) => s.chars().count() > 0,
-            Value::Number(n) => *n != 0.0f64,
+            Value::Float(n) => *n != 0.0f64,
             Value::Object(_) => true,
             _ => unreachable!(),
         }
@@ -265,7 +265,7 @@ impl Value {
         match self {
             Value::Symbol(s) => Ok(ObjectKey::Symbol(s.clone())),
             Value::String(s) => Ok(ObjectKey::String(s.clone())),
-            Value::Number(n) => Ok(ObjectKey::String(n.to_string())),
+            Value::Float(n) => Ok(ObjectKey::String(n.to_string())),
             _ => Err(new_error("cannot convert to object key")),
         }
     }
@@ -337,8 +337,8 @@ impl PartialEq for Value {
                 Value::String(vs) => s == vs,
                 _ => false,
             },
-            Value::Number(n) => match &other {
-                Value::Number(vn) => n == vn,
+            Value::Float(n) => match &other {
+                Value::Float(vn) => n == vn,
                 _ => false,
             },
             Value::Object(o) => match &other {
@@ -396,11 +396,11 @@ pub fn new_string_object(agent: &Agent, v: String) -> Value {
     }))
 }
 
-pub fn new_number_object(agent: &Agent, v: f64) -> Value {
+pub fn new_float_object(agent: &Agent, v: f64) -> Value {
     Value::Object(Gc::new(ObjectInfo {
-        kind: ObjectKind::Number(v),
+        kind: ObjectKind::Float(v),
         properties: GcCell::new(HashMap::new()),
-        prototype: agent.intrinsics.number_prototype.clone(),
+        prototype: agent.intrinsics.float_prototype.clone(),
     }))
 }
 

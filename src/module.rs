@@ -1,12 +1,12 @@
 use crate::intrinsics::{
     create_array_prototype, create_boolean_prototype, create_function_prototype,
-    create_number_prototype, create_object_prototype, create_promise, create_promise_prototype,
+    create_float_prototype, create_object_prototype, create_promise, create_promise_prototype,
     create_string_prototype, create_symbol, create_symbol_prototype,
 };
 use crate::parser::{Node, Operator, Parser};
 use crate::value::{
     new_array, new_boolean_object, new_builtin_function, new_error, new_function,
-    new_number_object, new_object, new_string_object, BuiltinFunctionWrap, ObjectKey, ObjectKind,
+    new_float_object, new_object, new_string_object, BuiltinFunctionWrap, ObjectKey, ObjectKind,
     Symbol, Value,
 };
 use gc::{Gc, GcCell};
@@ -172,7 +172,7 @@ fn print(_: &Agent, _ctx: &mut ExecutionContext, args: Vec<Value>) -> Result<Val
             Value::Null => output += " null",
             Value::True => output += " true",
             Value::False => output += " false",
-            Value::Number(n) => output += &format!(" {}", n),
+            Value::Float(n) => output += &format!(" {}", n),
             Value::String(s) => output += &format!(" '{}'", s),
             Value::Symbol(Symbol(_, _, d)) => {
                 if let Some(s) = d {
@@ -473,7 +473,7 @@ pub struct Intrinsics {
     pub function_prototype: Value,
     pub boolean_prototype: Value,
     pub string_prototype: Value,
-    pub number_prototype: Value,
+    pub float_prototype: Value,
     pub promise_prototype: Value,
     pub promise: Value,
     pub symbol_prototype: Value,
@@ -494,7 +494,7 @@ impl Agent {
         let array_prototype = create_array_prototype(object_prototype.clone());
         let function_prototype = create_function_prototype(object_prototype.clone());
         let boolean_prototype = create_boolean_prototype(object_prototype.clone());
-        let number_prototype = create_number_prototype(object_prototype.clone());
+        let float_prototype = create_float_prototype(object_prototype.clone());
         let string_prototype = create_string_prototype(object_prototype.clone());
         let symbol_prototype = create_symbol_prototype(object_prototype.clone());
         let mut agent = Agent {
@@ -503,7 +503,7 @@ impl Agent {
                 array_prototype,
                 function_prototype,
                 boolean_prototype,
-                number_prototype,
+                float_prototype,
                 string_prototype,
                 promise_prototype: Value::Null,
                 promise: Value::Null,
@@ -588,7 +588,7 @@ impl Agent {
                 None => Err(new_error("invalid this")),
                 Some(v) => Ok(v.clone()),
             },
-            Node::NumberLiteral(n) => Ok(Value::Number(n)),
+            Node::FloatLiteral(n) => Ok(Value::Float(n)),
             Node::StringLiteral(s) => Ok(Value::String(s)),
             Node::NullLiteral => Ok(Value::Null),
             Node::TrueLiteral => Ok(Value::True),
@@ -605,7 +605,7 @@ impl Agent {
                         }
                         o.set(
                             ObjectKey::from("length"),
-                            Value::Number(f64::from(len)),
+                            Value::Float(f64::from(len)),
                             o.clone(),
                         )?;
                     }
@@ -856,10 +856,10 @@ impl Agent {
                 Value::True
             }),
             Operator::Sub => {
-                if let Value::Number(num) = value {
-                    Ok(Value::Number(-num))
+                if let Value::Float(num) = value {
+                    Ok(Value::Float(-num))
                 } else {
-                    Err(new_error("invalid number"))
+                    Err(new_error("invalid float"))
                 }
             }
             _ => Err(new_error("unsupported op")),
@@ -870,11 +870,11 @@ impl Agent {
         macro_rules! f64_binop_f64 {
             ($fn:expr) => {
                 match left {
-                    Value::Number(lnum) => match right {
-                        Value::Number(rnum) => Ok(Value::Number($fn(lnum, rnum))),
-                        _ => Err(new_error("rval must be a number")),
+                    Value::Float(lnum) => match right {
+                        Value::Float(rnum) => Ok(Value::Float($fn(lnum, rnum))),
+                        _ => Err(new_error("rval must be a float")),
                     },
-                    _ => Err(new_error("lval must be a number")),
+                    _ => Err(new_error("lval must be a float")),
                 }
             };
         }
@@ -882,15 +882,15 @@ impl Agent {
         macro_rules! f64_binop_bool {
             ($fn:expr) => {
                 match left {
-                    Value::Number(lnum) => match right {
-                        Value::Number(rnum) => Ok(if $fn(&lnum, &rnum) {
+                    Value::Float(lnum) => match right {
+                        Value::Float(rnum) => Ok(if $fn(&lnum, &rnum) {
                             Value::True
                         } else {
                             Value::False
                         }),
-                        _ => Err(new_error("rval must be a number")),
+                        _ => Err(new_error("rval must be a float")),
                     },
-                    _ => Err(new_error("lval must be a number")),
+                    _ => Err(new_error("lval must be a float")),
                 }
             };
         }
@@ -901,15 +901,15 @@ impl Agent {
             Operator::Div => f64_binop_f64!(f64::div),
             Operator::Mod => f64_binop_f64!(f64::rem),
             Operator::Add => match &left {
-                Value::Number(lnum) => match right {
-                    Value::Number(rnum) => Ok(Value::Number(lnum + rnum)),
-                    _ => Err(new_error("rval must be a number")),
+                Value::Float(lnum) => match right {
+                    Value::Float(rnum) => Ok(Value::Float(lnum + rnum)),
+                    _ => Err(new_error("rval must be a float")),
                 },
                 Value::String(lstr) => match &right {
                     Value::String(rstr) => Ok(Value::String(format!("{}{}", lstr, rstr))),
                     _ => Err(new_error("rval must be a string")),
                 },
-                _ => Err(new_error("lval must be a number or string")),
+                _ => Err(new_error("lval must be a float or string")),
             },
             Operator::Sub => f64_binop_f64!(f64::sub),
             Operator::LeftShift => {
@@ -951,7 +951,7 @@ impl Agent {
             Value::True => Ok(new_boolean_object(self, true)),
             Value::False => Ok(new_boolean_object(self, false)),
             Value::Object(_) => Ok(value),
-            Value::Number(n) => Ok(new_number_object(self, *n)),
+            Value::Float(n) => Ok(new_float_object(self, *n)),
             Value::String(s) => Ok(new_string_object(self, s.clone())),
             _ => unreachable!(),
         }
