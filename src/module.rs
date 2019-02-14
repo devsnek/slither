@@ -7,7 +7,7 @@ use crate::parser::{Node, Operator, Parser};
 use crate::value::{
     new_array, new_boolean_object, new_builtin_function, new_error, new_function,
     new_number_object, new_object, new_string_object, BuiltinFunctionWrap, ObjectKey, ObjectKind,
-    Value, Symbol,
+    Symbol, Value,
 };
 use gc::{Gc, GcCell};
 use std::collections::{HashMap, HashSet};
@@ -174,10 +174,12 @@ fn print(_: &Agent, _ctx: &mut ExecutionContext, args: Vec<Value>) -> Result<Val
             Value::False => output += " false",
             Value::Number(n) => output += &format!(" {}", n),
             Value::String(s) => output += &format!(" '{}'", s),
-            Value::Symbol(Symbol(_, _, d)) => if let Some(s) = d {
-                output += &format!(" Symbol({})", s);
-            } else {
-                output += " Symbol()";
+            Value::Symbol(Symbol(_, _, d)) => {
+                if let Some(s) = d {
+                    output += &format!(" Symbol({})", s);
+                } else {
+                    output += " Symbol()";
+                }
             }
             Value::Object(_) => output += " {...}",
             _ => unreachable!(),

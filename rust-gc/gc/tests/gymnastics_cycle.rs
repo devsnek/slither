@@ -4,8 +4,8 @@
 extern crate gc_derive;
 extern crate gc;
 
+use gc::{force_collect, Gc, GcCell};
 use std::cell::Cell;
-use gc::{GcCell, Gc, force_collect};
 
 thread_local!(static COUNTER: Cell<u8> = Cell::new(0u8));
 
@@ -26,9 +26,9 @@ impl gc::Finalize for Cyclic {
 fn test_cycle() {
     {
         let mut gcs = vec![Gc::new(Cyclic {
-                               prev: GcCell::new(None),
-                               name: 0,
-                           })];
+            prev: GcCell::new(None),
+            name: 0,
+        })];
 
         for i in 1..4 {
             let prev = gcs[i - 1].clone();

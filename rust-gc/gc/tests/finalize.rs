@@ -4,8 +4,8 @@
 extern crate gc_derive;
 extern crate gc;
 
-use std::cell::Cell;
 use gc::Finalize;
+use std::cell::Cell;
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 struct Flags(i32, i32);

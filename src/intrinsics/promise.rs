@@ -11,7 +11,10 @@ fn trigger_promise_reactions(
     if let Value::List(list) = &reactions {
         let list = list.borrow();
         for reaction in list.iter() {
-            agent.enqueue_job(promise_reaction_job, vec![reaction.clone(), argument.clone()]);
+            agent.enqueue_job(
+                promise_reaction_job,
+                vec![reaction.clone(), argument.clone()],
+            );
         }
     } else {
         unreachable!();
@@ -40,19 +43,10 @@ pub fn promise_reaction_job(agent: &Agent, args: Vec<Value>) {
 
     if promise != Value::Null {
         match handler_result {
-            Ok(v) => call(
-                agent,
-                promise.get_slot("resolve"),
-                Value::Null,
-                vec![v],
-            ),
-            Err(v) => call(
-                agent,
-                promise.get_slot("reject"),
-                Value::Null,
-                vec![v],
-            ),
-        }.unwrap_or(Value::Null);
+            Ok(v) => call(agent, promise.get_slot("resolve"), Value::Null, vec![v]),
+            Err(v) => call(agent, promise.get_slot("reject"), Value::Null, vec![v]),
+        }
+        .unwrap_or(Value::Null);
     }
 }
 

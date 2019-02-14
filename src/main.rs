@@ -25,11 +25,7 @@ fn main() {
 
     let agent = Agent::new();
 
-    let c = agent.import(filename, referrer);
-
-    println!("res {:?}", c);
+    agent.import(filename, referrer).unwrap();
 
     agent.run_jobs();
-
-    std::process::exit(0);
 }
