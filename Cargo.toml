@@ -12,3 +12,4 @@ path = "rust-gc/gc_derive"
 
 [dependencies]
 clap = "2"
+num = "0.2.0"

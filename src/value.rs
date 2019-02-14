@@ -1,6 +1,7 @@
 use crate::module::{Agent, ExecutionContext, LexicalEnvironment};
 use crate::parser::Node;
 use gc::{Gc, GcCell};
+use num::BigInt;
 use std::collections::{HashMap, VecDeque};
 pub use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -35,7 +36,7 @@ pub enum ObjectKind {
     String(String),
     Float(f64),
     Function(Vec<String>, Box<Node>, Gc<GcCell<LexicalEnvironment>>), // args, body, parent_env
-    Custom(Gc<GcCell<HashMap<String, Value>>>), // internal slots
+    Custom(Gc<GcCell<HashMap<String, Value>>>),                       // internal slots
     BuiltinFunction(BuiltinFunctionWrap, Gc<GcCell<HashMap<String, Value>>>), // fn, internal slots
 }
 
@@ -117,34 +118,28 @@ impl ObjectInfo {
                 kind: ObjectKind::Array,
                 ..
             } if property == ObjectKey::from("length") => {
-                if let Value::Float(float_len) = value {
-                    let new_len = f64::from(float_len as u32);
-                    if new_len != float_len {
-                        Err(new_error("invalid array length"))
-                    } else {
-                        let new_len = new_len as u32;
-                        let old_len = self.get(ObjectKey::from("length"))?;
-                        let mut old_len = match old_len {
-                            Value::Float(n) => n as u32,
-                            Value::Null => 0u32,
-                            _ => unreachable!(),
-                        };
-                        if new_len > old_len {
+                if let Value::Integer(int_len) = value {
+                    let old_len = self.get(ObjectKey::from("length"))?;
+                    let mut old_len = match old_len {
+                        Value::Integer(n) => n,
+                        Value::Null => BigInt::from(0),
+                        _ => unreachable!(),
+                    };
+                    if int_len > old_len {
+                        self.properties
+                            .borrow_mut()
+                            .insert(property, Value::Integer(int_len.clone()));
+                    } else if int_len < old_len {
+                        while int_len < old_len {
+                            old_len -= 1;
                             self.properties
                                 .borrow_mut()
-                                .insert(property, Value::Float(f64::from(new_len)));
-                        } else if new_len < old_len {
-                            while new_len < old_len {
-                                old_len -= 1;
-                                self.properties
-                                    .borrow_mut()
-                                    .remove(&ObjectKey::from(old_len));
-                            }
-                        } else {
-                            // nothing!
+                                .remove(&ObjectKey::from(old_len.clone()));
                         }
-                        Ok(Value::Float(float_len))
+                    } else {
+                        // nothing!
                     }
+                    Ok(Value::Integer(int_len))
                 } else {
                     Err(new_error("invalid array length"))
                 }
@@ -214,17 +209,83 @@ impl From<u32> for ObjectKey {
     }
 }
 
-#[derive(Debug, Clone, Trace, Finalize)]
+impl From<BigInt> for ObjectKey {
+    fn from(n: BigInt) -> Self {
+        ObjectKey::String(n.to_string())
+    }
+}
+
+#[derive(Debug, Clone, Finalize)]
 pub enum Value {
     Null,
     True,
     False,
     String(String),
     Float(f64),
+    Integer(BigInt),
     Symbol(Symbol),
     Object(Gc<ObjectInfo>),
     ReturnCompletion(Box<Value>),
     List(Gc<GcCell<VecDeque<Value>>>),
+}
+
+macro_rules! custom_trace {
+    ($this:ident, $body:expr) => {
+        #[inline]
+        unsafe fn trace(&self) {
+            #[inline]
+            unsafe fn mark<T: gc::Trace>(it: &T) {
+                gc::Trace::trace(it);
+            }
+            let $this = self;
+            $body
+        }
+        #[inline]
+        unsafe fn root(&self) {
+            #[inline]
+            unsafe fn mark<T: gc::Trace>(it: &T) {
+                gc::Trace::root(it);
+            }
+            let $this = self;
+            $body
+        }
+        #[inline]
+        unsafe fn unroot(&self) {
+            #[inline]
+            unsafe fn mark<T: gc::Trace>(it: &T) {
+                gc::Trace::unroot(it);
+            }
+            let $this = self;
+            $body
+        }
+        #[inline]
+        fn finalize_glue(&self) {
+            gc::Finalize::finalize(self);
+            #[inline]
+            fn mark<T: gc::Trace>(it: &T) {
+                gc::Trace::finalize_glue(it);
+            }
+            let $this = self;
+            $body
+        }
+    }
+}
+
+unsafe impl gc::Trace for Value {
+    custom_trace!(this, {
+        match this {
+            Value::Null
+            | Value::True
+            | Value::False
+            | Value::String(_)
+            | Value::Float(_)
+            | Value::Integer(_)
+            | Value::Symbol(_) => {}
+            Value::Object(o) => mark(o),
+            Value::ReturnCompletion(b) => mark(b),
+            Value::List(list) => mark(list),
+        }
+    });
 }
 
 impl Value {
@@ -240,6 +301,7 @@ impl Value {
         match &self {
             Value::Null => "null",
             Value::Float(_) => "float",
+            Value::Integer(_) => "integer",
             Value::String(_) => "string",
             Value::Object(o) => match o.kind {
                 ObjectKind::Function(_, _, _) | ObjectKind::BuiltinFunction(_, _) => "function",
@@ -256,6 +318,7 @@ impl Value {
             Value::False => false,
             Value::String(s) => s.chars().count() > 0,
             Value::Float(n) => *n != 0.0f64,
+            Value::Integer(n) => *n != BigInt::from(0),
             Value::Object(_) => true,
             _ => unreachable!(),
         }
@@ -419,7 +482,10 @@ pub fn new_function(
 
 pub fn new_builtin_function(agent: &Agent, bfn: BuiltinFunction) -> Value {
     Value::Object(Gc::new(ObjectInfo {
-        kind: ObjectKind::BuiltinFunction(BuiltinFunctionWrap(bfn), Gc::new(GcCell::new(HashMap::new()))),
+        kind: ObjectKind::BuiltinFunction(
+            BuiltinFunctionWrap(bfn),
+            Gc::new(GcCell::new(HashMap::new())),
+        ),
         properties: GcCell::new(HashMap::new()),
         prototype: agent.intrinsics.function_prototype.clone(),
     }))

@@ -1,7 +1,5 @@
 use crate::module::{call, set, Agent, ExecutionContext};
-use crate::value::{
-    new_builtin_function, new_custom_object, new_error, ObjectKey, Value,
-};
+use crate::value::{new_builtin_function, new_custom_object, new_error, ObjectKey, Value};
 
 fn trigger_promise_reactions(
     agent: &Agent,
@@ -50,7 +48,8 @@ pub fn promise_reaction_job(agent: &Agent, args: Vec<Value>) {
         match handler_result {
             Ok(v) => call(agent, promise.get_slot("resolve"), Value::Null, vec![v]),
             Err(v) => call(agent, promise.get_slot("reject"), Value::Null, vec![v]),
-        }.unwrap();
+        }
+        .unwrap();
     }
 }
 

@@ -1,3 +1,4 @@
+use num::BigInt;
 use std::iter::Peekable;
 use std::str::Chars;
 
@@ -38,6 +39,7 @@ pub enum Operator {
 #[derive(Debug, PartialEq, Clone)]
 enum Token {
     FloatLiteral(f64),
+    IntegerLiteral(BigInt),
     StringLiteral(String),
     Identifier(String),
     Operator(Operator),
@@ -80,6 +82,7 @@ pub enum Node {
     TrueLiteral,
     FalseLiteral,
     FloatLiteral(f64),
+    IntegerLiteral(BigInt),
     StringLiteral(String),
     StatementList(Vec<Node>),
     PropertyInitializer(String, Box<Node>), // key, value
@@ -140,16 +143,28 @@ impl<'a> Lexer<'a> {
                     ' ' | '\t' | '\r' | '\n' => self.next(),
                     '0'...'9' => {
                         let mut str = char.to_string();
+                        let mut float = false;
                         while let Some(c) = self.chars.peek() {
                             match c {
-                                '0'...'9' | '.' => {
+                                '0'...'9' => {
+                                    str.push(self.chars.next().unwrap());
+                                }
+                                '.' => {
+                                    float = true;
                                     str.push(self.chars.next().unwrap());
                                 }
                                 _ => break,
                             }
                         }
-                        let num = str.parse::<f64>().expect("Invalid float");
-                        Some(Token::FloatLiteral(num))
+                        if float {
+                            let num = str.parse::<f64>().expect(&format!("Invalid float {}", str));
+                            Some(Token::FloatLiteral(num))
+                        } else {
+                            let num = str
+                                .parse::<BigInt>()
+                                .expect(&format!("Invalid integer {}", str));
+                            Some(Token::IntegerLiteral(num))
+                        }
                     }
                     '"' | '\'' => {
                         let mut str = String::new();
@@ -1047,6 +1062,7 @@ impl<'a> Parser<'a> {
                 )),
                 Token::StringLiteral(v) => Ok(Node::StringLiteral(v)),
                 Token::FloatLiteral(v) => Ok(Node::FloatLiteral(v)),
+                Token::IntegerLiteral(v) => Ok(Node::IntegerLiteral(v)),
                 Token::Identifier(v) => Ok(Node::Identifier(v)),
                 Token::Function => self.parse_function(true),
                 Token::LeftBracket => Ok(Node::ArrayLiteral(

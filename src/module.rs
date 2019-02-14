@@ -1,18 +1,20 @@
 use crate::intrinsics::{
-    create_array_prototype, create_boolean_prototype, create_function_prototype,
-    create_float_prototype, create_object_prototype, create_promise, create_promise_prototype,
+    create_array_prototype, create_boolean_prototype, create_float_prototype,
+    create_function_prototype, create_object_prototype, create_promise, create_promise_prototype,
     create_string_prototype, create_symbol, create_symbol_prototype,
 };
 use crate::parser::{Node, Operator, Parser};
 use crate::value::{
-    new_array, new_boolean_object, new_builtin_function, new_error, new_function,
-    new_float_object, new_object, new_string_object, BuiltinFunctionWrap, ObjectKey, ObjectKind,
-    Symbol, Value,
+    new_array, new_boolean_object, new_builtin_function, new_error, new_float_object, new_function,
+    new_object, new_string_object, BuiltinFunctionWrap, ObjectKey, ObjectKind, Symbol, Value,
 };
 use gc::{Gc, GcCell};
+use num::{
+    traits::{Pow, ToPrimitive},
+    BigInt,
+};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::{Div, Mul, Rem, Sub};
-// use std::rc::Gc;
 
 #[derive(Debug, Trace, Finalize)]
 struct Binding {
@@ -172,7 +174,8 @@ fn print(_: &Agent, _ctx: &mut ExecutionContext, args: Vec<Value>) -> Result<Val
             Value::Null => output += " null",
             Value::True => output += " true",
             Value::False => output += " false",
-            Value::Float(n) => output += &format!(" {}", n),
+            Value::Float(n) => output += &format!(" {}f", n),
+            Value::Integer(n) => output += &format!(" {}i", n),
             Value::String(s) => output += &format!(" '{}'", s),
             Value::Symbol(Symbol(_, _, d)) => {
                 if let Some(s) = d {
@@ -563,7 +566,9 @@ impl Agent {
     }
 
     pub fn enqueue_job(&self, f: JobFn, args: Vec<Value>) {
-        self.job_queue.borrow_mut().push_back(Job(JobFnWrap(f), args));
+        self.job_queue
+            .borrow_mut()
+            .push_back(Job(JobFnWrap(f), args));
     }
 
     pub fn run_jobs(&self) {
@@ -589,6 +594,7 @@ impl Agent {
                 Some(v) => Ok(v.clone()),
             },
             Node::FloatLiteral(n) => Ok(Value::Float(n)),
+            Node::IntegerLiteral(n) => Ok(Value::Integer(n)),
             Node::StringLiteral(s) => Ok(Value::String(s)),
             Node::NullLiteral => Ok(Value::Null),
             Node::TrueLiteral => Ok(Value::True),
@@ -855,73 +861,72 @@ impl Agent {
             } else {
                 Value::True
             }),
-            Operator::Sub => {
-                if let Value::Float(num) = value {
-                    Ok(Value::Float(-num))
-                } else {
-                    Err(new_error("invalid float"))
-                }
-            }
+            Operator::Sub => match value {
+                Value::Float(num) => Ok(Value::Float(-num)),
+                Value::Integer(num) => Ok(Value::Integer(-num)),
+                _ => Err(new_error("invalid number")),
+            },
             _ => Err(new_error("unsupported op")),
         }
     }
 
     fn evaluate_binop(&self, op: Operator, left: Value, right: Value) -> Result<Value, Value> {
-        macro_rules! f64_binop_f64 {
-            ($fn:expr) => {
+        macro_rules! num_binop_num {
+            ($f64:expr, $int:expr) => {
                 match left {
                     Value::Float(lnum) => match right {
-                        Value::Float(rnum) => Ok(Value::Float($fn(lnum, rnum))),
-                        _ => Err(new_error("rval must be a float")),
+                        Value::Float(rnum) => Ok(Value::Float($f64(lnum, rnum))),
+                        Value::Integer(rnum) => {
+                            Ok(Value::Float($f64(lnum, rnum.to_f64().unwrap())))
+                        }
+                        _ => Err(new_error("rval must be a number")),
                     },
-                    _ => Err(new_error("lval must be a float")),
+                    Value::Integer(lnum) => match right {
+                        Value::Integer(rnum) => Ok(Value::Integer($int(lnum, rnum))),
+                        Value::Float(rnum) => Ok(Value::Float($f64(lnum.to_f64().unwrap(), rnum))),
+                        _ => Err(new_error("rval must be a number")),
+                    },
+                    _ => Err(new_error("lval must be a number")),
                 }
             };
         }
 
-        macro_rules! f64_binop_bool {
-            ($fn:expr) => {
+        macro_rules! num_binop_bool {
+            ($f64:expr, $int:expr) => {
                 match left {
                     Value::Float(lnum) => match right {
-                        Value::Float(rnum) => Ok(if $fn(&lnum, &rnum) {
+                        Value::Float(rnum) => Ok(if $f64(&lnum, &rnum) {
                             Value::True
                         } else {
                             Value::False
                         }),
-                        _ => Err(new_error("rval must be a float")),
+                        Value::Integer(rnum) => Ok(if $f64(&lnum, &rnum.to_f64().unwrap()) {
+                            Value::True
+                        } else {
+                            Value::False
+                        }),
+                        _ => Err(new_error("rval must be a number")),
                     },
-                    _ => Err(new_error("lval must be a float")),
+                    Value::Integer(lnum) => match right {
+                        Value::Integer(rnum) => Ok(if $int(&lnum, &rnum) {
+                            Value::True
+                        } else {
+                            Value::False
+                        }),
+                        Value::Float(rnum) => Ok(if $f64(&lnum.to_f64().unwrap(), &rnum) {
+                            Value::True
+                        } else {
+                            Value::False
+                        }),
+                        _ => Err(new_error("rval must be a number")),
+                    },
+                    _ => Err(new_error("lval must be a number")),
                 }
             };
         }
 
         match op {
-            Operator::Pow => f64_binop_f64!(f64::powf),
-            Operator::Mul => f64_binop_f64!(f64::mul),
-            Operator::Div => f64_binop_f64!(f64::div),
-            Operator::Mod => f64_binop_f64!(f64::rem),
-            Operator::Add => match &left {
-                Value::Float(lnum) => match right {
-                    Value::Float(rnum) => Ok(Value::Float(lnum + rnum)),
-                    _ => Err(new_error("rval must be a float")),
-                },
-                Value::String(lstr) => match &right {
-                    Value::String(rstr) => Ok(Value::String(format!("{}{}", lstr, rstr))),
-                    _ => Err(new_error("rval must be a string")),
-                },
-                _ => Err(new_error("lval must be a float or string")),
-            },
-            Operator::Sub => f64_binop_f64!(f64::sub),
-            Operator::LeftShift => {
-                f64_binop_f64!(|a: f64, b: f64| ((a.round() as i64) << b.round() as i64) as f64)
-            }
-            Operator::RightShift => {
-                f64_binop_f64!(|a: f64, b: f64| (a.round() as i64 >> b.round() as i64) as f64)
-            }
-            Operator::LessThan => f64_binop_bool!(f64::lt),
-            Operator::GreaterThan => f64_binop_bool!(f64::gt),
-            Operator::LessThanOrEqual => f64_binop_bool!(f64::le),
-            Operator::GreaterThanOrEqual => f64_binop_bool!(f64::ge),
+            // equality has no type checks
             Operator::Equal => Ok(if left == right {
                 Value::True
             } else {
@@ -932,15 +937,77 @@ impl Agent {
             } else {
                 Value::True
             }),
+
+            // strict checked number ops
+            Operator::Pow => match left {
+                Value::Float(base) => match right {
+                    Value::Float(exponent) => Ok(Value::Float(base.powf(exponent))),
+                    Value::Integer(exponent) => {
+                        Ok(Value::Float(base.powf(exponent.to_f64().unwrap())))
+                    }
+                    _ => Err(new_error("exponent must be a number")),
+                },
+                Value::Integer(base) => match right {
+                    Value::Integer(exponent) => {
+                        if exponent < BigInt::from(0) {
+                            Ok(Value::Float(
+                                base.to_f64().unwrap().powf(exponent.to_f64().unwrap()),
+                            ))
+                        } else {
+                            Ok(Value::Integer(base.pow(exponent.to_u128().unwrap())))
+                        }
+                    }
+                    Value::Float(exponent) => {
+                        Ok(Value::Float(base.to_f64().unwrap().powf(exponent)))
+                    }
+                    _ => Err(new_error("exponent must be a number")),
+                },
+                _ => Err(new_error("base must be a number")),
+            },
+            Operator::Mul => num_binop_num!(f64::mul, BigInt::mul),
+            Operator::Div => num_binop_num!(f64::div, BigInt::div),
+            Operator::Mod => num_binop_num!(f64::rem, BigInt::rem),
+            Operator::Sub => num_binop_num!(f64::sub, BigInt::sub),
+            Operator::Add => match &left {
+                Value::Float(lnum) => match right {
+                    Value::Float(rnum) => Ok(Value::Float(lnum + rnum)),
+                    Value::Integer(rnum) => Ok(Value::Float(lnum + rnum.to_f64().unwrap())),
+                    _ => Err(new_error("rval must be a number")),
+                },
+                Value::Integer(lnum) => match right {
+                    Value::Float(rnum) => Ok(Value::Float(lnum.to_f64().unwrap() + rnum)),
+                    Value::Integer(rnum) => Ok(Value::Integer(lnum + rnum)),
+                    _ => Err(new_error("rval must be a number")),
+                },
+                Value::String(lstr) => match &right {
+                    Value::String(rstr) => Ok(Value::String(format!("{}{}", lstr, rstr))),
+                    _ => Err(new_error("rval must be a string")),
+                },
+                _ => Err(new_error("lval must be a number or string")),
+            },
+            /*
+            Operator::LeftShift => {
+                num_binop_num!(|a: f64, b: f64| ((a.round() as i64) << b.round() as i64) as f64)
+            }
+            Operator::RightShift => {
+                num_binop_num!(|a: f64, b: f64| (a.round() as i64 >> b.round() as i64) as f64)
+            }
+            */
+            Operator::LessThan => num_binop_bool!(f64::lt, BigInt::lt),
+            Operator::GreaterThan => num_binop_bool!(f64::gt, BigInt::gt),
+            Operator::LessThanOrEqual => num_binop_bool!(f64::le, BigInt::le),
+            Operator::GreaterThanOrEqual => num_binop_bool!(f64::ge, BigInt::ge),
+            /*
             Operator::BitwiseAND => {
-                f64_binop_f64!(|a: f64, b: f64| (a.round() as i64 & b.round() as i64) as f64)
+                num_binop_num!(|a: f64, b: f64| (a.round() as i64 & b.round() as i64) as f64)
             }
             Operator::BitwiseXOR => {
-                f64_binop_f64!(|a: f64, b: f64| (a.round() as i64 ^ b.round() as i64) as f64)
+                num_binop_num!(|a: f64, b: f64| (a.round() as i64 ^ b.round() as i64) as f64)
             }
             Operator::BitwiseOR => {
-                f64_binop_f64!(|a: f64, b: f64| (a.round() as i64 | b.round() as i64) as f64)
+                num_binop_num!(|a: f64, b: f64| (a.round() as i64 | b.round() as i64) as f64)
             }
+            */
             _ => Err(new_error("unsupported op")),
         }
     }
