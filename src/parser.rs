@@ -172,6 +172,7 @@ impl<'a> Lexer<'a> {
                                 _ => break,
                             }
                         }
+                        // UPDATE parse_identifier WHEN YOU ADD TO THIS LIST!!!!!!
                         Some(match ident.as_ref() {
                             "true" => Token::True,
                             "false" => Token::False,
@@ -642,10 +643,37 @@ impl<'a> Parser<'a> {
         self.parse_assignment_expression()
     }
 
-    fn parse_identifier(&mut self, allow_async: bool) -> Result<String, Error> {
+    fn parse_identifier(&mut self, allow_keyword: bool) -> Result<String, Error> {
         match self.lexer.next() {
             Some(Token::Identifier(name)) => Ok(name),
-            Some(Token::Async) if allow_async => Ok("async".to_string()),
+            Some(Token::Async) if allow_keyword => Ok("async".to_string()),
+            Some(Token::Throw) if allow_keyword => Ok("throw".to_string()),
+            Some(Token::Catch) if allow_keyword => Ok("catch".to_string()),
+            Some(Token::True) if allow_keyword => Ok("true".to_string()),
+            Some(Token::False) if allow_keyword => Ok("false".to_string()),
+            Some(Token::Null) if allow_keyword => Ok("null".to_string()),
+            Some(Token::This) if allow_keyword => Ok("this".to_string()),
+            Some(Token::Class) if allow_keyword => Ok("class".to_string()),
+            /*
+            "class" => Token::Class,
+            "function" => Token::Function,
+            "let" => Token::Let,
+            "const" => Token::Const,
+            "throw" => Token::Throw,
+            "return" => Token::Return,
+            "try" => Token::Try,
+            "catch" => Token::Catch,
+            "if" => Token::If,
+            "else" => Token::Else,
+            "new" => Token::New,
+            "import" => Token::Import,
+            "export" => Token::Export,
+            "default" => Token::Default,
+            "from" => Token::From,
+            "async" => Token::Async,
+            "typeof" => Token::Operator(Operator::Typeof),
+            "void" => Token::Operator(Operator::Void),
+            */
             _ => Err(Error::UnexpectedToken),
         }
     }

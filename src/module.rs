@@ -426,8 +426,29 @@ pub fn get(target: &Value, property: &ObjectKey) -> Result<Value, Value> {
     }
 }
 
+type JobFn = fn(&Agent, Vec<Value>);
+#[derive(Finalize)]
+struct JobFnWrap(JobFn);
+
+impl std::fmt::Debug for JobFnWrap {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(fmt, "job")
+    }
+}
+
+unsafe impl gc::Trace for JobFnWrap {
+    #[inline]
+    unsafe fn trace(&self) {}
+    #[inline]
+    unsafe fn root(&self) {}
+    #[inline]
+    unsafe fn unroot(&self) {}
+    #[inline]
+    fn finalize_glue(&self) {}
+}
+
 #[derive(Debug, Trace, Finalize)]
-struct Job {}
+struct Job(JobFnWrap, Vec<Value>);
 
 #[derive(Debug)]
 pub struct Intrinsics {
@@ -459,17 +480,16 @@ impl Agent {
         let boolean_prototype = create_boolean_prototype(object_prototype.clone());
         let number_prototype = create_number_prototype(object_prototype.clone());
         let string_prototype = create_string_prototype(object_prototype.clone());
-        let promise_prototype = create_promise_prototype(object_prototype.clone());
         let symbol_prototype = create_symbol_prototype(object_prototype.clone());
         let mut agent = Agent {
             intrinsics: Intrinsics {
-                object_prototype,
+                object_prototype: object_prototype.clone(),
                 array_prototype,
                 function_prototype,
                 boolean_prototype,
                 number_prototype,
                 string_prototype,
-                promise_prototype,
+                promise_prototype: Value::Null,
                 promise: Value::Null,
                 symbol_prototype,
                 symbol: Value::Null,
@@ -479,8 +499,11 @@ impl Agent {
             job_queue: GcCell::new(Vec::new()),
         };
 
+        agent.intrinsics.promise_prototype =
+            create_promise_prototype(&agent, object_prototype.clone());
         agent.intrinsics.promise =
             create_promise(&agent, agent.intrinsics.promise_prototype.clone());
+
         agent.intrinsics.symbol = create_symbol(&agent, agent.intrinsics.symbol_prototype.clone());
 
         {
@@ -521,6 +544,23 @@ impl Agent {
         inner_module_instantiation(self, module.clone(), &mut Vec::new(), 0)?;
         inner_module_evaluation(self, module.clone(), &mut Vec::new(), 0)?;
         Ok(())
+    }
+
+    pub fn enqueue_job(&self, f: JobFn, args: Vec<Value>) {
+        self.job_queue.borrow_mut().push(Job(JobFnWrap(f), args));
+    }
+
+    pub fn run_jobs(&self) {
+        loop {
+            let mut queue = self.job_queue.borrow_mut();
+            let mut job = queue.pop();
+            match &mut job {
+                Some(Job(JobFnWrap(f), args)) => {
+                    f(self, std::mem::replace(args, Vec::new()));
+                }
+                None => break,
+            }
+        }
     }
 
     fn evaluate(&self, ctx: &mut ExecutionContext, node: Node) -> Result<Value, Value> {

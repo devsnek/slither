@@ -224,11 +224,16 @@ pub enum Value {
     Symbol(Symbol),
     Object(Gc<ObjectInfo>),
     ReturnCompletion(Box<Value>),
+    List(GcCell<Vec<Value>>),
 }
 
 impl Value {
     pub fn new_symbol() -> Value {
         Value::Symbol(Symbol::new(false))
+    }
+
+    pub fn new_list() -> Value {
+        Value::List(GcCell::new(Vec::new()))
     }
 
     pub fn type_of(&self) -> &str {
@@ -293,6 +298,18 @@ impl Value {
         } else {
             Err(new_error("invalid slot access"))
         }
+    }
+}
+
+impl From<String> for Value {
+    fn from(s: String) -> Self {
+        Value::String(s)
+    }
+}
+
+impl From<&str> for Value {
+    fn from(s: &str) -> Self {
+        Value::String(s.to_string())
     }
 }
 
