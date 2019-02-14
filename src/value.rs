@@ -270,33 +270,32 @@ impl Value {
         }
     }
 
-    pub fn get_slot(&self, property: &str) -> Result<Value, Value> {
+    pub fn get_slot(&self, property: &str) -> Value {
         if let Value::Object(o) = self {
             match &o.kind {
                 ObjectKind::Custom(cell) | ObjectKind::BuiltinFunction(_, cell) => {
                     match cell.borrow().get(property) {
-                        Some(v) => Ok(v.clone()),
-                        _ => Err(new_error("invalid slot access")),
+                        Some(v) => v.clone(),
+                        _ => panic!(),
                     }
                 }
-                _ => Err(new_error("invalid slot access")),
+                _ => panic!(),
             }
         } else {
-            Err(new_error("invalid slot access"))
+            panic!()
         }
     }
 
-    pub fn set_slot(&self, property: &str, value: Value) -> Result<(), Value> {
+    pub fn set_slot(&self, property: &str, value: Value) {
         if let Value::Object(o) = self {
             match &o.kind {
                 ObjectKind::Custom(cell) | ObjectKind::BuiltinFunction(_, cell) => {
                     cell.borrow_mut().insert(property.to_string(), value);
-                    Ok(())
                 }
-                _ => Err(new_error("invalid slot access")),
+                _ => panic!(),
             }
         } else {
-            Err(new_error("invalid slot access"))
+            panic!()
         }
     }
 }
