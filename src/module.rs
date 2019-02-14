@@ -10,7 +10,7 @@ use crate::value::{
     Symbol, Value,
 };
 use gc::{Gc, GcCell};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::{Div, Mul, Rem, Sub};
 // use std::rc::Gc;
 
@@ -485,7 +485,7 @@ pub struct Agent {
     pub intrinsics: Intrinsics,
     modules: GcCell<HashMap<String, Module>>,
     root_env: Gc<GcCell<LexicalEnvironment>>,
-    job_queue: GcCell<Vec<Job>>,
+    job_queue: GcCell<VecDeque<Job>>,
 }
 
 impl Agent {
@@ -512,7 +512,7 @@ impl Agent {
             },
             root_env: Gc::new(GcCell::new(LexicalEnvironment::new())),
             modules: GcCell::new(HashMap::new()),
-            job_queue: GcCell::new(Vec::new()),
+            job_queue: GcCell::new(VecDeque::new()),
         };
 
         agent.intrinsics.promise_prototype =
@@ -563,13 +563,12 @@ impl Agent {
     }
 
     pub fn enqueue_job(&self, f: JobFn, args: Vec<Value>) {
-        self.job_queue.borrow_mut().push(Job(JobFnWrap(f), args));
+        self.job_queue.borrow_mut().push_back(Job(JobFnWrap(f), args));
     }
 
     pub fn run_jobs(&self) {
         loop {
-            let mut queue = self.job_queue.borrow_mut();
-            let mut job = queue.pop();
+            let mut job = self.job_queue.borrow_mut().pop_front();
             match &mut job {
                 Some(Job(JobFnWrap(f), args)) => {
                     f(self, std::mem::replace(args, Vec::new()));

@@ -1,7 +1,7 @@
 use crate::module::{Agent, ExecutionContext, LexicalEnvironment};
 use crate::parser::Node;
 use gc::{Gc, GcCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 pub use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub fn new_error(message: &str) -> Value {
@@ -35,8 +35,8 @@ pub enum ObjectKind {
     String(String),
     Number(f64),
     Function(Vec<String>, Box<Node>, Gc<GcCell<LexicalEnvironment>>), // args, body, parent_env
-    Custom(GcCell<HashMap<String, Value>>),
-    BuiltinFunction(BuiltinFunctionWrap, GcCell<HashMap<String, Value>>),
+    Custom(Gc<GcCell<HashMap<String, Value>>>), // internal slots
+    BuiltinFunction(BuiltinFunctionWrap, Gc<GcCell<HashMap<String, Value>>>), // fn, internal slots
 }
 
 // empty impl
@@ -224,7 +224,7 @@ pub enum Value {
     Symbol(Symbol),
     Object(Gc<ObjectInfo>),
     ReturnCompletion(Box<Value>),
-    List(GcCell<Vec<Value>>),
+    List(Gc<GcCell<VecDeque<Value>>>),
 }
 
 impl Value {
@@ -233,7 +233,7 @@ impl Value {
     }
 
     pub fn new_list() -> Value {
-        Value::List(GcCell::new(Vec::new()))
+        Value::List(Gc::new(GcCell::new(VecDeque::new())))
     }
 
     pub fn type_of(&self) -> &str {
@@ -366,7 +366,7 @@ pub fn new_object(proto: Value) -> Value {
 
 pub fn new_custom_object(proto: Value) -> Value {
     Value::Object(Gc::new(ObjectInfo {
-        kind: ObjectKind::Custom(GcCell::new(HashMap::new())),
+        kind: ObjectKind::Custom(Gc::new(GcCell::new(HashMap::new()))),
         properties: GcCell::new(HashMap::new()),
         prototype: proto,
     }))
@@ -419,7 +419,7 @@ pub fn new_function(
 
 pub fn new_builtin_function(agent: &Agent, bfn: BuiltinFunction) -> Value {
     Value::Object(Gc::new(ObjectInfo {
-        kind: ObjectKind::BuiltinFunction(BuiltinFunctionWrap(bfn), GcCell::new(HashMap::new())),
+        kind: ObjectKind::BuiltinFunction(BuiltinFunctionWrap(bfn), Gc::new(GcCell::new(HashMap::new()))),
         properties: GcCell::new(HashMap::new()),
         prototype: agent.intrinsics.function_prototype.clone(),
     }))

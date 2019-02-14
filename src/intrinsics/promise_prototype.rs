@@ -30,7 +30,7 @@ fn promise_proto_then(
     args: Vec<Value>,
 ) -> Result<Value, Value> {
     let mut on_fulfilled = args.get(0).unwrap_or(&Value::Null).clone();
-    let mut on_rejected = args.get(0).unwrap_or(&Value::Null).clone();
+    let mut on_rejected = args.get(1).unwrap_or(&Value::Null).clone();
 
     let this = ctx.this.clone().unwrap();
 
@@ -66,12 +66,12 @@ fn promise_proto_then(
         match s.as_str() {
             "pending" => {
                 if let Value::List(reactions) = &this.get_slot("fulfill reactions") {
-                    reactions.borrow_mut().push(fulfill_reaction);
+                    reactions.borrow_mut().push_back(fulfill_reaction);
                 } else {
                     unreachable!();
                 }
                 if let Value::List(reactions) = &this.get_slot("reject reactions") {
-                    reactions.borrow_mut().push(reject_reaction);
+                    reactions.borrow_mut().push_back(reject_reaction);
                 } else {
                     unreachable!();
                 }
@@ -101,7 +101,7 @@ fn promise_proto_catch(
     let on_rejected = args.get(0).unwrap_or(&Value::Null).clone();
     let this = ctx.this.clone().unwrap();
     let then = get(&this, &ObjectKey::from("then"))?;
-    call(agent, then, this, vec![Value::Null, on_rejected])
+    call(agent, then, this.clone(), vec![Value::Null, on_rejected])
 }
 
 pub fn create_promise_prototype(agent: &Agent, object_prototype: Value) -> Value {

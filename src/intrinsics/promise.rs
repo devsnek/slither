@@ -1,6 +1,6 @@
-use crate::module::{call, get, set, Agent, ExecutionContext};
+use crate::module::{call, set, Agent, ExecutionContext};
 use crate::value::{
-    new_builtin_function, new_custom_object, new_error, new_object, ObjectKey, Value,
+    new_builtin_function, new_custom_object, new_error, ObjectKey, Value,
 };
 
 fn trigger_promise_reactions(
@@ -9,12 +9,17 @@ fn trigger_promise_reactions(
     argument: Value,
 ) -> Result<Value, Value> {
     if let Value::List(list) = &reactions {
-        let list = list.borrow();
-        for reaction in list.iter() {
-            agent.enqueue_job(
-                promise_reaction_job,
-                vec![reaction.clone(), argument.clone()],
-            );
+        loop {
+            let item = list.borrow_mut().pop_front();
+            match item {
+                Some(reaction) => {
+                    agent.enqueue_job(
+                        promise_reaction_job,
+                        vec![reaction.clone(), argument.clone()],
+                    );
+                }
+                None => break,
+            }
         }
     } else {
         unreachable!();
@@ -45,18 +50,8 @@ pub fn promise_reaction_job(agent: &Agent, args: Vec<Value>) {
         match handler_result {
             Ok(v) => call(agent, promise.get_slot("resolve"), Value::Null, vec![v]),
             Err(v) => call(agent, promise.get_slot("reject"), Value::Null, vec![v]),
-        }
-        .unwrap_or(Value::Null);
+        }.unwrap();
     }
-}
-
-fn reject_promise(agent: &Agent, promise: Value, reason: Value) -> Result<Value, Value> {
-    let reactions = promise.get_slot("reject reactions");
-    promise.set_slot("result", reason.clone());
-    promise.set_slot("state", Value::from("rejected"));
-    promise.set_slot("fulfill reactions", Value::Null);
-    promise.set_slot("reject reactions", Value::Null);
-    trigger_promise_reactions(agent, reactions, reason)
 }
 
 fn fulfill_promise(agent: &Agent, promise: Value, value: Value) -> Result<Value, Value> {
@@ -68,6 +63,15 @@ fn fulfill_promise(agent: &Agent, promise: Value, value: Value) -> Result<Value,
     trigger_promise_reactions(agent, reactions, value)
 }
 
+fn reject_promise(agent: &Agent, promise: Value, reason: Value) -> Result<Value, Value> {
+    let reactions = promise.get_slot("reject reactions");
+    promise.set_slot("result", reason.clone());
+    promise.set_slot("state", Value::from("rejected"));
+    promise.set_slot("fulfill reactions", Value::Null);
+    promise.set_slot("reject reactions", Value::Null);
+    trigger_promise_reactions(agent, reactions, reason)
+}
+
 fn promise_resolve_function(
     agent: &Agent,
     ctx: &mut ExecutionContext,
@@ -76,10 +80,10 @@ fn promise_resolve_function(
     let f = ctx.function.clone().unwrap();
 
     let already_resolved = f.get_slot("already resolved");
-    if get(&already_resolved, &ObjectKey::from("resolved"))? == Value::True {
+    if already_resolved.get_slot("resolved") == Value::True {
         return Ok(Value::Null);
     } else {
-        set(&already_resolved, &ObjectKey::from("resolved"), Value::True)?;
+        already_resolved.set_slot("resolved", Value::True);
     }
 
     let promise = f.get_slot("promise");
@@ -103,10 +107,10 @@ fn promise_reject_function(
     let f = ctx.function.clone().unwrap();
 
     let already_resolved = f.get_slot("already resolved");
-    if get(&already_resolved, &ObjectKey::from("resolved"))? == Value::True {
+    if already_resolved.get_slot("resolved") == Value::True {
         return Ok(Value::Null);
     } else {
-        set(&already_resolved, &ObjectKey::from("resolved"), Value::True)?;
+        already_resolved.set_slot("resolved", Value::True);
     }
 
     let promise = f.get_slot("promise");
@@ -126,7 +130,8 @@ fn promise(agent: &Agent, _ctx: &mut ExecutionContext, args: Vec<Value>) -> Resu
     promise.set_slot("fulfill reactions", Value::new_list());
     promise.set_slot("reject reactions", Value::new_list());
 
-    let already_resolved = new_object(Value::Null);
+    let already_resolved = new_custom_object(Value::Null);
+    already_resolved.set_slot("resolved", Value::False);
 
     let resolve = new_builtin_function(agent, promise_resolve_function);
     resolve.set_slot("promise", promise.clone());
