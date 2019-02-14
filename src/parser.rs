@@ -407,8 +407,12 @@ impl<'a> Parser<'a> {
         Ok(Node::StatementList(nodes))
     }
 
-    fn scope(&self) -> ParseScope {
-        *self.scope_stack.last().unwrap()
+    fn scope(&self, scope: ParseScope) -> bool {
+        match scope {
+            ParseScope::TopLevel => self.scope_stack.last().unwrap() == &ParseScope::TopLevel,
+            ParseScope::Block => self.scope_stack.last().unwrap() == &ParseScope::Block,
+            ParseScope::Function => self.scope_stack.contains(&ParseScope::Function),
+        }
     }
 
     fn eat(&mut self, token: Token) -> bool {
@@ -468,7 +472,6 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_statement_list_item(&mut self) -> Result<Node, Error> {
-        let scope = self.scope();
         match self.lexer.peek() {
             None => Err(Error::NormalEOF),
             Some(Token::LeftBrace) => self.parse_block_statement(ParseScope::Block),
@@ -477,7 +480,7 @@ impl<'a> Parser<'a> {
                 self.lexer.next();
                 self.parse_function(false)
             }
-            Some(Token::Return) if scope == ParseScope::Function => {
+            Some(Token::Return) if self.scope(ParseScope::Function) => {
                 self.lexer.next();
                 if self.eat(Token::Semicolon) {
                     Ok(Node::ReturnStatement(Box::new(Node::NullLiteral)))
@@ -544,7 +547,7 @@ impl<'a> Parser<'a> {
                     Ok(Node::IfStatement(Box::new(test), Box::new(consequent)))
                 }
             }
-            Some(Token::Export) if scope == ParseScope::TopLevel => {
+            Some(Token::Export) if self.scope(ParseScope::TopLevel) => {
                 self.lexer.next();
                 let decl = match self.lexer.peek() {
                     Some(Token::Let) | Some(Token::Const) => self.parse_lexical_declaration(),
@@ -556,7 +559,7 @@ impl<'a> Parser<'a> {
                 }?;
                 Ok(Node::ExportDeclaration(Box::new(decl)))
             }
-            Some(Token::Import) if scope == ParseScope::TopLevel => {
+            Some(Token::Import) if self.scope(ParseScope::TopLevel) => {
                 self.lexer.next();
                 match self.lexer.peek() {
                     // import "specifier";
