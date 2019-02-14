@@ -7,7 +7,7 @@ use crate::parser::{Node, Operator, Parser};
 use crate::value::{
     new_array, new_boolean_object, new_builtin_function, new_error, new_function,
     new_number_object, new_object, new_string_object, BuiltinFunctionWrap, ObjectKey, ObjectKind,
-    Value,
+    Value, Symbol,
 };
 use gc::{Gc, GcCell};
 use std::collections::{HashMap, HashSet};
@@ -166,10 +166,24 @@ unsafe impl gc::Trace for ModuleX {
 type Module = Gc<GcCell<ModuleX>>;
 
 fn print(_: &Agent, _ctx: &mut ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
+    let mut output = String::new();
     for arg in args {
-        print!("{:?} ", arg);
+        match &arg {
+            Value::Null => output += " null",
+            Value::True => output += " true",
+            Value::False => output += " false",
+            Value::Number(n) => output += &format!(" {}", n),
+            Value::String(s) => output += &format!(" '{}'", s),
+            Value::Symbol(Symbol(_, _, d)) => if let Some(s) = d {
+                output += &format!(" Symbol({})", s);
+            } else {
+                output += " Symbol()";
+            }
+            Value::Object(_) => output += " {...}",
+            _ => unreachable!(),
+        }
     }
-    print!("\n");
+    println!("{}", output.trim());
     Ok(Value::Null)
 }
 

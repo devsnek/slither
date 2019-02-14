@@ -92,7 +92,7 @@ impl ObjectInfo {
         match self.properties.borrow().get(&property) {
             Some(v) => Ok(v.clone()),
             _ => {
-                if let ObjectKey::Symbol(Symbol(_, true)) = property {
+                if let ObjectKey::Symbol(Symbol(_, true, _)) = property {
                     // don't traverse for private symbol
                     Ok(Value::Null)
                 } else {
@@ -151,7 +151,7 @@ impl ObjectInfo {
             }
             _ => {
                 let mut own = false;
-                if let ObjectKey::Symbol(Symbol(_, true)) = property {
+                if let ObjectKey::Symbol(Symbol(_, true, _)) = property {
                     own = true;
                 }
                 if own || self.properties.borrow().contains_key(&property) {
@@ -180,11 +180,11 @@ impl ObjectInfo {
 
 static SYMBOL_COUNTER: AtomicUsize = AtomicUsize::new(0);
 #[derive(Debug, Clone, Trace, Finalize, Hash, PartialEq, Eq)]
-pub struct Symbol(usize, bool); // id, private
+pub struct Symbol(pub usize, pub bool, pub Option<String>); // id, private
 
 impl Symbol {
-    pub fn new(private: bool) -> Symbol {
-        let s = Symbol(SYMBOL_COUNTER.load(Ordering::Relaxed), private);
+    pub fn new(private: bool, desc: Option<String>) -> Symbol {
+        let s = Symbol(SYMBOL_COUNTER.load(Ordering::Relaxed), private, desc);
         SYMBOL_COUNTER.fetch_add(1, Ordering::Relaxed);
         s
     }
@@ -228,8 +228,8 @@ pub enum Value {
 }
 
 impl Value {
-    pub fn new_symbol() -> Value {
-        Value::Symbol(Symbol::new(false))
+    pub fn new_symbol(desc: Option<String>) -> Value {
+        Value::Symbol(Symbol::new(false, desc))
     }
 
     pub fn new_list() -> Value {
