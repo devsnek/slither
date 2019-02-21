@@ -33,7 +33,7 @@ fn promise_proto_then(
     let mut on_fulfilled = args.get(0).unwrap_or(&Value::Null).clone();
     let mut on_rejected = args.get(1).unwrap_or(&Value::Null).clone();
 
-    let this = ctx.this.clone().unwrap();
+    let this = ctx.environment.borrow().this.clone().unwrap();
 
     let constructor = this.get(&ObjectKey::from("constructor"))?;
 
@@ -100,7 +100,7 @@ fn promise_proto_catch(
     args: Vec<Value>,
 ) -> Result<Value, Value> {
     let on_rejected = args.get(0).unwrap_or(&Value::Null).clone();
-    let this = ctx.this.clone().unwrap();
+    let this = ctx.environment.borrow().this.clone().unwrap();
     let then = this.get(&ObjectKey::from("then"))?;
     then.call(agent, this.clone(), vec![Value::Null, on_rejected])
 }

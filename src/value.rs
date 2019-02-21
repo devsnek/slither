@@ -392,8 +392,10 @@ impl Value {
                             args.len()
                         )));
                     }
-                    let ctx = ExecutionContext::new(env.clone());
-                    ctx.borrow_mut().this = Some(this);
+                    let ctx = ExecutionContext::new(LexicalEnvironment::new(Some(env.clone())));
+                    if !inherits_this {
+                        ctx.borrow().environment.borrow_mut().this = Some(this);
+                    }
                     ctx.borrow_mut().function = Some(self.clone());
                     let mut stack = Vec::new();
                     for arg in args {
@@ -414,7 +416,7 @@ impl Value {
                 ObjectKind::BuiltinFunction(f, _) => {
                     let ctx = ExecutionContext::new(LexicalEnvironment::new(None));
                     let mut ctx = ctx.borrow_mut();
-                    ctx.this = Some(this);
+                    ctx.environment.borrow_mut().this = Some(this);
                     ctx.function = Some(self.clone());
                     f(agent, &ctx, args)
                 }

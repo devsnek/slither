@@ -22,6 +22,7 @@ struct Binding {
 
 #[derive(Trace, Finalize, Debug, PartialEq)]
 pub struct LexicalEnvironment {
+    pub this: Option<Value>,
     bindings: HashMap<String, Binding>,
     parent: Option<Gc<GcCell<LexicalEnvironment>>>,
 }
@@ -30,8 +31,19 @@ impl LexicalEnvironment {
     pub fn new(parent: Option<Gc<GcCell<LexicalEnvironment>>>) -> Gc<GcCell<LexicalEnvironment>> {
         Gc::new(GcCell::new(LexicalEnvironment {
             parent,
+            this: None,
             bindings: HashMap::new(),
         }))
+    }
+
+    fn get_this(&self) -> Result<Value, Value> {
+        match self.this {
+            Some(ref t) => Ok(t.clone()),
+            None => match &self.parent {
+                None => Err(new_error("invalid this")),
+                Some(p) => p.borrow().get_this(),
+            }
+        }
     }
 
     fn create_binding(
@@ -119,7 +131,6 @@ impl LexicalEnvironment {
 
 #[derive(Trace, Finalize, Debug)]
 pub struct ExecutionContext {
-    pub this: Option<Value>,
     pub function: Option<Value>,
     pub environment: Gc<GcCell<LexicalEnvironment>>,
 }
@@ -127,7 +138,6 @@ pub struct ExecutionContext {
 impl ExecutionContext {
     pub fn new(environment: Gc<GcCell<LexicalEnvironment>>) -> Gc<GcCell<ExecutionContext>> {
         Gc::new(GcCell::new(ExecutionContext {
-            this: None,
             function: None,
             environment,
         }))
@@ -309,7 +319,6 @@ pub fn evaluate_at(
             Op::NewFunction => {
                 let argc = get_u8(&mut pc);
                 let inherits_this = get_bool(&mut pc);
-                // let has_name = get_bool(&mut pc);
                 let index = pc + 5; // jmp + i32 = 5
                 let env = LexicalEnvironment::new(match scope.last() {
                     Some(r) => Some(r.borrow().environment.clone()),
@@ -402,13 +411,8 @@ pub fn evaluate_at(
                 stack.pop();
             }
             Op::GetThis => {
-                handle!(match scope.last().unwrap().borrow().this {
-                    Some(ref v) => {
-                        stack.push(v.clone());
-                        Ok(())
-                    }
-                    None => Err(new_error("invalid this")),
-                });
+                let this = handle!(scope.last().unwrap().borrow().environment.borrow().get_this());
+                stack.push(this);
             }
             Op::LexicalDeclaration => {
                 let mutable = get_bool(&mut pc);
@@ -477,13 +481,11 @@ pub fn evaluate_at(
                                     positions.push(pc); // jump back to previous pc
                                 }
                                 // println!("PushContext");
-                                let ctx = ExecutionContext::new(env.clone());
+                                let ctx = ExecutionContext::new(LexicalEnvironment::new(Some(env.clone())));
                                 ctx.borrow_mut().function = Some(callee);
-                                ctx.borrow_mut().this = if inherits_this {
-                                    scope.last().unwrap().borrow().this.clone()
-                                } else {
-                                    Some(this)
-                                };
+                                if !inherits_this {
+                                    ctx.borrow().environment.borrow_mut().this = Some(this);
+                                }
                                 scope.push(ctx);
                                 pc = index; // jump to index of function body
                             } else {

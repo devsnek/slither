@@ -1,5 +1,14 @@
 import { print } from standard:debug;
-import { a, setA } from './a.sl';
+// import { a, setA } from './a.sl';
 
-print('in test');
-print(a);
+const o = {};
+
+o.a = () => {
+  return this;
+};
+
+o.b = function() {
+  return this;
+};
+
+print(o.a());

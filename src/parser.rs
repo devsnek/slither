@@ -560,9 +560,7 @@ impl<'a> Parser<'a> {
             }
             Some(Token::If) => {
                 self.lexer.next();
-                self.expect(Token::LeftParen)?;
                 let test = self.parse_expression()?;
-                self.expect(Token::RightParen)?;
                 let consequent = self.parse_block_statement(ParseScope::Block)?;
                 if self.eat(Token::Else) {
                     let alternative = if self.lexer.peek() == Some(&Token::If) {
@@ -1098,6 +1096,25 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_arrow_function(&mut self, first_arg: Option<Node>, no_args: bool) -> Result<Node, Error> {
+        let mut args = match first_arg {
+            Some(expr) => {
+                if let Node::Identifier(first_arg) = expr {
+                    Ok(vec![first_arg])
+                } else {
+                    Err(Error::UnexpectedToken)
+                }
+            }
+            None => Ok(Vec::new()),
+        }?;
+        if !no_args {
+            args.append(&mut self.parse_identifier_list(Token::RightParen)?);
+        }
+        self.expect(Token::Arrow)?;
+        let body = self.parse_block_statement(ParseScope::Function)?;
+        Ok(Node::ArrowFunctionExpression(args, Box::new(body)))
+    }
+
     fn parse_primary_expression(&mut self) -> Result<Node, Error> {
         let token = self.lexer.next();
         match token {
@@ -1123,22 +1140,20 @@ impl<'a> Parser<'a> {
                 Token::Identifier(v) => Ok(Node::Identifier(v)),
                 Token::Function => self.parse_function(true),
                 Token::LeftParen => {
-                    let expr = self.parse_expression()?;
-                    let mut no_args = false;
-                    if self.eat(Token::Comma) || { no_args = self.eat(Token::RightParen); no_args } { // arrow function
-                        if let Node::Identifier(first_arg) = expr {
-                            let mut args = vec![first_arg];
-                            if !no_args {
-                                args.append(&mut self.parse_identifier_list(Token::RightParen)?);
-                            }
-                            self.expect(Token::Arrow)?;
-                            let body = self.parse_block_statement(ParseScope::Function)?;
-                            Ok(Node::ArrowFunctionExpression(args, Box::new(body)))
-                        } else {
-                            Err(Error::UnexpectedToken)
+                    match self.lexer.peek() {
+                        Some(Token::RightParen) => { // arrow function
+                            self.lexer.next();
+                            self.parse_arrow_function(None, true)
                         }
-                    } else {
-                        Ok(Node::ParenthesizedExpression(Box::new(expr)))
+                        _ => {
+                            let expr = self.parse_expression()?;
+                            let mut no_args = false;
+                            if self.eat(Token::Comma) || { no_args = self.eat(Token::RightParen); no_args } { // arrow function
+                                self.parse_arrow_function(Some(expr), no_args)
+                            } else {
+                                Ok(Node::ParenthesizedExpression(Box::new(expr)))
+                            }
+                        }
                     }
                 }
                 Token::LeftBracket => Ok(Node::ArrayLiteral(
