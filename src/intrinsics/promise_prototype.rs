@@ -1,12 +1,13 @@
+use crate::agent::Agent;
 use crate::intrinsics::promise::promise_reaction_job;
-use crate::module::{call, construct, get, set, Agent, ExecutionContext};
 use crate::value::{
     new_builtin_function, new_custom_object, new_error, new_object, ObjectKey, Value,
 };
+use crate::vm::ExecutionContext;
 
 fn get_capabilities_executor(
     _agent: &Agent,
-    ctx: &mut ExecutionContext,
+    ctx: &ExecutionContext,
     args: Vec<Value>,
 ) -> Result<Value, Value> {
     let f = ctx.function.clone().unwrap();
@@ -26,7 +27,7 @@ fn get_capabilities_executor(
 
 fn promise_proto_then(
     agent: &Agent,
-    ctx: &mut ExecutionContext,
+    ctx: &ExecutionContext,
     args: Vec<Value>,
 ) -> Result<Value, Value> {
     let mut on_fulfilled = args.get(0).unwrap_or(&Value::Null).clone();
@@ -34,13 +35,13 @@ fn promise_proto_then(
 
     let this = ctx.this.clone().unwrap();
 
-    let constructor = get(&this, &ObjectKey::from("constructor"))?;
+    let constructor = this.get(&ObjectKey::from("constructor"))?;
 
     let executor = new_builtin_function(agent, get_capabilities_executor);
     executor.set_slot("resolve", Value::Null);
     executor.set_slot("reject", Value::Null);
 
-    let promise = construct(agent, constructor, vec![executor.clone()])?;
+    let promise = constructor.construct(agent, vec![executor.clone()])?;
     promise.set_slot("resolve", executor.get_slot("resolve"));
     promise.set_slot("reject", executor.get_slot("reject"));
 
@@ -95,26 +96,24 @@ fn promise_proto_then(
 
 fn promise_proto_catch(
     agent: &Agent,
-    ctx: &mut ExecutionContext,
+    ctx: &ExecutionContext,
     args: Vec<Value>,
 ) -> Result<Value, Value> {
     let on_rejected = args.get(0).unwrap_or(&Value::Null).clone();
     let this = ctx.this.clone().unwrap();
-    let then = get(&this, &ObjectKey::from("then"))?;
-    call(agent, then, this.clone(), vec![Value::Null, on_rejected])
+    let then = this.get(&ObjectKey::from("then"))?;
+    then.call(agent, this.clone(), vec![Value::Null, on_rejected])
 }
 
 pub fn create_promise_prototype(agent: &Agent, object_prototype: Value) -> Value {
     let p = new_object(object_prototype);
 
-    set(
-        &p,
+    p.set(
         &ObjectKey::from("then"),
         new_builtin_function(agent, promise_proto_then),
     )
     .expect("unable to set then on promise prototype");
-    set(
-        &p,
+    p.set(
         &ObjectKey::from("catch"),
         new_builtin_function(agent, promise_proto_catch),
     )

@@ -1,4 +1,5 @@
 use num::BigInt;
+use std::collections::HashMap;
 use std::iter::Peekable;
 use std::str::Chars;
 
@@ -54,6 +55,7 @@ enum Token {
     False,
     This,
     Function,
+    Arrow,
     Class,
     New,
     Let,
@@ -66,6 +68,7 @@ enum Token {
     Throw,
     Try,
     Catch,
+    Finally,
     If,
     Else,
     Return,
@@ -84,30 +87,37 @@ pub enum Node {
     FloatLiteral(f64),
     IntegerLiteral(BigInt),
     StringLiteral(String),
-    StatementList(Vec<Node>),
     PropertyInitializer(String, Box<Node>), // key, value
-    ObjectLiteral(Vec<Node>),
+    ObjectLiteral(Vec<Node>),               // initialiers
     ArrayLiteral(Vec<Node>),
     Identifier(String),
-    BlockStatement(Vec<Node>),
+    BlockStatement(Vec<Node>, HashMap<String, bool>), // nodes, declarations
     ReturnStatement(Box<Node>),
     ThrowStatement(Box<Node>),
-    TryStatement(Box<Node>, Box<Node>),               // try, catch
-    IfStatement(Box<Node>, Box<Node>),                // test, consequent
+    IfStatement(Box<Node>, Box<Node>), // test, consequent
     IfElseStatement(Box<Node>, Box<Node>, Box<Node>), // test, consequent, alternative
-    BoundTryStatement(Box<Node>, String, Box<Node>),  // try, binding, catch
+    // TryStatement(Box<Node>, Box<Node>),               // try, catch
+    TryStatement(
+        Box<Node>,
+        Option<String>,
+        Option<Box<Node>>,
+        Option<Box<Node>>,
+    ), // try, binding, catch
     ExpressionStatement(Box<Node>),
     NewExpression(Box<Node>),
     MemberExpression(Box<Node>, String), // base, property
     ComputedMemberExpression(Box<Node>, Box<Node>), // base, property expression
     ThisExpression,
     CallExpression(Box<Node>, Vec<Node>), // callee, arguments
+    TailCallExpression(Box<Node>, Vec<Node>), // callee, arguments
     UnaryExpression(Operator, Box<Node>), // op x
     BinaryExpression(Box<Node>, Operator, Box<Node>), // x op y
     ConditionalExpression(Box<Node>, Box<Node>, Box<Node>), // test, consequent, alternative
     FunctionDeclaration(String, Vec<String>, Box<Node>), // name, args, body
     FunctionExpression(Option<String>, Vec<String>, Box<Node>), // name, args, body
-    LexicalDeclaration(String, Box<Node>, bool), // identifier, initial value, mutable
+    ArrowFunctionExpression(Vec<String>, Box<Node>), // args, body
+    ParenthesizedExpression(Box<Node>), // expr
+    LexicalInitialization(String, Box<Node>), // identifier, initial value
     ImportDeclaration(String),            // specifier
     ImportNamedDeclaration(String, Vec<String>), // specifier, bindings
     ImportDefaultDeclaration(String, String), // specifier, binding
@@ -120,6 +130,7 @@ pub enum Error {
     NormalEOF,
     UnexpectedEOF,
     UnexpectedToken,
+    DuplicateBinding,
 }
 
 struct Lexer<'a> {
@@ -201,6 +212,7 @@ impl<'a> Lexer<'a> {
                             "return" => Token::Return,
                             "try" => Token::Try,
                             "catch" => Token::Catch,
+                            "finally" => Token::Finally,
                             "if" => Token::If,
                             "else" => Token::Else,
                             "new" => Token::New,
@@ -265,6 +277,9 @@ impl<'a> Lexer<'a> {
                         }
                         Some('*') => {
                             loop {
+                                if self.chars.peek() == None {
+                                    return None; // Err(Error::UnexpectedEOF);
+                                }
                                 if let Some('*') = self.chars.next() {
                                     if let Some('/') = self.chars.next() {
                                         break;
@@ -275,6 +290,9 @@ impl<'a> Lexer<'a> {
                         }
                         Some('/') => {
                             loop {
+                                if self.chars.peek() == None {
+                                    return None; // Err(Error::UnexpectedEOF);
+                                }
                                 if let Some('\n') = self.chars.next() {
                                     break;
                                 }
@@ -334,6 +352,10 @@ impl<'a> Lexer<'a> {
                             self.chars.next();
                             Token::Operator(Operator::Equal)
                         }
+                        Some('>') => {
+                            self.chars.next();
+                            Token::Arrow
+                        }
                         _ => Token::Operator(Operator::Assign),
                     }),
                     _ => {
@@ -368,6 +390,7 @@ enum ParseScope {
 pub struct Parser<'a> {
     lexer: Lexer<'a>,
     scope_stack: Vec<ParseScope>,
+    lex_stack: Vec<HashMap<String, bool>>,
 }
 
 macro_rules! binop_production {
@@ -392,19 +415,10 @@ impl<'a> Parser<'a> {
     pub fn parse(code: &'a str) -> Result<Node, Error> {
         let mut parser = Parser {
             lexer: Lexer::new(code),
-            scope_stack: vec![ParseScope::TopLevel],
+            scope_stack: Vec::new(),
+            lex_stack: Vec::new(),
         };
-        let mut nodes = Vec::new();
-        loop {
-            match parser.parse_statement_list_item() {
-                Ok(node) => nodes.push(node),
-                Err(Error::NormalEOF) => break,
-                Err(e) => {
-                    return Err(e);
-                }
-            }
-        }
-        Ok(Node::StatementList(nodes))
+        parser.parse_block_statement(ParseScope::TopLevel)
     }
 
     fn scope(&self, scope: ParseScope) -> bool {
@@ -467,7 +481,14 @@ impl<'a> Parser<'a> {
         Ok(if expression {
             Node::FunctionExpression(name, args, Box::new(body))
         } else {
-            Node::FunctionDeclaration(name.unwrap(), args, Box::new(body))
+            let name = name.unwrap();
+            let scope = self.lex_stack.last_mut().unwrap();
+            if scope.contains_key(&name) {
+                return Err(Error::DuplicateBinding);
+            } else {
+                scope.insert(name.clone(), false);
+            }
+            Node::FunctionDeclaration(name, args, Box::new(body))
         })
     }
 
@@ -485,8 +506,11 @@ impl<'a> Parser<'a> {
                 if self.eat(Token::Semicolon) {
                     Ok(Node::ReturnStatement(Box::new(Node::NullLiteral)))
                 } else {
-                    let expr = self.parse_expression()?;
+                    let mut expr = self.parse_expression()?;
                     self.expect(Token::Semicolon)?;
+                    if let Node::CallExpression(callee, arguments) = expr {
+                        expr = Node::TailCallExpression(callee, arguments);
+                    }
                     Ok(Node::ReturnStatement(Box::new(expr)))
                 }
             }
@@ -498,24 +522,40 @@ impl<'a> Parser<'a> {
             }
             Some(Token::Try) => {
                 self.lexer.next();
-                let try_clause = self.parse_block_statement(ParseScope::Block)?;
-                self.expect(Token::Catch)?;
-                let mut binding = None;
-                if self.eat(Token::LeftParen) {
-                    binding = Some(self.parse_identifier(false)?);
-                    self.expect(Token::RightParen)?;
-                }
-                let catch_clause = self.parse_block_statement(ParseScope::Block)?;
-                match binding {
-                    Some(b) => Ok(Node::BoundTryStatement(
-                        Box::new(try_clause),
-                        b,
-                        Box::new(catch_clause),
-                    )),
-                    None => Ok(Node::TryStatement(
-                        Box::new(try_clause),
-                        Box::new(catch_clause),
-                    )),
+                let try_clause = Box::new(self.parse_block_statement(ParseScope::Block)?);
+                if self.eat(Token::Finally) {
+                    let finally_clause = Box::new(self.parse_block_statement(ParseScope::Block)?);
+                    Ok(Node::TryStatement(
+                        try_clause,
+                        None,
+                        None,
+                        Some(finally_clause),
+                    ))
+                } else {
+                    self.expect(Token::Catch)?;
+                    let mut binding = None;
+                    if self.eat(Token::LeftParen) {
+                        binding = Some(self.parse_identifier(false)?);
+                        self.expect(Token::RightParen)?;
+                    }
+                    let catch_clause = Box::new(self.parse_block_statement(ParseScope::Block)?);
+                    if self.eat(Token::Finally) {
+                        let finally_clause =
+                            Box::new(self.parse_block_statement(ParseScope::Block)?);
+                        Ok(Node::TryStatement(
+                            try_clause,
+                            binding,
+                            Some(catch_clause),
+                            Some(finally_clause),
+                        ))
+                    } else {
+                        Ok(Node::TryStatement(
+                            try_clause,
+                            binding,
+                            Some(catch_clause),
+                            None,
+                        ))
+                    }
                 }
             }
             Some(Token::If) => {
@@ -525,7 +565,11 @@ impl<'a> Parser<'a> {
                 self.expect(Token::RightParen)?;
                 let consequent = self.parse_block_statement(ParseScope::Block)?;
                 if self.eat(Token::Else) {
-                    let alternative = self.parse_block_statement(ParseScope::Block)?;
+                    let alternative = if self.lexer.peek() == Some(&Token::If) {
+                        self.parse_statement_list_item()?
+                    } else {
+                        self.parse_block_statement(ParseScope::Block)?
+                    };
                     if let Ok(n) =
                         self.fold_conditional(test.clone(), consequent.clone(), alternative.clone())
                     {
@@ -620,36 +664,46 @@ impl<'a> Parser<'a> {
                 self.expect(Token::Operator(Operator::Assign))?;
                 let value = self.parse_assignment_expression()?;
                 self.expect(Token::Semicolon)?;
-                Ok(Node::LexicalDeclaration(
-                    name,
-                    Box::new(value),
-                    match decl {
-                        Token::Let => true,
-                        Token::Const => false,
-                        _ => unreachable!(),
-                    },
-                ))
+                let scope = self.lex_stack.last_mut().unwrap();
+                if scope.contains_key(&name) {
+                    return Err(Error::DuplicateBinding);
+                } else {
+                    scope.insert(
+                        name.clone(),
+                        match decl {
+                            Token::Let => true,
+                            Token::Const => false,
+                            _ => unreachable!(),
+                        },
+                    );
+                }
+                Ok(Node::LexicalInitialization(name, Box::new(value)))
             }
             _ => Err(Error::UnexpectedToken),
         }
     }
 
     fn parse_block_statement(&mut self, scope: ParseScope) -> Result<Node, Error> {
-        self.expect(Token::LeftBrace)?;
+        if scope != ParseScope::TopLevel {
+            self.expect(Token::LeftBrace)?;
+        }
         self.scope_stack.push(scope);
+        self.lex_stack.push(HashMap::new());
         let mut nodes = Vec::new();
         while !self.eat(Token::RightBrace) {
             match self.parse_statement_list_item() {
                 Ok(node) => nodes.push(node),
-                Err(Error::NormalEOF) => break,
+                Err(Error::NormalEOF) if scope == ParseScope::TopLevel => break,
                 Err(e) => {
                     self.scope_stack.pop();
+                    self.lex_stack.pop();
                     return Err(e);
                 }
             }
         }
         self.scope_stack.pop();
-        Ok(Node::BlockStatement(nodes))
+        let declarations = self.lex_stack.pop().unwrap();
+        Ok(Node::BlockStatement(nodes, declarations))
     }
 
     fn parse_expression_statement(&mut self) -> Result<Node, Error> {
@@ -673,7 +727,6 @@ impl<'a> Parser<'a> {
             Some(Token::This) if allow_keyword => Ok("this".to_string()),
             Some(Token::Class) if allow_keyword => Ok("class".to_string()),
             /*
-            "class" => Token::Class,
             "function" => Token::Function,
             "let" => Token::Let,
             "const" => Token::Const,
@@ -681,6 +734,7 @@ impl<'a> Parser<'a> {
             "return" => Token::Return,
             "try" => Token::Try,
             "catch" => Token::Catch,
+            "finally" => Token::Finally,
             "if" => Token::If,
             "else" => Token::Else,
             "new" => Token::New,
@@ -1068,6 +1122,25 @@ impl<'a> Parser<'a> {
                 Token::IntegerLiteral(v) => Ok(Node::IntegerLiteral(v)),
                 Token::Identifier(v) => Ok(Node::Identifier(v)),
                 Token::Function => self.parse_function(true),
+                Token::LeftParen => {
+                    let expr = self.parse_expression()?;
+                    let mut no_args = false;
+                    if self.eat(Token::Comma) || { no_args = self.eat(Token::RightParen); no_args } { // arrow function
+                        if let Node::Identifier(first_arg) = expr {
+                            let mut args = vec![first_arg];
+                            if !no_args {
+                                args.append(&mut self.parse_identifier_list(Token::RightParen)?);
+                            }
+                            self.expect(Token::Arrow)?;
+                            let body = self.parse_block_statement(ParseScope::Function)?;
+                            Ok(Node::ArrowFunctionExpression(args, Box::new(body)))
+                        } else {
+                            Err(Error::UnexpectedToken)
+                        }
+                    } else {
+                        Ok(Node::ParenthesizedExpression(Box::new(expr)))
+                    }
+                }
                 Token::LeftBracket => Ok(Node::ArrayLiteral(
                     self.parse_expression_list(Token::RightBracket)?,
                 )),

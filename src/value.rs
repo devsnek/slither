@@ -1,9 +1,9 @@
-use crate::module::{Agent, ExecutionContext, LexicalEnvironment};
-use crate::parser::Node;
+use crate::agent::Agent;
+use crate::vm::{evaluate_at, Compiled, ExecutionContext, LexicalEnvironment};
 use gc::{Gc, GcCell};
 use num::BigInt;
 use std::collections::{HashMap, VecDeque};
-pub use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub fn new_error(message: &str) -> Value {
     let mut m = HashMap::new();
@@ -18,67 +18,90 @@ pub fn new_error(message: &str) -> Value {
     }))
 }
 
-type BuiltinFunction = fn(&Agent, &mut ExecutionContext, Vec<Value>) -> Result<Value, Value>;
+type BuiltinFunction = fn(&Agent, &ExecutionContext, Vec<Value>) -> Result<Value, Value>;
+
 #[derive(Finalize)]
-pub struct BuiltinFunctionWrap(pub BuiltinFunction);
-
-impl std::fmt::Debug for BuiltinFunctionWrap {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(fmt, "builtin function")
-    }
-}
-
-#[derive(Finalize, Debug)]
 pub enum ObjectKind {
     Ordinary,
     Array,
     Boolean(bool),
     String(String),
     Float(f64),
-    Function(Vec<String>, Box<Node>, Gc<GcCell<LexicalEnvironment>>), // args, body, parent_env
-    Custom(Gc<GcCell<HashMap<String, Value>>>),                       // internal slots
-    BuiltinFunction(BuiltinFunctionWrap, Gc<GcCell<HashMap<String, Value>>>), // fn, internal slots
+    Integer(BigInt),
+    Custom(Gc<GcCell<HashMap<String, Value>>>), // internal slots
+    CompiledFunction(u8, usize, *const Compiled, bool, Gc<GcCell<LexicalEnvironment>>), // paramc, index, compiled, inherits this, env
+    BuiltinFunction(BuiltinFunction, Gc<GcCell<HashMap<String, Value>>>),
+}
+
+impl std::fmt::Debug for ObjectKind {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let r = match self {
+            ObjectKind::Ordinary => "Ordinary".to_string(),
+            ObjectKind::Array => "Array".to_string(),
+            ObjectKind::Boolean(b) => format!("Boolean({})", b),
+            ObjectKind::String(s) => format!("String({})", s),
+            ObjectKind::Float(f) => format!("Float({})", f),
+            ObjectKind::Integer(i) => format!("Integer({})", i),
+            ObjectKind::Custom(..) => "Custom".to_string(),
+            ObjectKind::CompiledFunction(_, index, ..) => format!("CompiledFunction @ {}", index),
+            ObjectKind::BuiltinFunction(f, ..) => format!("BuiltinFunction @ {:p}", f),
+        };
+        write!(fmt, "{}", r)
+    }
+}
+
+macro_rules! custom_trace {
+    ($this:ident, $body:expr) => {
+        #[inline]
+        unsafe fn trace(&self) {
+            #[inline]
+            unsafe fn mark<T: gc::Trace>(it: &T) {
+                gc::Trace::trace(it);
+            }
+            let $this = self;
+            $body
+        }
+        #[inline]
+        unsafe fn root(&self) {
+            #[inline]
+            unsafe fn mark<T: gc::Trace>(it: &T) {
+                gc::Trace::root(it);
+            }
+            let $this = self;
+            $body
+        }
+        #[inline]
+        unsafe fn unroot(&self) {
+            #[inline]
+            unsafe fn mark<T: gc::Trace>(it: &T) {
+                gc::Trace::unroot(it);
+            }
+            let $this = self;
+            $body
+        }
+        #[inline]
+        fn finalize_glue(&self) {
+            gc::Finalize::finalize(self);
+            #[inline]
+            fn mark<T: gc::Trace>(it: &T) {
+                gc::Trace::finalize_glue(it);
+            }
+            let $this = self;
+            $body
+        }
+    }
 }
 
 // empty impl
 unsafe impl gc::Trace for ObjectKind {
-    #[inline]
-    unsafe fn trace(&self) {
-        match self {
-            ObjectKind::Function(_, _, v) => gc::Trace::trace(v),
-            ObjectKind::Custom(v) => gc::Trace::trace(v),
-            ObjectKind::BuiltinFunction(_, v) => gc::Trace::trace(v),
+    custom_trace!(this, {
+        match this {
+            ObjectKind::CompiledFunction(_, _, _, _, env) => mark(env),
+            ObjectKind::Custom(slots) => mark(slots),
+            ObjectKind::BuiltinFunction(_, slots) => mark(slots),
             _ => {}
         }
-    }
-    #[inline]
-    unsafe fn root(&self) {
-        match self {
-            ObjectKind::Function(_, _, v) => gc::Trace::root(v),
-            ObjectKind::Custom(v) => gc::Trace::root(v),
-            ObjectKind::BuiltinFunction(_, v) => gc::Trace::root(v),
-            _ => {}
-        }
-    }
-    #[inline]
-    unsafe fn unroot(&self) {
-        match self {
-            ObjectKind::Function(_, _, v) => gc::Trace::unroot(v),
-            ObjectKind::Custom(v) => gc::Trace::unroot(v),
-            ObjectKind::BuiltinFunction(_, v) => gc::Trace::unroot(v),
-            _ => {}
-        }
-    }
-    #[inline]
-    fn finalize_glue(&self) {
-        gc::Trace::finalize(self);
-        match self {
-            ObjectKind::Function(_, _, v) => gc::Trace::finalize_glue(v),
-            ObjectKind::Custom(v) => gc::Trace::finalize_glue(v),
-            ObjectKind::BuiltinFunction(_, v) => gc::Trace::finalize_glue(v),
-            _ => {}
-        }
-    }
+    });
 }
 
 #[derive(Trace, Finalize, Debug)]
@@ -125,7 +148,7 @@ impl ObjectInfo {
                         Value::Null => BigInt::from(0),
                         _ => unreachable!(),
                     };
-                    if int_len > old_len {
+                    if int_len >= old_len {
                         self.properties
                             .borrow_mut()
                             .insert(property, Value::Integer(int_len.clone()));
@@ -209,6 +232,12 @@ impl From<u32> for ObjectKey {
     }
 }
 
+impl From<i32> for ObjectKey {
+    fn from(n: i32) -> Self {
+        ObjectKey::String(n.to_string())
+    }
+}
+
 impl From<BigInt> for ObjectKey {
     fn from(n: BigInt) -> Self {
         ObjectKey::String(n.to_string())
@@ -225,50 +254,9 @@ pub enum Value {
     Integer(BigInt),
     Symbol(Symbol),
     Object(Gc<ObjectInfo>),
-    ReturnCompletion(Box<Value>),
     List(Gc<GcCell<VecDeque<Value>>>),
-}
-
-macro_rules! custom_trace {
-    ($this:ident, $body:expr) => {
-        #[inline]
-        unsafe fn trace(&self) {
-            #[inline]
-            unsafe fn mark<T: gc::Trace>(it: &T) {
-                gc::Trace::trace(it);
-            }
-            let $this = self;
-            $body
-        }
-        #[inline]
-        unsafe fn root(&self) {
-            #[inline]
-            unsafe fn mark<T: gc::Trace>(it: &T) {
-                gc::Trace::root(it);
-            }
-            let $this = self;
-            $body
-        }
-        #[inline]
-        unsafe fn unroot(&self) {
-            #[inline]
-            unsafe fn mark<T: gc::Trace>(it: &T) {
-                gc::Trace::unroot(it);
-            }
-            let $this = self;
-            $body
-        }
-        #[inline]
-        fn finalize_glue(&self) {
-            gc::Finalize::finalize(self);
-            #[inline]
-            fn mark<T: gc::Trace>(it: &T) {
-                gc::Trace::finalize_glue(it);
-            }
-            let $this = self;
-            $body
-        }
-    }
+    EnvironmentReference(Gc<GcCell<LexicalEnvironment>>, String),
+    ValueReference(Box<Value>, ObjectKey),
 }
 
 unsafe impl gc::Trace for Value {
@@ -282,8 +270,9 @@ unsafe impl gc::Trace for Value {
             | Value::Integer(_)
             | Value::Symbol(_) => {}
             Value::Object(o) => mark(o),
-            Value::ReturnCompletion(b) => mark(b),
             Value::List(list) => mark(list),
+            Value::EnvironmentReference(env, ..) => mark(env),
+            Value::ValueReference(v, ..) => mark(v),
         }
     });
 }
@@ -304,7 +293,7 @@ impl Value {
             Value::Integer(_) => "integer",
             Value::String(_) => "string",
             Value::Object(o) => match o.kind {
-                ObjectKind::Function(_, _, _) | ObjectKind::BuiltinFunction(_, _) => "function",
+                ObjectKind::CompiledFunction(..) | ObjectKind::BuiltinFunction(..) => "function",
                 _ => "object",
             },
             _ => unreachable!(),
@@ -329,7 +318,21 @@ impl Value {
             Value::Symbol(s) => Ok(ObjectKey::Symbol(s.clone())),
             Value::String(s) => Ok(ObjectKey::String(s.clone())),
             Value::Float(n) => Ok(ObjectKey::String(n.to_string())),
+            Value::Integer(n) => Ok(ObjectKey::String(n.to_string())),
             _ => Err(new_error("cannot convert to object key")),
+        }
+    }
+
+    pub fn to_object(&self, a: &Agent) -> Result<Value, Value> {
+        match self {
+            Value::Null => Err(new_error("cannot convert null to object")),
+            Value::True => Ok(new_boolean_object(a, true)),
+            Value::False => Ok(new_boolean_object(a, false)),
+            Value::Object(_) => Ok(self.clone()),
+            Value::Float(n) => Ok(new_float_object(a, *n)),
+            Value::Integer(i) => Ok(new_integer_object(a, i.clone())),
+            Value::String(s) => Ok(new_string_object(a, s.clone())),
+            _ => unreachable!(),
         }
     }
 
@@ -359,6 +362,90 @@ impl Value {
             }
         } else {
             panic!()
+        }
+    }
+
+    pub fn set(&self, property: &ObjectKey, value: Value) -> Result<Value, Value> {
+        match self {
+            Value::Object(o) => o.set(property.clone(), value, o.clone()),
+            _ => Err(new_error("base must be an object")),
+        }
+    }
+
+    pub fn get(&self, property: &ObjectKey) -> Result<Value, Value> {
+        match self {
+            Value::Object(o) => o.get(property.clone()),
+            _ => Err(new_error("base must be an object")),
+        }
+    }
+
+    pub fn call(&self, agent: &Agent, this: Value, args: Vec<Value>) -> Result<Value, Value> {
+        match self {
+            Value::Object(o) => match &o.kind {
+                ObjectKind::CompiledFunction(paramc, index, compiled, inherits_this, env) => {
+                    let paramc = *paramc;
+                    let index = *index;
+                    if args.len() as u8 != paramc {
+                        return Err(new_error(&format!(
+                            "expected {} args but got {}",
+                            paramc,
+                            args.len()
+                        )));
+                    }
+                    let ctx = ExecutionContext::new(env.clone());
+                    ctx.borrow_mut().this = Some(this);
+                    ctx.borrow_mut().function = Some(self.clone());
+                    let mut stack = Vec::new();
+                    for arg in args {
+                        stack.push(arg);
+                    }
+                    unsafe {
+                        let compiled = &**compiled;
+                        Ok(evaluate_at(
+                            agent,
+                            compiled,
+                            index,
+                            &mut stack,
+                            &mut vec![ctx],
+                            &mut vec![compiled.code.len()],
+                        )?.unwrap_or(Value::Null))
+                    }
+                }
+                ObjectKind::BuiltinFunction(f, _) => {
+                    let ctx = ExecutionContext::new(LexicalEnvironment::new(None));
+                    let mut ctx = ctx.borrow_mut();
+                    ctx.this = Some(this);
+                    ctx.function = Some(self.clone());
+                    f(agent, &ctx, args)
+                }
+                _ => Err(new_error("not a function")),
+            },
+            _ => Err(new_error("not a function")),
+        }
+        // Err(new_error("unimplemented"))
+    }
+
+    pub fn construct(&self, agent: &Agent, args: Vec<Value>) -> Result<Value, Value> {
+        match self {
+            Value::Object(o) => {
+                let mut prototype = o.get(ObjectKey::from("prototype"))?;
+                if prototype.type_of() != "object" {
+                    prototype = agent.intrinsics.object_prototype.clone();
+                }
+                let this = new_object(prototype);
+                match &o.kind {
+                    ObjectKind::CompiledFunction(..) | ObjectKind::BuiltinFunction(..) => {
+                        let r = self.call(agent, this.clone(), args)?;
+                        if r.type_of() == "object" {
+                            Ok(r)
+                        } else {
+                            Ok(this)
+                        }
+                    }
+                    _ => Err(new_error("not a function")),
+                }
+            }
+            _ => Err(new_error("not a function")),
         }
     }
 }
@@ -404,6 +491,10 @@ impl PartialEq for Value {
                 Value::Float(vn) => n == vn,
                 _ => false,
             },
+            Value::Integer(n) => match &other {
+                Value::Integer(vn) => n == vn,
+                _ => false,
+            },
             Value::Object(o) => match &other {
                 Value::Object(vo) => ref_eq(&*o.properties.borrow(), &*vo.properties.borrow()),
                 _ => false,
@@ -427,6 +518,14 @@ pub fn new_object(proto: Value) -> Value {
     }))
 }
 
+pub fn new_array(agent: &Agent) -> Value {
+    Value::Object(Gc::new(ObjectInfo {
+        kind: ObjectKind::Array,
+        properties: GcCell::new(HashMap::new()),
+        prototype: agent.intrinsics.array_prototype.clone(),
+    }))
+}
+
 pub fn new_custom_object(proto: Value) -> Value {
     Value::Object(Gc::new(ObjectInfo {
         kind: ObjectKind::Custom(Gc::new(GcCell::new(HashMap::new()))),
@@ -435,11 +534,26 @@ pub fn new_custom_object(proto: Value) -> Value {
     }))
 }
 
-pub fn new_array(agent: &Agent) -> Value {
+pub fn new_compiled_function(
+    agent: &Agent,
+    argc: u8,
+    pc_index: usize,
+    compiled: *const Compiled,
+    inherits_this: bool,
+    env: Gc<GcCell<LexicalEnvironment>>,
+) -> Value {
     Value::Object(Gc::new(ObjectInfo {
-        kind: ObjectKind::Array,
+        kind: ObjectKind::CompiledFunction(argc, pc_index, compiled, inherits_this, env),
         properties: GcCell::new(HashMap::new()),
-        prototype: agent.intrinsics.array_prototype.clone(),
+        prototype: agent.intrinsics.function_prototype.clone(),
+    }))
+}
+
+pub fn new_builtin_function(agent: &Agent, f: BuiltinFunction) -> Value {
+    Value::Object(Gc::new(ObjectInfo {
+        kind: ObjectKind::BuiltinFunction(f, Gc::new(GcCell::new(HashMap::new()))),
+        properties: GcCell::new(HashMap::new()),
+        prototype: agent.intrinsics.function_prototype.clone(),
     }))
 }
 
@@ -467,26 +581,10 @@ pub fn new_float_object(agent: &Agent, v: f64) -> Value {
     }))
 }
 
-pub fn new_function(
-    agent: &Agent,
-    args: Vec<String>,
-    body: Box<Node>,
-    env: Gc<GcCell<LexicalEnvironment>>,
-) -> Value {
+pub fn new_integer_object(agent: &Agent, v: BigInt) -> Value {
     Value::Object(Gc::new(ObjectInfo {
-        kind: ObjectKind::Function(args, body, env),
+        kind: ObjectKind::Integer(v),
         properties: GcCell::new(HashMap::new()),
-        prototype: agent.intrinsics.function_prototype.clone(),
-    }))
-}
-
-pub fn new_builtin_function(agent: &Agent, bfn: BuiltinFunction) -> Value {
-    Value::Object(Gc::new(ObjectInfo {
-        kind: ObjectKind::BuiltinFunction(
-            BuiltinFunctionWrap(bfn),
-            Gc::new(GcCell::new(HashMap::new())),
-        ),
-        properties: GcCell::new(HashMap::new()),
-        prototype: agent.intrinsics.function_prototype.clone(),
+        prototype: agent.intrinsics.float_prototype.clone(),
     }))
 }

@@ -1,5 +1,6 @@
-use crate::module::{call, set, Agent, ExecutionContext};
+use crate::agent::Agent;
 use crate::value::{new_builtin_function, new_custom_object, new_error, ObjectKey, Value};
+use crate::vm::ExecutionContext;
 
 fn trigger_promise_reactions(
     agent: &Agent,
@@ -41,13 +42,15 @@ pub fn promise_reaction_job(agent: &Agent, args: Vec<Value>) {
             handler_result = Err(argument);
         }
     } else {
-        handler_result = call(agent, handler, Value::Null, vec![argument]);
+        handler_result = handler.call(agent, Value::Null, vec![argument]);
     }
 
     if promise != Value::Null {
         match handler_result {
-            Ok(v) => call(agent, promise.get_slot("resolve"), Value::Null, vec![v]),
-            Err(v) => call(agent, promise.get_slot("reject"), Value::Null, vec![v]),
+            Ok(v) => promise
+                .get_slot("resolve")
+                .call(agent, Value::Null, vec![v]),
+            Err(v) => promise.get_slot("reject").call(agent, Value::Null, vec![v]),
         }
         .unwrap();
     }
@@ -73,7 +76,7 @@ fn reject_promise(agent: &Agent, promise: Value, reason: Value) -> Result<Value,
 
 fn promise_resolve_function(
     agent: &Agent,
-    ctx: &mut ExecutionContext,
+    ctx: &ExecutionContext,
     args: Vec<Value>,
 ) -> Result<Value, Value> {
     let f = ctx.function.clone().unwrap();
@@ -100,7 +103,7 @@ fn promise_resolve_function(
 
 fn promise_reject_function(
     agent: &Agent,
-    ctx: &mut ExecutionContext,
+    ctx: &ExecutionContext,
     args: Vec<Value>,
 ) -> Result<Value, Value> {
     let f = ctx.function.clone().unwrap();
@@ -117,7 +120,7 @@ fn promise_reject_function(
     reject_promise(agent, promise, resolution)
 }
 
-fn promise(agent: &Agent, _ctx: &mut ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
+fn promise(agent: &Agent, _ctx: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
     let executor = args[0].clone();
 
     if executor.type_of() != "function" {
@@ -140,10 +143,10 @@ fn promise(agent: &Agent, _ctx: &mut ExecutionContext, args: Vec<Value>) -> Resu
     reject.set_slot("promise", promise.clone());
     reject.set_slot("already resolved", already_resolved);
 
-    let result = call(agent, executor, Value::Null, vec![resolve, reject.clone()]);
+    let result = executor.call(agent, Value::Null, vec![resolve, reject.clone()]);
 
     if let Err(e) = result {
-        call(agent, reject, Value::Null, vec![e])?;
+        reject.call(agent, Value::Null, vec![e])?;
     }
 
     Ok(promise)
@@ -152,8 +155,11 @@ fn promise(agent: &Agent, _ctx: &mut ExecutionContext, args: Vec<Value>) -> Resu
 pub fn create_promise(agent: &Agent, prototype: Value) -> Value {
     let p = new_builtin_function(agent, promise);
 
-    set(&p, &ObjectKey::from("prototype"), prototype.clone()).unwrap();
-    set(&prototype, &ObjectKey::from("constructor"), p.clone()).unwrap();
+    p.set(&ObjectKey::from("prototype"), prototype.clone())
+        .unwrap();
+    prototype
+        .set(&ObjectKey::from("constructor"), p.clone())
+        .unwrap();
 
     p
 }
