@@ -246,6 +246,7 @@ impl From<BigInt> for ObjectKey {
 
 #[derive(Debug, Clone, Finalize)]
 pub enum Value {
+    Empty, // used to replace default params
     Null,
     True,
     False,
@@ -262,7 +263,8 @@ pub enum Value {
 unsafe impl gc::Trace for Value {
     custom_trace!(this, {
         match this {
-            Value::Null
+            Value::Empty
+            | Value::Null
             | Value::True
             | Value::False
             | Value::String(_)
@@ -385,21 +387,14 @@ impl Value {
                 ObjectKind::CompiledFunction(paramc, index, compiled, inherits_this, env) => {
                     let paramc = *paramc;
                     let index = *index;
-                    if args.len() as u8 != paramc {
-                        return Err(new_error(&format!(
-                            "expected {} args but got {}",
-                            paramc,
-                            args.len()
-                        )));
-                    }
                     let ctx = ExecutionContext::new(LexicalEnvironment::new(Some(env.clone())));
                     if !inherits_this {
                         ctx.borrow().environment.borrow_mut().this = Some(this);
                     }
                     ctx.borrow_mut().function = Some(self.clone());
                     let mut stack = Vec::new();
-                    for arg in args {
-                        stack.push(arg);
+                    for i in (0..paramc).rev() {
+                        stack.push(args.get(i as usize).unwrap_or(&Value::Empty).clone());
                     }
                     unsafe {
                         let compiled = &**compiled;
@@ -473,6 +468,10 @@ impl PartialEq for Value {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         match self {
+            Value::Empty => match other {
+                Value::Empty => true,
+                _ => false,
+            }
             Value::Null => match other {
                 Value::Null => true,
                 _ => false,

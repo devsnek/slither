@@ -40,6 +40,7 @@ pub enum Op {
     JumpIfFalse,
     Call,
     TailCall,
+    InitReplace,
     New,
     NewWithArgs,
     Return,
@@ -372,7 +373,7 @@ impl Compiler {
     fn compile_object_literal(&mut self, inits: &[Node]) -> Result<(), Error> {
         self.push_op(Op::NewObject);
         for init in inits {
-            if let Node::PropertyInitializer(key, expr) = init {
+            if let Node::Initializer(key, expr) = init {
                 self.compile(expr)?;
                 self.push_op(Op::SetLastObjectProperty);
                 let id = self.string_id(key);
@@ -398,7 +399,7 @@ impl Compiler {
     fn compile_function_declaration(
         &mut self,
         name: &str,
-        args: &[String],
+        args: &[Node],
         body: &Node,
     ) -> Result<(), Error> {
         self.compile_function(Some(name), args, body, false)?;
@@ -411,7 +412,7 @@ impl Compiler {
     fn compile_function_expression(
         &mut self,
         name: &Option<String>,
-        args: &[String],
+        args: &[Node],
         body: &Node,
         inherits_this: bool,
     ) -> Result<(), Error> {
@@ -429,7 +430,7 @@ impl Compiler {
     fn compile_function(
         &mut self,
         _name: Option<&str>,
-        args: &[String],
+        args: &[Node],
         body: &Node,
         inherits_this: bool,
     ) -> Result<(), Error> {
@@ -446,11 +447,32 @@ impl Compiler {
         // self.push_op(Op::PushContext);
         self.push_op(Op::PushScope); // holds variables for individual call
 
-        for name in args.iter().rev() {
-            self.create_lexical_declaration(name, false)?;
-            self.push_op(Op::LexicalInitialization);
-            let id = self.string_id(name);
-            self.push_i32(id);
+        for node in args.iter().rev() {
+            match node {
+                Node::Identifier(name) => {
+                    label!(set);
+                    self.create_lexical_declaration(name, false)?;
+                    self.push_op(Op::InitReplace);
+                    jump!(self, set);
+                    self.push_op(Op::PushNull);
+                    mark!(self, set);
+                    self.push_op(Op::LexicalInitialization);
+                    let id = self.string_id(name);
+                    self.push_i32(id);
+                }
+                Node::Initializer(name, init) => {
+                    label!(set);
+                    self.create_lexical_declaration(name, false)?;
+                    self.push_op(Op::InitReplace);
+                    jump!(self, set);
+                    self.compile(init)?;
+                    mark!(self, set);
+                    self.push_op(Op::LexicalInitialization);
+                    let id = self.string_id(name);
+                    self.push_i32(id);
+                }
+                _ => unreachable!(),
+            }
         }
 
         if let Node::BlockStatement(nodes, declarations) = body {

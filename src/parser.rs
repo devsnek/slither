@@ -87,7 +87,7 @@ pub enum Node {
     FloatLiteral(f64),
     IntegerLiteral(BigInt),
     StringLiteral(String),
-    PropertyInitializer(String, Box<Node>), // key, value
+    Initializer(String, Box<Node>), // Name, value
     ObjectLiteral(Vec<Node>),               // initialiers
     ArrayLiteral(Vec<Node>),
     Identifier(String),
@@ -113,9 +113,9 @@ pub enum Node {
     UnaryExpression(Operator, Box<Node>), // op x
     BinaryExpression(Box<Node>, Operator, Box<Node>), // x op y
     ConditionalExpression(Box<Node>, Box<Node>, Box<Node>), // test, consequent, alternative
-    FunctionDeclaration(String, Vec<String>, Box<Node>), // name, args, body
-    FunctionExpression(Option<String>, Vec<String>, Box<Node>), // name, args, body
-    ArrowFunctionExpression(Vec<String>, Box<Node>), // args, body
+    FunctionDeclaration(String, Vec<Node>, Box<Node>), // name, args, body
+    FunctionExpression(Option<String>, Vec<Node>, Box<Node>), // name, args, body
+    ArrowFunctionExpression(Vec<Node>, Box<Node>), // args, body
     ParenthesizedExpression(Box<Node>), // expr
     LexicalInitialization(String, Box<Node>), // identifier, initial value
     ImportDeclaration(String),            // specifier
@@ -448,7 +448,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_identifier_list(&mut self, close: Token) -> Result<Vec<String>, Error> {
+    fn parse_identifier_list(&mut self, close: Token, initializers: bool) -> Result<Vec<Node>, Error> {
         let mut identifiers = Vec::new();
         let mut first = true;
         while !self.eat(close.clone()) {
@@ -460,7 +460,14 @@ impl<'a> Parser<'a> {
                     break;
                 }
             }
-            identifiers.push(self.parse_identifier(false)?);
+            let ident = self.parse_identifier(false)?;
+            if self.lexer.peek() == Some(&Token::Operator(Operator::Assign)) {
+                self.lexer.next();
+                let init = self.parse_expression()?;
+                identifiers.push(Node::Initializer(ident, Box::new(init)));
+            } else {
+                identifiers.push(Node::Identifier(ident));
+            }
         }
         Ok(identifiers)
     }
@@ -476,7 +483,7 @@ impl<'a> Parser<'a> {
             Some(self.parse_identifier(false)?)
         };
         self.expect(Token::LeftParen)?;
-        let args = self.parse_identifier_list(Token::RightParen)?;
+        let args = self.parse_identifier_list(Token::RightParen, true)?;
         let body = self.parse_block_statement(ParseScope::Function)?;
         Ok(if expression {
             Node::FunctionExpression(name, args, Box::new(body))
@@ -534,9 +541,8 @@ impl<'a> Parser<'a> {
                 } else {
                     self.expect(Token::Catch)?;
                     let mut binding = None;
-                    if self.eat(Token::LeftParen) {
+                    if let Some(Token::Identifier(..)) = self.lexer.peek() {
                         binding = Some(self.parse_identifier(false)?);
-                        self.expect(Token::RightParen)?;
                     }
                     let catch_clause = Box::new(self.parse_block_statement(ParseScope::Block)?);
                     if self.eat(Token::Finally) {
@@ -616,7 +622,11 @@ impl<'a> Parser<'a> {
                     // import { bindings } from "specifier";
                     Some(Token::LeftBrace) => {
                         self.lexer.next();
-                        let bindings = self.parse_identifier_list(Token::RightBrace)?;
+                        let bindings = self.parse_identifier_list(Token::RightBrace, false)?
+                            .iter().map(|n| match n {
+                                Node::Identifier(n) => n.to_string(),
+                                _ => unreachable!(),
+                            }).collect();
                         self.expect(Token::From)?;
                         match self.lexer.next() {
                             Some(Token::StringLiteral(s)) => {
@@ -1099,8 +1109,8 @@ impl<'a> Parser<'a> {
     fn parse_arrow_function(&mut self, first_arg: Option<Node>, no_args: bool) -> Result<Node, Error> {
         let mut args = match first_arg {
             Some(expr) => {
-                if let Node::Identifier(first_arg) = expr {
-                    Ok(vec![first_arg])
+                if let Node::Identifier(..) = expr {
+                    Ok(vec![expr])
                 } else {
                     Err(Error::UnexpectedToken)
                 }
@@ -1108,7 +1118,7 @@ impl<'a> Parser<'a> {
             None => Ok(Vec::new()),
         }?;
         if !no_args {
-            args.append(&mut self.parse_identifier_list(Token::RightParen)?);
+            args.append(&mut self.parse_identifier_list(Token::RightParen, true)?);
         }
         self.expect(Token::Arrow)?;
         let body = self.parse_block_statement(ParseScope::Function)?;
@@ -1178,7 +1188,7 @@ impl<'a> Parser<'a> {
                         } else {
                             init = self.parse_function(true)?
                         }
-                        fields.push(Node::PropertyInitializer(name, Box::new(init)));
+                        fields.push(Node::Initializer(name, Box::new(init)));
                     }
                     Ok(Node::ObjectLiteral(fields))
                 }

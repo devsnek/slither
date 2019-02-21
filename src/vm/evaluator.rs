@@ -469,11 +469,16 @@ pub fn evaluate_at(
                                 let paramc = *paramc;
                                 let index = *index;
                                 let inherits_this = *inherits_this;
-                                if argc != paramc {
-                                    handle!(Err(new_error(&format!(
-                                        "expected {} args but got {}",
-                                        paramc, argc
-                                    ))));
+                                if argc > paramc {
+                                    let diff = argc - paramc;
+                                    for _ in 0..diff {
+                                        stack.pop().unwrap();
+                                    }
+                                } else if argc < paramc {
+                                    let diff = paramc - argc;
+                                    for _ in 0..diff {
+                                        stack.push(Value::Empty);
+                                    }
                                 }
                                 if op == Op::TailCall {
                                     scope.pop();
@@ -527,6 +532,16 @@ pub fn evaluate_at(
                     }
                 } else {
                     handle!(Err(new_error("callee is not a function")));
+                }
+            }
+            Op::InitReplace => {
+                assert!(get_u8(&mut pc) == Op::Jump as u8);
+                let position = get_i32(&mut pc) as usize;
+                if stack.last().unwrap() == &Value::Empty {
+                    stack.pop(); // will be pushed by default evaluation next
+                } else {
+                    // skip past default evaluation
+                    pc = position;
                 }
             }
             Op::New => {

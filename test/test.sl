@@ -1,14 +1,16 @@
 import { print } from standard:debug;
-// import { a, setA } from './a.sl';
 
-const o = {};
+function fib(n, a = 0, b = 1) {
+  if n == 0 {
+    return a;
+  }
 
-o.a = () => {
-  return this;
-};
+  if n == 1 {
+    return
+      b;
+  }
 
-o.b = function() {
-  return this;
-};
+  return fib(n - 1, b, a + b);
+}
 
-print(o.a());
+print(fib(10) == 55);
