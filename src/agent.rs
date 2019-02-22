@@ -1,10 +1,11 @@
+use crate::builtins::create_debug;
 use crate::intrinsics::{
     create_array_prototype, create_boolean_prototype, create_float_prototype,
     create_function_prototype, create_object_prototype, create_promise, create_promise_prototype,
     create_string_prototype, create_symbol, create_symbol_prototype,
 };
 use crate::parser::{Node, Parser};
-use crate::value::{new_builtin_function, new_error, Symbol, Value};
+use crate::value::{new_error, Value};
 use crate::vm::{evaluate_at, Compiled, Compiler, ExecutionContext, LexicalEnvironment};
 use gc::{Gc, GcCell};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -97,26 +98,32 @@ impl ModuleX {
                             module.imports.insert(specifier.to_string());
                         }
                     }
-                    Node::ImportStandardDeclaration(specifier, names) => match specifier.as_str() {
-                        "debug" => {
-                            if names.len() != 1 || names[0] != "print" {
-                                return Err(new_error("unknown item from debug"));
+                    Node::ImportStandardDeclaration(specifier, names) => {
+                        match agent.builtins.get(specifier) {
+                            Some(s) => {
+                                for name in names {
+                                    match s.get(name) {
+                                        Some(v) => {
+                                            module
+                                                .context
+                                                .borrow()
+                                                .environment
+                                                .borrow_mut()
+                                                .create(name, false)?;
+                                            module
+                                                .context
+                                                .borrow()
+                                                .environment
+                                                .borrow_mut()
+                                                .initialize(name, v.clone())?;
+                                        }
+                                        None => return Err(new_error("unknown export")),
+                                    }
+                                }
                             }
-                            module
-                                .context
-                                .borrow()
-                                .environment
-                                .borrow_mut()
-                                .create("print", false)?;
-                            module
-                                .context
-                                .borrow()
-                                .environment
-                                .borrow_mut()
-                                .initialize("print", new_builtin_function(agent, print))?;
+                            None => return Err(new_error("unknown standard module")),
                         }
-                        _ => return Err(new_error("unknown standard module")),
-                    },
+                    }
                     Node::ExportDeclaration(decl) => match *decl.clone() {
                         Node::LexicalInitialization(name, ..)
                         | Node::FunctionDeclaration(name, ..) => {
@@ -210,7 +217,14 @@ fn inner_module_evaluation(
         {
             let mut stack = Vec::new();
             let mut scope = vec![module.borrow_mut().context.clone()];
-            evaluate_at(agent, &module.borrow().compiled, 0, &mut stack, &mut scope, &mut vec![])?;
+            evaluate_at(
+                agent,
+                &module.borrow().compiled,
+                0,
+                &mut stack,
+                &mut scope,
+                &mut vec![],
+            )?;
         }
         if module.borrow().dfs_ancestor_index == module.borrow().dfs_index {
             let mut done = false;
@@ -242,31 +256,6 @@ unsafe impl gc::Trace for Job {
     fn finalize_glue(&self) {}
 }
 
-fn print(_: &Agent, _: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
-    let mut output = String::new();
-    for arg in args {
-        match &arg {
-            Value::Null => output += " null",
-            Value::True => output += " true",
-            Value::False => output += " false",
-            Value::Float(n) => output += &format!(" {}f", n),
-            Value::Integer(n) => output += &format!(" {}i", n),
-            Value::String(s) => output += &format!(" '{}'", s),
-            Value::Symbol(Symbol(_, _, d)) => {
-                if let Some(s) = d {
-                    output += &format!(" Symbol({})", s);
-                } else {
-                    output += " Symbol()";
-                }
-            }
-            Value::Object(_) => output += " {...}",
-            _ => unreachable!(),
-        }
-    }
-    println!("{}", output.trim());
-    Ok(Value::Null)
-}
-
 pub struct Intrinsics {
     pub object_prototype: Value,
     pub array_prototype: Value,
@@ -282,6 +271,7 @@ pub struct Intrinsics {
 
 pub struct Agent {
     pub intrinsics: Intrinsics,
+    builtins: HashMap<String, HashMap<String, Value>>,
     modules: GcCell<HashMap<String, Module>>,
     pub root_env: Gc<GcCell<LexicalEnvironment>>,
     job_queue: GcCell<VecDeque<Job>>,
@@ -309,6 +299,7 @@ impl Agent {
                 symbol_prototype,
                 symbol: Value::Null,
             },
+            builtins: HashMap::new(),
             root_env: LexicalEnvironment::new(None),
             modules: GcCell::new(HashMap::new()),
             job_queue: GcCell::new(VecDeque::new()),
@@ -331,6 +322,10 @@ impl Agent {
             env.initialize("Symbol", agent.intrinsics.symbol.clone())
                 .unwrap();
         }
+
+        agent
+            .builtins
+            .insert("debug".to_string(), create_debug(&agent));
 
         agent
     }

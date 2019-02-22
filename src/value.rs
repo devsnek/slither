@@ -29,7 +29,13 @@ pub enum ObjectKind {
     Float(f64),
     Integer(BigInt),
     Custom(Gc<GcCell<HashMap<String, Value>>>), // internal slots
-    CompiledFunction(u8, usize, *const Compiled, bool, Gc<GcCell<LexicalEnvironment>>), // paramc, index, compiled, inherits this, env
+    CompiledFunction(
+        u8,
+        usize,
+        *const Compiled,
+        bool,
+        Gc<GcCell<LexicalEnvironment>>,
+    ), // paramc, index, compiled, inherits this, env
     BuiltinFunction(BuiltinFunction, Gc<GcCell<HashMap<String, Value>>>),
 }
 
@@ -405,7 +411,8 @@ impl Value {
                             &mut stack,
                             &mut vec![ctx],
                             &mut vec![compiled.code.len()],
-                        )?.unwrap_or(Value::Null))
+                        )?
+                        .unwrap_or(Value::Null))
                     }
                 }
                 ObjectKind::BuiltinFunction(f, _) => {
@@ -447,6 +454,32 @@ impl Value {
     }
 }
 
+impl std::fmt::Display for Value {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            fmt,
+            "{}",
+            match self {
+                Value::Null => "null".to_string(),
+                Value::True => "true".to_string(),
+                Value::False => "false".to_string(),
+                Value::Float(n) => format!(" {}f", n),
+                Value::Integer(n) => format!(" {}i", n),
+                Value::String(s) => format!(" '{}'", s),
+                Value::Symbol(Symbol(_, _, d)) => {
+                    if let Some(s) = d {
+                        format!(" Symbol({})", s)
+                    } else {
+                        " Symbol()".to_string()
+                    }
+                }
+                Value::Object(_) => " {...}".to_string(),
+                _ => unreachable!(),
+            }
+        )
+    }
+}
+
 impl From<String> for Value {
     fn from(s: String) -> Self {
         Value::String(s)
@@ -471,7 +504,7 @@ impl PartialEq for Value {
             Value::Empty => match other {
                 Value::Empty => true,
                 _ => false,
-            }
+            },
             Value::Null => match other {
                 Value::Null => true,
                 _ => false,

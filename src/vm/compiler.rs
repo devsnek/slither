@@ -257,7 +257,9 @@ impl Compiler {
             Node::FunctionExpression(name, args, body) => {
                 self.compile_function_expression(name, args, body, false)
             }
-            Node::ArrowFunctionExpression(args, body) => self.compile_function_expression(&None, args, body, true),
+            Node::ArrowFunctionExpression(args, body) => {
+                self.compile_function_expression(&None, args, body, true)
+            }
             Node::CallExpression(callee, args) => self.compile_call_expression(callee, args, false),
             Node::TailCallExpression(callee, args) => {
                 self.compile_call_expression(callee, args, true)

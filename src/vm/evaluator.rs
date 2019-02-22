@@ -42,7 +42,7 @@ impl LexicalEnvironment {
             None => match &self.parent {
                 None => Err(new_error("invalid this")),
                 Some(p) => p.borrow().get_this(),
-            }
+            },
         }
     }
 
@@ -116,7 +116,9 @@ impl LexicalEnvironment {
 
     pub fn get(&self, name: &str) -> Result<Value, Value> {
         match self.bindings.get(name) {
-            Some(Binding { module: Some(m), .. }) => m.borrow().context.borrow().environment.borrow().get(name),
+            Some(Binding {
+                module: Some(m), ..
+            }) => m.borrow().context.borrow().environment.borrow().get(name),
             Some(Binding { value: Some(v), .. }) => Ok((*v).clone()),
             Some(Binding { value: None, .. }) => {
                 Err(new_error(&format!("reference error: {}", name)))
@@ -411,7 +413,13 @@ pub fn evaluate_at(
                 stack.pop();
             }
             Op::GetThis => {
-                let this = handle!(scope.last().unwrap().borrow().environment.borrow().get_this());
+                let this = handle!(scope
+                    .last()
+                    .unwrap()
+                    .borrow()
+                    .environment
+                    .borrow()
+                    .get_this());
                 stack.push(this);
             }
             Op::LexicalDeclaration => {
@@ -486,7 +494,9 @@ pub fn evaluate_at(
                                     positions.push(pc); // jump back to previous pc
                                 }
                                 // println!("PushContext");
-                                let ctx = ExecutionContext::new(LexicalEnvironment::new(Some(env.clone())));
+                                let ctx = ExecutionContext::new(LexicalEnvironment::new(Some(
+                                    env.clone(),
+                                )));
                                 ctx.borrow_mut().function = Some(callee);
                                 if !inherits_this {
                                     ctx.borrow().environment.borrow_mut().this = Some(this);

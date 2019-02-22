@@ -88,7 +88,7 @@ pub enum Node {
     IntegerLiteral(BigInt),
     StringLiteral(String),
     Initializer(String, Box<Node>), // Name, value
-    ObjectLiteral(Vec<Node>),               // initialiers
+    ObjectLiteral(Vec<Node>),       // initialiers
     ArrayLiteral(Vec<Node>),
     Identifier(String),
     BlockStatement(Vec<Node>, HashMap<String, bool>), // nodes, declarations
@@ -116,7 +116,7 @@ pub enum Node {
     FunctionDeclaration(String, Vec<Node>, Box<Node>), // name, args, body
     FunctionExpression(Option<String>, Vec<Node>, Box<Node>), // name, args, body
     ArrowFunctionExpression(Vec<Node>, Box<Node>), // args, body
-    ParenthesizedExpression(Box<Node>), // expr
+    ParenthesizedExpression(Box<Node>),   // expr
     LexicalInitialization(String, Box<Node>), // identifier, initial value
     ImportDeclaration(String),            // specifier
     ImportNamedDeclaration(String, Vec<String>), // specifier, bindings
@@ -168,12 +168,14 @@ impl<'a> Lexer<'a> {
                             }
                         }
                         if float {
-                            let num = str.parse::<f64>().expect(&format!("Invalid float {}", str));
+                            let num = str
+                                .parse::<f64>()
+                                .unwrap_or_else(|_| panic!("Invalid float {}", str));
                             Some(Token::FloatLiteral(num))
                         } else {
                             let num = str
                                 .parse::<BigInt>()
-                                .expect(&format!("Invalid integer {}", str));
+                                .unwrap_or_else(|_| panic!("Invalid integer {}", str));
                             Some(Token::IntegerLiteral(num))
                         }
                     }
@@ -448,7 +450,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_identifier_list(&mut self, close: Token, initializers: bool) -> Result<Vec<Node>, Error> {
+    fn parse_identifier_list(
+        &mut self,
+        close: Token,
+        initializers: bool,
+    ) -> Result<Vec<Node>, Error> {
         let mut identifiers = Vec::new();
         let mut first = true;
         while !self.eat(close.clone()) {
@@ -461,7 +467,7 @@ impl<'a> Parser<'a> {
                 }
             }
             let ident = self.parse_identifier(false)?;
-            if self.lexer.peek() == Some(&Token::Operator(Operator::Assign)) {
+            if self.lexer.peek() == Some(&Token::Operator(Operator::Assign)) && initializers {
                 self.lexer.next();
                 let init = self.parse_expression()?;
                 identifiers.push(Node::Initializer(ident, Box::new(init)));
@@ -622,11 +628,14 @@ impl<'a> Parser<'a> {
                     // import { bindings } from "specifier";
                     Some(Token::LeftBrace) => {
                         self.lexer.next();
-                        let bindings = self.parse_identifier_list(Token::RightBrace, false)?
-                            .iter().map(|n| match n {
+                        let bindings = self
+                            .parse_identifier_list(Token::RightBrace, false)?
+                            .iter()
+                            .map(|n| match n {
                                 Node::Identifier(n) => n.to_string(),
                                 _ => unreachable!(),
-                            }).collect();
+                            })
+                            .collect();
                         self.expect(Token::From)?;
                         match self.lexer.next() {
                             Some(Token::StringLiteral(s)) => {
@@ -1106,7 +1115,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_arrow_function(&mut self, first_arg: Option<Node>, no_args: bool) -> Result<Node, Error> {
+    fn parse_arrow_function(
+        &mut self,
+        first_arg: Option<Node>,
+        no_args: bool,
+    ) -> Result<Node, Error> {
         let mut args = match first_arg {
             Some(expr) => {
                 if let Node::Identifier(..) = expr {
@@ -1151,14 +1164,19 @@ impl<'a> Parser<'a> {
                 Token::Function => self.parse_function(true),
                 Token::LeftParen => {
                     match self.lexer.peek() {
-                        Some(Token::RightParen) => { // arrow function
+                        Some(Token::RightParen) => {
+                            // arrow function
                             self.lexer.next();
                             self.parse_arrow_function(None, true)
                         }
                         _ => {
                             let expr = self.parse_expression()?;
                             let mut no_args = false;
-                            if self.eat(Token::Comma) || { no_args = self.eat(Token::RightParen); no_args } { // arrow function
+                            if self.eat(Token::Comma) || {
+                                no_args = self.eat(Token::RightParen);
+                                no_args
+                            } {
+                                // arrow function
                                 self.parse_arrow_function(Some(expr), no_args)
                             } else {
                                 Ok(Node::ParenthesizedExpression(Box::new(expr)))

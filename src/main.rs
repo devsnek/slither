@@ -7,6 +7,7 @@ extern crate clap;
 extern crate gc;
 
 mod agent;
+mod builtins;
 mod intrinsics;
 mod parser;
 mod value;
