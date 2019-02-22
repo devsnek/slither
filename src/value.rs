@@ -1,12 +1,55 @@
 use crate::agent::Agent;
 use crate::vm::{evaluate_at, Compiled, ExecutionContext, LexicalEnvironment};
 use gc::{Gc, GcCell};
+use indexmap::IndexMap;
 use num::BigInt;
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+macro_rules! custom_trace {
+    ($this:ident, $body:expr) => {
+        #[inline]
+        unsafe fn trace(&self) {
+            #[inline]
+            unsafe fn mark<T: gc::Trace>(it: &T) {
+                gc::Trace::trace(it);
+            }
+            let $this = self;
+            $body
+        }
+        #[inline]
+        unsafe fn root(&self) {
+            #[inline]
+            unsafe fn mark<T: gc::Trace>(it: &T) {
+                gc::Trace::root(it);
+            }
+            let $this = self;
+            $body
+        }
+        #[inline]
+        unsafe fn unroot(&self) {
+            #[inline]
+            unsafe fn mark<T: gc::Trace>(it: &T) {
+                gc::Trace::unroot(it);
+            }
+            let $this = self;
+            $body
+        }
+        #[inline]
+        fn finalize_glue(&self) {
+            gc::Finalize::finalize(self);
+            #[inline]
+            fn mark<T: gc::Trace>(it: &T) {
+                gc::Trace::finalize_glue(it);
+            }
+            let $this = self;
+            $body
+        }
+    }
+}
+
 pub fn new_error(message: &str) -> Value {
-    let mut m = HashMap::new();
+    let mut m = IndexMap::new();
     m.insert(
         ObjectKey::from("message"),
         Value::String(message.to_string()),
@@ -56,48 +99,6 @@ impl std::fmt::Debug for ObjectKind {
     }
 }
 
-macro_rules! custom_trace {
-    ($this:ident, $body:expr) => {
-        #[inline]
-        unsafe fn trace(&self) {
-            #[inline]
-            unsafe fn mark<T: gc::Trace>(it: &T) {
-                gc::Trace::trace(it);
-            }
-            let $this = self;
-            $body
-        }
-        #[inline]
-        unsafe fn root(&self) {
-            #[inline]
-            unsafe fn mark<T: gc::Trace>(it: &T) {
-                gc::Trace::root(it);
-            }
-            let $this = self;
-            $body
-        }
-        #[inline]
-        unsafe fn unroot(&self) {
-            #[inline]
-            unsafe fn mark<T: gc::Trace>(it: &T) {
-                gc::Trace::unroot(it);
-            }
-            let $this = self;
-            $body
-        }
-        #[inline]
-        fn finalize_glue(&self) {
-            gc::Finalize::finalize(self);
-            #[inline]
-            fn mark<T: gc::Trace>(it: &T) {
-                gc::Trace::finalize_glue(it);
-            }
-            let $this = self;
-            $body
-        }
-    }
-}
-
 // empty impl
 unsafe impl gc::Trace for ObjectKind {
     custom_trace!(this, {
@@ -113,7 +114,7 @@ unsafe impl gc::Trace for ObjectKind {
 #[derive(Trace, Finalize, Debug)]
 pub struct ObjectInfo {
     pub kind: ObjectKind,
-    pub properties: GcCell<HashMap<ObjectKey, Value>>,
+    pub properties: GcCell<IndexMap<ObjectKey, Value>>,
     pub prototype: Value,
 }
 
@@ -200,6 +201,15 @@ impl ObjectInfo {
             }
         }
     }
+
+    fn keys(&self) -> Vec<ObjectKey> {
+        let mut keys = Vec::new();
+        let entries = self.properties.borrow();
+        for key in entries.keys() {
+            keys.push(key.clone());
+        }
+        keys
+    }
 }
 
 static SYMBOL_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -218,6 +228,21 @@ impl Symbol {
 pub enum ObjectKey {
     String(String),
     Symbol(Symbol),
+}
+
+impl std::fmt::Display for ObjectKey {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            ObjectKey::String(s) => write!(fmt, "{}", s),
+            ObjectKey::Symbol(Symbol(_, _, d)) => {
+                if let Some(s) = d {
+                    write!(fmt, "[Symbol({})]", s)
+                } else {
+                    write!(fmt, "[Symbol()]")
+                }
+            }
+        }
+    }
 }
 
 impl From<String> for ObjectKey {
@@ -387,6 +412,13 @@ impl Value {
         }
     }
 
+    pub fn keys(&self) -> Result<Vec<ObjectKey>, Value> {
+        match self {
+            Value::Object(o) => Ok(o.keys()),
+            _ => Err(new_error("base must be an object")),
+        }
+    }
+
     pub fn call(&self, agent: &Agent, this: Value, args: Vec<Value>) -> Result<Value, Value> {
         match self {
             Value::Object(o) => match &o.kind {
@@ -454,29 +486,49 @@ impl Value {
     }
 }
 
+fn inspect(value: &Value, indent: usize) -> Result<String, Value> {
+    match value {
+        Value::Null => Ok("null".to_string()),
+        Value::True => Ok("true".to_string()),
+        Value::False => Ok("false".to_string()),
+        Value::Float(n) => Ok(format!("{}f", n)),
+        Value::Integer(n) => Ok(format!("{}i", n)),
+        Value::String(s) => Ok(format!("'{}'", s)),
+        Value::Symbol(Symbol(_, _, d)) => {
+            if let Some(s) = d {
+                Ok(format!("Symbol({})", s))
+            } else {
+                Ok("Symbol()".to_string())
+            }
+        }
+        Value::Object(o) => {
+            let keys = value.keys()?;
+            let array = match o.kind {
+                ObjectKind::Array => true,
+                _ => false,
+            };
+            let mut out = String::from(if array { "[" } else { "{" });
+            for key in keys {
+                out += &format!(
+                    "\n{}{}: {},",
+                    "  ".repeat(indent + 1),
+                    key,
+                    inspect(&value.get(&key)?, indent + 1)?
+                )
+            }
+            out += &format!("\n{}{}", "  ".repeat(indent), if array { "]" } else { "}" });
+            Ok(out)
+        }
+        _ => unreachable!(),
+    }
+}
+
 impl std::fmt::Display for Value {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(
-            fmt,
-            "{}",
-            match self {
-                Value::Null => "null".to_string(),
-                Value::True => "true".to_string(),
-                Value::False => "false".to_string(),
-                Value::Float(n) => format!(" {}f", n),
-                Value::Integer(n) => format!(" {}i", n),
-                Value::String(s) => format!(" '{}'", s),
-                Value::Symbol(Symbol(_, _, d)) => {
-                    if let Some(s) = d {
-                        format!(" Symbol({})", s)
-                    } else {
-                        " Symbol()".to_string()
-                    }
-                }
-                Value::Object(_) => " {...}".to_string(),
-                _ => unreachable!(),
-            }
-        )
+        match inspect(self, 0) {
+            Ok(s) => write!(fmt, "{}", s),
+            Err(_e) => Err(std::fmt::Error),
+        }
     }
 }
 
@@ -547,7 +599,7 @@ impl std::convert::From<crate::parser::Error> for Value {
 pub fn new_object(proto: Value) -> Value {
     Value::Object(Gc::new(ObjectInfo {
         kind: ObjectKind::Ordinary,
-        properties: GcCell::new(HashMap::new()),
+        properties: GcCell::new(IndexMap::new()),
         prototype: proto,
     }))
 }
@@ -555,7 +607,7 @@ pub fn new_object(proto: Value) -> Value {
 pub fn new_array(agent: &Agent) -> Value {
     Value::Object(Gc::new(ObjectInfo {
         kind: ObjectKind::Array,
-        properties: GcCell::new(HashMap::new()),
+        properties: GcCell::new(IndexMap::new()),
         prototype: agent.intrinsics.array_prototype.clone(),
     }))
 }
@@ -563,7 +615,7 @@ pub fn new_array(agent: &Agent) -> Value {
 pub fn new_custom_object(proto: Value) -> Value {
     Value::Object(Gc::new(ObjectInfo {
         kind: ObjectKind::Custom(Gc::new(GcCell::new(HashMap::new()))),
-        properties: GcCell::new(HashMap::new()),
+        properties: GcCell::new(IndexMap::new()),
         prototype: proto,
     }))
 }
@@ -578,7 +630,7 @@ pub fn new_compiled_function(
 ) -> Value {
     Value::Object(Gc::new(ObjectInfo {
         kind: ObjectKind::CompiledFunction(argc, pc_index, compiled, inherits_this, env),
-        properties: GcCell::new(HashMap::new()),
+        properties: GcCell::new(IndexMap::new()),
         prototype: agent.intrinsics.function_prototype.clone(),
     }))
 }
@@ -586,7 +638,7 @@ pub fn new_compiled_function(
 pub fn new_builtin_function(agent: &Agent, f: BuiltinFunction) -> Value {
     Value::Object(Gc::new(ObjectInfo {
         kind: ObjectKind::BuiltinFunction(f, Gc::new(GcCell::new(HashMap::new()))),
-        properties: GcCell::new(HashMap::new()),
+        properties: GcCell::new(IndexMap::new()),
         prototype: agent.intrinsics.function_prototype.clone(),
     }))
 }
@@ -594,7 +646,7 @@ pub fn new_builtin_function(agent: &Agent, f: BuiltinFunction) -> Value {
 pub fn new_boolean_object(agent: &Agent, v: bool) -> Value {
     Value::Object(Gc::new(ObjectInfo {
         kind: ObjectKind::Boolean(v),
-        properties: GcCell::new(HashMap::new()),
+        properties: GcCell::new(IndexMap::new()),
         prototype: agent.intrinsics.boolean_prototype.clone(),
     }))
 }
@@ -602,7 +654,7 @@ pub fn new_boolean_object(agent: &Agent, v: bool) -> Value {
 pub fn new_string_object(agent: &Agent, v: String) -> Value {
     Value::Object(Gc::new(ObjectInfo {
         kind: ObjectKind::String(v),
-        properties: GcCell::new(HashMap::new()),
+        properties: GcCell::new(IndexMap::new()),
         prototype: agent.intrinsics.string_prototype.clone(),
     }))
 }
@@ -610,7 +662,7 @@ pub fn new_string_object(agent: &Agent, v: String) -> Value {
 pub fn new_float_object(agent: &Agent, v: f64) -> Value {
     Value::Object(Gc::new(ObjectInfo {
         kind: ObjectKind::Float(v),
-        properties: GcCell::new(HashMap::new()),
+        properties: GcCell::new(IndexMap::new()),
         prototype: agent.intrinsics.float_prototype.clone(),
     }))
 }
@@ -618,7 +670,7 @@ pub fn new_float_object(agent: &Agent, v: f64) -> Value {
 pub fn new_integer_object(agent: &Agent, v: BigInt) -> Value {
     Value::Object(Gc::new(ObjectInfo {
         kind: ObjectKind::Integer(v),
-        properties: GcCell::new(HashMap::new()),
+        properties: GcCell::new(IndexMap::new()),
         prototype: agent.intrinsics.float_prototype.clone(),
     }))
 }

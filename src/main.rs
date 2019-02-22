@@ -22,27 +22,14 @@ fn main() {
         .arg(Arg::with_name("filename").required(true))
         .get_matches();
 
-    /*
-    let filename = matches.value_of("filename").unwrap();
-
-    let source = std::fs::read_to_string(filename).unwrap();
-    let ast = Parser::parse(source.as_str()).unwrap();
-
-    let code = Compiler::go(&ast).unwrap();
-
-    let agent = Agent::new();
-
-    let result = evaluate(&agent, &code);
-    println!("result: {:?}", result);
-    */
-
     let filename = matches.value_of("filename").unwrap();
     let referrer = std::env::current_dir().unwrap().join("slither");
     let referrer = referrer.to_str().unwrap();
 
     let agent = Agent::new();
 
-    agent.import(filename, referrer).unwrap();
-
-    agent.run_jobs();
+    match agent.import(filename, referrer) {
+        Ok(()) => agent.run_jobs(),
+        Err(e) => println!("Uncaught Exception: {}", e),
+    }
 }

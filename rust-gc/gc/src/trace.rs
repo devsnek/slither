@@ -3,6 +3,7 @@ use std::hash::Hash;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize};
+use indexmap::{IndexMap, IndexSet};
 
 /// The Finalize trait. Can be specialized for a specific type to define
 /// finalization logic for that type.
@@ -306,6 +307,25 @@ unsafe impl<K: Eq + Hash + Trace, V: Trace> Trace for HashMap<K, V> {
 
 impl<T: Eq + Hash + Trace> Finalize for HashSet<T> {}
 unsafe impl<T: Eq + Hash + Trace> Trace for HashSet<T> {
+    custom_trace!(this, {
+        for v in this.iter() {
+            mark(v);
+        }
+    });
+}
+
+impl<K: Eq + Hash + Trace, V: Trace> Finalize for IndexMap<K, V> {}
+unsafe impl<K: Eq + Hash + Trace, V: Trace> Trace for IndexMap<K, V> {
+    custom_trace!(this, {
+        for (k, v) in this.iter() {
+            mark(k);
+            mark(v);
+        }
+    });
+}
+
+impl<T: Eq + Hash + Trace> Finalize for IndexSet<T> {}
+unsafe impl<T: Eq + Hash + Trace> Trace for IndexSet<T> {
     custom_trace!(this, {
         for v in this.iter() {
             mark(v);

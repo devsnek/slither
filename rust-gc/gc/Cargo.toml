@@ -11,5 +11,8 @@ keywords = ["garbage", "plugin", "memory"]
 [features]
 nightly = []
 
+[dependencies]
+indexmap = "1.0.2"
+
 [dev-dependencies]
 gc_derive = { path = "../gc_derive", version = "0.3" }

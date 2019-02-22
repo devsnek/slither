@@ -9,6 +9,8 @@
     feature(coerce_unsized, optin_builtin_traits, unsize, specialization)
 )]
 
+extern crate indexmap;
+
 use gc::GcBox;
 use std::alloc::Layout;
 use std::cell::{Cell, UnsafeCell};

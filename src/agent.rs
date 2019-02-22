@@ -132,7 +132,7 @@ impl ModuleX {
                                 .borrow()
                                 .environment
                                 .borrow_mut()
-                                .create_export(name.as_str(), *declarations.get(&name).unwrap())?;
+                                .create_export(name.as_str(), declarations[&name])?;
                         }
                         _ => {}
                     },
