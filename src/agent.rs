@@ -240,7 +240,7 @@ fn inner_module_evaluation(
     }
 }
 
-type JobFn = fn(&Agent, Vec<Value>);
+type JobFn = fn(&Agent, Vec<Value>) -> Result<(), Value>;
 
 #[derive(Finalize)]
 struct Job(JobFn, Vec<Value>);
@@ -363,10 +363,13 @@ impl Agent {
 
     pub fn run_jobs(&self) {
         loop {
-            let mut job = self.job_queue.borrow_mut().pop_front();
-            match &mut job {
+            let job = self.job_queue.borrow_mut().pop_front();
+            match job {
                 Some(Job(f, args)) => {
-                    f(self, std::mem::replace(args, Vec::new()));
+                    f(self, args).unwrap_or_else(|e: Value| {
+                        eprintln!("Uncaught Exception: {}", e);
+                        std::process::exit(1);
+                    });
                 }
                 None => break,
             }

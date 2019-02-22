@@ -26,7 +26,7 @@ fn trigger_promise_reactions(
     Ok(Value::Null)
 }
 
-pub fn promise_reaction_job(agent: &Agent, args: Vec<Value>) {
+pub fn promise_reaction_job(agent: &Agent, args: Vec<Value>) -> Result<(), Value> {
     let reaction = args[0].clone();
     let argument = args[1].clone();
 
@@ -49,11 +49,12 @@ pub fn promise_reaction_job(agent: &Agent, args: Vec<Value>) {
         match handler_result {
             Ok(v) => promise
                 .get_slot("resolve")
-                .call(agent, Value::Null, vec![v]),
-            Err(v) => promise.get_slot("reject").call(agent, Value::Null, vec![v]),
-        }
-        .unwrap();
+                .call(agent, Value::Null, vec![v])?,
+            Err(v) => promise.get_slot("reject").call(agent, Value::Null, vec![v])?,
+        };
     }
+
+    Ok(())
 }
 
 fn fulfill_promise(agent: &Agent, promise: Value, value: Value) -> Result<Value, Value> {

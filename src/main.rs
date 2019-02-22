@@ -30,6 +30,9 @@ fn main() {
 
     match agent.import(filename, referrer) {
         Ok(()) => agent.run_jobs(),
-        Err(e) => println!("Uncaught Exception: {}", e),
+        Err(e) => {
+            eprintln!("Uncaught Exception: {}", e);
+            std::process::exit(1);
+        }
     }
 }
