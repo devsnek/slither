@@ -146,8 +146,6 @@ impl ExecutionContext {
     }
 }
 
-struct TryState(usize);
-
 pub fn evaluate_at(
     agent: &Agent,
     compiled: &Compiled,
@@ -156,7 +154,7 @@ pub fn evaluate_at(
     scope: &mut Vec<Gc<GcCell<ExecutionContext>>>,
     positions: &mut Vec<usize>,
 ) -> Result<Option<Value>, Value> {
-    let mut try_stack: Vec<TryState> = vec![TryState(compiled.code.len())];
+    let mut try_stack: Vec<usize> = vec![compiled.code.len()];
     let mut pc: usize = pc;
 
     let get_u8 = |pc: &mut usize| {
@@ -264,9 +262,8 @@ pub fn evaluate_at(
             match $ex {
                 Ok(v) => v,
                 Err(e) => {
-                    let TryState(position) = try_stack.pop().unwrap();
+                    let position = try_stack.pop().unwrap();
                     pc = position;
-                    // stack.push(e);
                     exception = Some(e);
                     continue;
                 }
@@ -582,7 +579,7 @@ pub fn evaluate_at(
                 pc = positions.pop().unwrap();
             }
             Op::Throw => {
-                let TryState(position) = try_stack.pop().unwrap();
+                let position = try_stack.pop().unwrap();
                 exception = Some(handle!(get_value(stack)));
                 pc = position;
             }
@@ -594,7 +591,7 @@ pub fn evaluate_at(
             Op::PushTry => {
                 assert!(get_u8(&mut pc) == Op::Jump as u8);
                 let position = get_i32(&mut pc) as usize;
-                try_stack.push(TryState(position));
+                try_stack.push(position);
             }
             Op::PopTry => {
                 try_stack.pop();
