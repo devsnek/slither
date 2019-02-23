@@ -1,21 +1,4 @@
-#![allow(clippy::float_cmp)]
-#![allow(clippy::cyclomatic_complexity)]
-#![allow(clippy::option_option)]
-
-#[macro_use]
-extern crate gc_derive;
-extern crate byteorder;
-extern crate clap;
-extern crate gc;
-
-mod agent;
-mod builtins;
-mod intrinsics;
-mod parser;
-mod value;
-mod vm;
-
-use agent::Agent;
+use slither::run;
 use clap::{App, Arg};
 
 fn main() {
@@ -28,10 +11,8 @@ fn main() {
     let referrer = std::env::current_dir().unwrap().join("slither");
     let referrer = referrer.to_str().unwrap();
 
-    let agent = Agent::new();
-
-    match agent.import(filename, referrer) {
-        Ok(()) => agent.run_jobs(),
+    match run(filename, referrer) {
+        Ok(()) => {}
         Err(e) => {
             eprintln!("Uncaught Exception: {}", e);
             std::process::exit(1);

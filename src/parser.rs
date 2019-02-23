@@ -937,7 +937,14 @@ impl<'a> Parser<'a> {
         match test {
             Node::TrueLiteral => Ok(consequent),
             Node::FloatLiteral(n) => {
-                if n > 0f64 {
+                if n != 0f64 {
+                    Ok(consequent)
+                } else {
+                    Ok(alternative)
+                }
+            }
+            Node::IntegerLiteral(n) => {
+                if n != BigInt::from(0) {
                     Ok(consequent)
                 } else {
                     Ok(alternative)
@@ -1223,4 +1230,72 @@ impl<'a> Parser<'a> {
             None => Err(Error::UnexpectedEOF),
         }
     }
+}
+
+#[test]
+fn test_parser() {
+    macro_rules! hashmap(
+        { $($key:expr => $value:expr),+ } => {
+            {
+                let mut m = ::std::collections::HashMap::new();
+                $(
+                    m.insert($key.to_string(), $value);
+                )+
+                m
+            }
+         };
+    );
+
+    assert_eq!(
+        Parser::parse(
+            r#"
+             const a = 1;
+             if a { a += 2; }
+             if 1 { a += 3; }
+             "#
+        ).unwrap(),
+        Node::BlockStatement(
+            vec![
+                Node::LexicalInitialization("a".to_string(), Box::new(Node::IntegerLiteral(BigInt::from(1)))),
+                Node::IfStatement(
+                    Box::new(Node::Identifier("a".to_string())),
+                    Box::new(Node::BlockStatement(
+                        vec![
+                            Node::ExpressionStatement(Box::new(
+                                Node::BinaryExpression(
+                                    Box::new(Node::Identifier("a".to_string())),
+                                    Operator::Assign,
+                                    Box::new(Node::BinaryExpression(
+                                        Box::new(Node::Identifier("a".to_string())),
+                                        Operator::Add,
+                                        Box::new(Node::IntegerLiteral(BigInt::from(2))),
+                                    )),
+                                ),
+                            )),
+                        ],
+                        HashMap::new(),
+                    )),
+                ),
+                Node::BlockStatement(
+                    vec![
+                        Node::ExpressionStatement(Box::new(
+                            Node::BinaryExpression(
+                                Box::new(Node::Identifier("a".to_string())),
+                                Operator::Assign,
+                                Box::new(Node::BinaryExpression(
+                                    Box::new(Node::Identifier("a".to_string())),
+                                    Operator::Add,
+                                    Box::new(Node::IntegerLiteral(BigInt::from(3))),
+                                )),
+                            ),
+                        )),
+                    ],
+                    HashMap::new(),
+                ),
+            ],
+            hashmap!{
+                "a" => false
+            },
+        ),
+    )
 }

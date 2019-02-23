@@ -4,6 +4,14 @@ version = "0.1.0"
 authors = ["Gus Caplan <me@gus.host>"]
 edition = "2018"
 
+[lib]
+name = "slither"
+path = "src/lib.rs"
+
+[[bin]]
+name = "slither"
+path = "src/bin.rs"
+
 [dependencies.gc]
 path = "rust-gc/gc"
 
