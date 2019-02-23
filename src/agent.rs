@@ -382,18 +382,22 @@ macro_rules! test {
         #[test]
         fn $name() {
             let agent = Agent::new();
-            let module = ModuleX::new(stringify!(test_$name.sl), $source, &agent).unwrap();
-            let mut stack = Vec::new();
-            let mut scope = vec![module.context.clone()];
-            let result = evaluate_at(
-                &agent,
-                &module.compiled,
-                0,
-                &mut stack,
-                &mut scope,
-                &mut vec![],
-            );
-            assert_eq!(result, $result);
+            match ModuleX::new(stringify!(test_$name.sl), $source, &agent) {
+                Err(e) => assert_eq!(Err::<Value, Value>(e), $result),
+                Ok(module) => {
+                    let mut stack = Vec::new();
+                    let mut scope = vec![module.context.clone()];
+                    let result = evaluate_at(
+                        &agent,
+                        &module.compiled,
+                        0,
+                        &mut stack,
+                        &mut scope,
+                        &mut vec![],
+                    );
+                    assert_eq!(result, $result);
+                }
+            }
         }
     };
 }
@@ -405,3 +409,9 @@ test!(
     Ok(Value::Float(2.0))
 );
 test!(test_throw, "throw 5.0;", Err(Value::Float(5.0)));
+
+test!(test_paren_expr, "const a = 1.0; (a);", Ok(Value::Float(1.0)));
+test!(test_arrow_expr, "const a = 1.0; ((a) => { return a; })(2.0);", Ok(Value::Float(2.0)));
+
+// TODO: figure out matching objects
+// test!(test_arrow_expr_invalid_arg, "(1) => {};", Err(Value::Null));
