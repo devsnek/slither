@@ -59,8 +59,7 @@ unsafe impl gc::Trace for ModuleX {
 pub type Module = Gc<GcCell<ModuleX>>;
 
 impl ModuleX {
-    fn new(filename: &str, agent: &Agent) -> Result<ModuleX, Value> {
-        let source = std::fs::read_to_string(filename).expect("no such file");
+    fn new(filename: &str, source: &str, agent: &Agent) -> Result<ModuleX, Value> {
         let ast = Parser::parse(&source)?;
 
         let mut module = ModuleX {
@@ -337,7 +336,8 @@ impl Agent {
             .join(specifier);
         let filename = filename.to_str().unwrap();
         if !self.modules.borrow().contains_key(filename) {
-            let module = Gc::new(GcCell::new(ModuleX::new(filename, self)?));
+            let source = std::fs::read_to_string(filename).expect("no such file");
+            let module = Gc::new(GcCell::new(ModuleX::new(filename, source.as_str(), self)?));
             // let imports = module.imports.clone();
             self.modules
                 .borrow_mut()
@@ -376,3 +376,28 @@ impl Agent {
         }
     }
 }
+
+macro_rules! test {
+    ( $name:ident, $source:expr, $result:expr ) => (
+        #[test]
+        fn $name() {
+            let agent = Agent::new();
+            let module = ModuleX::new(stringify!(test_$name.sl), $source, &agent).unwrap();
+            let mut stack = Vec::new();
+            let mut scope = vec![module.context.clone()];
+            assert_eq!(
+                evaluate_at(
+                    &agent,
+                    &module.compiled,
+                    0,
+                    &mut stack,
+                    &mut scope,
+                    &mut vec![],
+                ),
+                $result,
+            );
+        }
+    );
+}
+
+test!(test_throw, "throw 5.0;", Err(Value::Float(5.0)));
