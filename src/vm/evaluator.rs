@@ -153,7 +153,7 @@ pub fn evaluate_at(
     stack: &mut Vec<Value>,
     scope: &mut Vec<Gc<GcCell<ExecutionContext>>>,
     positions: &mut Vec<usize>,
-) -> Result<Option<Value>, Value> {
+) -> Result<Value, Value> {
     let mut try_stack: Vec<usize> = vec![compiled.code.len()];
     let mut pc: usize = pc;
 
@@ -400,6 +400,10 @@ pub fn evaluate_at(
                         target
                     ))),
                 }));
+            }
+            Op::GetValue => {
+                let value = handle!(get_value(stack));
+                stack.push(value);
             }
             Op::DropValue => {
                 stack.pop();
@@ -692,6 +696,6 @@ pub fn evaluate_at(
 
     match exception {
         Some(e) => Err(e),
-        None => Ok(stack.pop()),
+        None => Ok(stack.pop().unwrap_or(Value::Null)),
     }
 }

@@ -422,7 +422,22 @@ impl<'a> Parser<'a> {
             scope_stack: Vec::new(),
             lex_stack: Vec::new(),
         };
-        parser.parse_block_statement(ParseScope::TopLevel)
+
+        if let Node::BlockStatement(items, decls) =
+            parser.parse_block_statement(ParseScope::TopLevel)?
+        {
+            if let Node::ExpressionStatement(expr) = items.last().unwrap() {
+                // if the last item is an expression statement, replace it with the expression
+                // so that the value will be left on the stack to inspect in tests
+                let mut sliced = items[0..items.len() - 1].to_vec();
+                sliced.push(Node::ParenthesizedExpression((*expr).clone()));
+                Ok(Node::BlockStatement(sliced, decls))
+            } else {
+                Ok(Node::BlockStatement(items, decls))
+            }
+        } else {
+            unreachable!();
+        }
     }
 
     fn scope(&self, scope: ParseScope) -> bool {
@@ -1133,7 +1148,7 @@ impl<'a> Parser<'a> {
     fn parse_arrow_function(
         &mut self,
         first_arg: Option<Node>,
-        no_args: bool,
+        more_args: bool,
     ) -> Result<Node, Error> {
         let mut args = match first_arg {
             Some(expr) => {
@@ -1145,7 +1160,7 @@ impl<'a> Parser<'a> {
             }
             None => Ok(Vec::new()),
         }?;
-        if !no_args {
+        if more_args {
             args.append(&mut self.parse_identifier_list(Token::RightParen, true)?);
         }
         self.expect(Token::Arrow)?;
@@ -1177,28 +1192,30 @@ impl<'a> Parser<'a> {
                 Token::IntegerLiteral(v) => Ok(Node::IntegerLiteral(v)),
                 Token::Identifier(v) => Ok(Node::Identifier(v)),
                 Token::Function => self.parse_function(true),
-                Token::LeftParen => {
-                    match self.lexer.peek() {
-                        Some(Token::RightParen) => {
-                            // arrow function
-                            self.lexer.next();
-                            self.parse_arrow_function(None, true)
-                        }
-                        _ => {
-                            let expr = self.parse_expression()?;
-                            let mut no_args = false;
-                            if self.eat(Token::Comma) || {
-                                no_args = self.eat(Token::RightParen);
-                                no_args
-                            } {
-                                // arrow function
-                                self.parse_arrow_function(Some(expr), no_args)
-                            } else {
-                                Ok(Node::ParenthesizedExpression(Box::new(expr)))
+                Token::LeftParen => match self.lexer.peek() {
+                    Some(Token::RightParen) => {
+                        self.lexer.next();
+                        self.parse_arrow_function(None, false)
+                    }
+                    _ => {
+                        let expr = self.parse_expression()?;
+                        match self.lexer.peek() {
+                            Some(Token::Comma) => {
+                                self.lexer.next();
+                                self.parse_arrow_function(Some(expr), true)
                             }
+                            Some(Token::RightParen) => {
+                                self.lexer.next();
+                                if let Some(Token::Arrow) = self.lexer.peek() {
+                                    self.parse_arrow_function(Some(expr), false)
+                                } else {
+                                    Ok(Node::ParenthesizedExpression(Box::new(expr)))
+                                }
+                            }
+                            _ => Err(Error::UnexpectedToken),
                         }
                     }
-                }
+                },
                 Token::LeftBracket => Ok(Node::ArrayLiteral(
                     self.parse_expression_list(Token::RightBracket)?,
                 )),

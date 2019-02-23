@@ -449,15 +449,14 @@ impl Value {
                     }
                     unsafe {
                         let compiled = &**compiled;
-                        Ok(evaluate_at(
+                        evaluate_at(
                             agent,
                             compiled,
                             index,
                             &mut stack,
                             &mut vec![ctx],
                             &mut vec![compiled.code.len()],
-                        )?
-                        .unwrap_or(Value::Null))
+                        )
                     }
                 }
                 ObjectKind::BuiltinFunction(f, _) => {
@@ -566,13 +565,9 @@ pub fn ref_eq<T>(thing: &T, other: &T) -> bool {
 }
 
 impl PartialEq for Value {
-    #[inline]
+    // #[inline]
     fn eq(&self, other: &Self) -> bool {
         match self {
-            Value::Empty => match other {
-                Value::Empty => true,
-                _ => false,
-            },
             Value::Null => match other {
                 Value::Null => true,
                 _ => false,
@@ -597,11 +592,21 @@ impl PartialEq for Value {
                 Value::Integer(vn) => n == vn,
                 _ => false,
             },
+            Value::Symbol(s) => match &other {
+                Value::Symbol(vs) => s == vs,
+                _ => false,
+            },
             Value::Object(o) => match &other {
                 Value::Object(vo) => ref_eq(&*o.properties.borrow(), &*vo.properties.borrow()),
                 _ => false,
             },
-            _ => unreachable!(),
+            Value::Empty => match other {
+                Value::Empty => true,
+                _ => false,
+            },
+            Value::List(..) | Value::EnvironmentReference(..) | Value::ValueReference(..) => {
+                ref_eq(self, other)
+            }
         }
     }
 }

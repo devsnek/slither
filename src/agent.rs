@@ -385,19 +385,23 @@ macro_rules! test {
             let module = ModuleX::new(stringify!(test_$name.sl), $source, &agent).unwrap();
             let mut stack = Vec::new();
             let mut scope = vec![module.context.clone()];
-            assert_eq!(
-                evaluate_at(
-                    &agent,
-                    &module.compiled,
-                    0,
-                    &mut stack,
-                    &mut scope,
-                    &mut vec![],
-                ),
-                $result,
+            let result = evaluate_at(
+                &agent,
+                &module.compiled,
+                0,
+                &mut stack,
+                &mut scope,
+                &mut vec![],
             );
+            assert_eq!(result, $result);
         }
     };
 }
 
+test!(test_decl_return, "const a = 1;", Ok(Value::Null));
+test!(
+    test_decl_assign,
+    "let a = 1.0; a += 1; a;",
+    Ok(Value::Float(2.0))
+);
 test!(test_throw, "throw 5.0;", Err(Value::Float(5.0)));

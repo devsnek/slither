@@ -31,6 +31,7 @@ pub enum Op {
     PushTrue,
     PushFalse,
     SetValue,
+    GetValue,
     DropValue,
     GetThis,
     LexicalDeclaration,
@@ -84,7 +85,7 @@ struct Jump {
 impl Drop for Jump {
     fn drop(&mut self) {
         if self.index == None {
-            // panic!("jump was not marked");
+            panic!("jump was not marked");
         }
     }
 }
@@ -205,7 +206,13 @@ impl Compiler {
         match node {
             Node::ExpressionStatement(expr) => {
                 self.compile(expr)?;
+                self.push_op(Op::GetValue);
                 self.push_op(Op::DropValue);
+                Ok(())
+            }
+            Node::ParenthesizedExpression(expr) => {
+                self.compile(expr)?;
+                self.push_op(Op::GetValue);
                 Ok(())
             }
             Node::BlockStatement(nodes, declarations) => {
