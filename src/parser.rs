@@ -947,12 +947,7 @@ impl<'a> Parser<'a> {
         Ok(Node::BinaryExpression(Box::new(left), op, Box::new(right)))
     }
 
-    fn fold_conditional(
-        &self,
-        test: Node,
-        consequent: Node,
-        alternative: Node,
-    ) -> Option<Node> {
+    fn fold_conditional(&self, test: Node, consequent: Node, alternative: Node) -> Option<Node> {
         match test {
             Node::FloatLiteral(n) => {
                 if n != 0f64 {
@@ -975,21 +970,19 @@ impl<'a> Parser<'a> {
                     Some(alternative)
                 }
             }
-            Node::FalseLiteral
-            | Node::NullLiteral
-            | Node::UnaryExpression(Operator::Void, ..) => Some(alternative),
-            Node::TrueLiteral
-            | Node::ArrayLiteral(..)
-            | Node::ObjectLiteral(..) => Some(consequent),
+            Node::FalseLiteral | Node::NullLiteral | Node::UnaryExpression(Operator::Void, ..) => {
+                Some(alternative)
+            }
+            Node::TrueLiteral | Node::ArrayLiteral(..) | Node::ObjectLiteral(..) => {
+                Some(consequent)
+            }
             _ => None,
         }
     }
 
     fn fold_while_loop(&self, test: Node) -> Option<Node> {
         match test {
-            Node::NullLiteral
-            | Node::FalseLiteral
-            | Node::UnaryExpression(Operator::Void, ..) => {
+            Node::NullLiteral | Node::FalseLiteral | Node::UnaryExpression(Operator::Void, ..) => {
                 Some(Node::ExpressionStatement(Box::new(test)))
             }
             Node::FloatLiteral(n) => {
@@ -1351,11 +1344,7 @@ fn test_parser() {
     assert_eq!(
         Parser::parse("while false { 1; }").unwrap(),
         Node::BlockStatement(
-            vec![
-                Node::ParenthesizedExpression(Box::new(
-                    Node::FalseLiteral,
-                ))
-            ],
+            vec![Node::ParenthesizedExpression(Box::new(Node::FalseLiteral))],
             HashMap::new(),
         ),
     );

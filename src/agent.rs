@@ -276,6 +276,12 @@ pub struct Agent {
     job_queue: GcCell<VecDeque<Job>>,
 }
 
+impl Default for Agent {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Agent {
     pub fn new() -> Agent {
         let object_prototype = create_object_prototype();
@@ -410,8 +416,16 @@ test!(
 );
 test!(test_throw, "throw 5.0;", Err(Value::Float(5.0)));
 
-test!(test_paren_expr, "const a = 1.0; (a);", Ok(Value::Float(1.0)));
-test!(test_arrow_expr, "const a = 1.0; ((a) => { return a; })(2.0);", Ok(Value::Float(2.0)));
+test!(
+    test_paren_expr,
+    "const a = 1.0; (a);",
+    Ok(Value::Float(1.0))
+);
+test!(
+    test_arrow_expr,
+    "const a = 1.0; ((a) => { return a; })(2.0);",
+    Ok(Value::Float(2.0))
+);
 
 // TODO: figure out matching objects
 // test!(test_arrow_expr_invalid_arg, "(1) => {};", Err(Value::Null));
