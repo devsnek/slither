@@ -71,6 +71,7 @@ enum Token {
     Finally,
     If,
     Else,
+    While,
     Return,
     Import,
     Export,
@@ -96,7 +97,7 @@ pub enum Node {
     ThrowStatement(Box<Node>),
     IfStatement(Box<Node>, Box<Node>), // test, consequent
     IfElseStatement(Box<Node>, Box<Node>, Box<Node>), // test, consequent, alternative
-    // TryStatement(Box<Node>, Box<Node>),               // try, catch
+    WhileStatement(Box<Node>, Box<Node>), // test, body
     TryStatement(
         Box<Node>,         // try clause
         Option<String>,    // catch binding
@@ -217,6 +218,7 @@ impl<'a> Lexer<'a> {
                             "finally" => Token::Finally,
                             "if" => Token::If,
                             "else" => Token::Else,
+                            "while" => Token::While,
                             "new" => Token::New,
                             "import" => Token::Import,
                             "export" => Token::Export,
@@ -600,6 +602,12 @@ impl<'a> Parser<'a> {
                     }
                     Ok(Node::IfStatement(Box::new(test), Box::new(consequent)))
                 }
+            }
+            Some(Token::While) => {
+                self.lexer.next();
+                let test = self.parse_expression()?;
+                let body = self.parse_block_statement(ParseScope::Block)?;
+                Ok(Node::WhileStatement(Box::new(test), Box::new(body)))
             }
             Some(Token::Export) if self.scope(ParseScope::TopLevel) => {
                 self.lexer.next();

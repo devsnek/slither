@@ -386,14 +386,6 @@ pub fn evaluate_at(
                 let key = handle!(key.to_object_key());
                 stack.push(Value::ValueReference(Box::new(base), key));
             }
-            Op::GetValue => {
-                let v = stack.pop().unwrap();
-                stack.push(match v {
-                    Value::ValueReference(v, p) => handle!(v.get(&p)),
-                    Value::EnvironmentReference(env, n) => handle!(env.borrow().get(n.as_str())),
-                    v => v,
-                });
-            }
             Op::SetValue => {
                 let value = handle!(get_value(stack));
                 let target = stack.pop().unwrap();
@@ -403,7 +395,10 @@ pub fn evaluate_at(
                         handle!(env.borrow_mut().set(n.as_str(), value));
                         Ok(Value::Null)
                     }
-                    _ => Err(new_error("cannot assign to non-thing")),
+                    _ => Err(new_error(&format!(
+                        "invalid assignment target {:?}",
+                        target
+                    ))),
                 }));
             }
             Op::DropValue => {

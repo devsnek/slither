@@ -30,7 +30,6 @@ pub enum Op {
     PushNull,
     PushTrue,
     PushFalse,
-    GetValue,
     SetValue,
     DropValue,
     GetThis,
@@ -270,6 +269,7 @@ impl Compiler {
             Node::IfElseStatement(test, consequent, alternative) => {
                 self.compile_if_else_statement(test, consequent, alternative)
             }
+            Node::WhileStatement(test, body) => self.compile_while_statement(test, body),
             Node::ThrowStatement(value) => self.compile_throw_statement(value),
             Node::TryStatement(try_clause, binding, catch, finally) => {
                 self.compile_try_statement(try_clause, binding, catch, finally)
@@ -331,7 +331,6 @@ impl Compiler {
         self.push_op(Op::NewIdentifier);
         let id = self.string_id(name);
         self.push_i32(id);
-        self.push_op(Op::GetValue);
         Ok(())
     }
 
@@ -589,6 +588,18 @@ impl Compiler {
 
         mark!(self, end);
 
+        Ok(())
+    }
+
+    fn compile_while_statement(&mut self, test: &Node, body: &Node) -> Result<(), Error> {
+        label!(check);
+        label!(end);
+        mark!(self, check);
+        self.compile(test)?;
+        jump_if_false!(self, end);
+        self.compile(body)?;
+        jump!(self, check);
+        mark!(self, end);
         Ok(())
     }
 
