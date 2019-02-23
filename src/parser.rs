@@ -98,11 +98,11 @@ pub enum Node {
     IfElseStatement(Box<Node>, Box<Node>, Box<Node>), // test, consequent, alternative
     // TryStatement(Box<Node>, Box<Node>),               // try, catch
     TryStatement(
-        Box<Node>,
-        Option<String>,
-        Option<Box<Node>>,
-        Option<Box<Node>>,
-    ), // try, binding, catch
+        Box<Node>,         // try clause
+        Option<String>,    // catch binding
+        Option<Box<Node>>, // catch clause
+        Option<Box<Node>>, // finally clause
+    ),
     ExpressionStatement(Box<Node>),
     NewExpression(Box<Node>),
     MemberExpression(Box<Node>, String), // base, property

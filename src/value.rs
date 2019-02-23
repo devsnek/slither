@@ -73,12 +73,12 @@ pub enum ObjectKind {
     Integer(BigInt),
     Custom(Gc<GcCell<HashMap<String, Value>>>), // internal slots
     CompiledFunction(
-        u8,
-        usize,
-        *const Compiled,
-        bool,
-        Gc<GcCell<LexicalEnvironment>>,
-    ), // paramc, index, compiled, inherits this, env
+        u8,                             // param count
+        usize,                          // compiled code index
+        *const Compiled,                // compiled code
+        bool,                           // inherits this (arrow function)
+        Gc<GcCell<LexicalEnvironment>>, // environment
+    ),
     BuiltinFunction(BuiltinFunction, Gc<GcCell<HashMap<String, Value>>>),
 }
 
