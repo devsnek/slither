@@ -520,6 +520,9 @@ fn inspect(value: &Value, indent: usize) -> Result<String, Value> {
                 ObjectKind::Array => true,
                 _ => false,
             };
+            if keys.is_empty() {
+                return Ok(if array { "[]" } else { "{}" }.to_string());
+            }
             let mut out = String::from(if array { "[" } else { "{" });
             for key in keys {
                 out += &format!(

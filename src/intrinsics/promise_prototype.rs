@@ -1,8 +1,6 @@
 use crate::agent::Agent;
-use crate::intrinsics::promise::{promise_reaction_job, new_promise_capability};
-use crate::value::{
-    new_builtin_function, new_custom_object, new_object, ObjectKey, Value,
-};
+use crate::intrinsics::promise::{new_promise_capability, promise_reaction_job};
+use crate::value::{new_builtin_function, new_custom_object, new_object, ObjectKey, Value};
 use crate::vm::ExecutionContext;
 
 fn promise_proto_then(

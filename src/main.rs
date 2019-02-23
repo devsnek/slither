@@ -1,4 +1,6 @@
 #![allow(clippy::float_cmp)]
+#![allow(clippy::cyclomatic_complexity)]
+#![allow(clippy::option_option)]
 
 #[macro_use]
 extern crate gc_derive;
