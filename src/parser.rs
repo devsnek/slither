@@ -1253,47 +1253,43 @@ fn test_parser() {
              if a { a += 2; }
              if 1 { a += 3; }
              "#
-        ).unwrap(),
+        )
+        .unwrap(),
         Node::BlockStatement(
             vec![
-                Node::LexicalInitialization("a".to_string(), Box::new(Node::IntegerLiteral(BigInt::from(1)))),
+                Node::LexicalInitialization(
+                    "a".to_string(),
+                    Box::new(Node::IntegerLiteral(BigInt::from(1)))
+                ),
                 Node::IfStatement(
                     Box::new(Node::Identifier("a".to_string())),
                     Box::new(Node::BlockStatement(
-                        vec![
-                            Node::ExpressionStatement(Box::new(
-                                Node::BinaryExpression(
-                                    Box::new(Node::Identifier("a".to_string())),
-                                    Operator::Assign,
-                                    Box::new(Node::BinaryExpression(
-                                        Box::new(Node::Identifier("a".to_string())),
-                                        Operator::Add,
-                                        Box::new(Node::IntegerLiteral(BigInt::from(2))),
-                                    )),
-                                ),
+                        vec![Node::ExpressionStatement(Box::new(Node::BinaryExpression(
+                            Box::new(Node::Identifier("a".to_string())),
+                            Operator::Assign,
+                            Box::new(Node::BinaryExpression(
+                                Box::new(Node::Identifier("a".to_string())),
+                                Operator::Add,
+                                Box::new(Node::IntegerLiteral(BigInt::from(2))),
                             )),
-                        ],
+                        ),)),],
                         HashMap::new(),
                     )),
                 ),
                 Node::BlockStatement(
-                    vec![
-                        Node::ExpressionStatement(Box::new(
-                            Node::BinaryExpression(
-                                Box::new(Node::Identifier("a".to_string())),
-                                Operator::Assign,
-                                Box::new(Node::BinaryExpression(
-                                    Box::new(Node::Identifier("a".to_string())),
-                                    Operator::Add,
-                                    Box::new(Node::IntegerLiteral(BigInt::from(3))),
-                                )),
-                            ),
+                    vec![Node::ExpressionStatement(Box::new(Node::BinaryExpression(
+                        Box::new(Node::Identifier("a".to_string())),
+                        Operator::Assign,
+                        Box::new(Node::BinaryExpression(
+                            Box::new(Node::Identifier("a".to_string())),
+                            Operator::Add,
+                            Box::new(Node::IntegerLiteral(BigInt::from(3))),
                         )),
-                    ],
+                    ),)),],
                     HashMap::new(),
                 ),
             ],
-            hashmap!{
+            hashmap! {
                 "a" => false
             },
         ),

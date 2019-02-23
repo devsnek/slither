@@ -1,5 +1,5 @@
-use slither::run;
 use clap::{App, Arg};
+use slither::run;
 
 fn main() {
     let matches = App::new("slither")

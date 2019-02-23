@@ -378,7 +378,7 @@ impl Agent {
 }
 
 macro_rules! test {
-    ( $name:ident, $source:expr, $result:expr ) => (
+    ( $name:ident, $source:expr, $result:expr ) => {
         #[test]
         fn $name() {
             let agent = Agent::new();
@@ -397,7 +397,7 @@ macro_rules! test {
                 $result,
             );
         }
-    );
+    };
 }
 
 test!(test_throw, "throw 5.0;", Err(Value::Float(5.0)));
