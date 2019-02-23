@@ -1,4 +1,5 @@
 import { print } from standard:debug;
-import { open } from standard:ffi;
 
-open('./b.dylib');
+Promise.resolve(5).then(print);
+
+print('owo');

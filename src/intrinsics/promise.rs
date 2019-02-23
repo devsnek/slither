@@ -60,7 +60,7 @@ pub fn promise_reaction_job(agent: &Agent, args: Vec<Value>) -> Result<(), Value
 fn fulfill_promise(agent: &Agent, promise: Value, value: Value) -> Result<Value, Value> {
     let reactions = promise.get_slot("fulfill reactions");
     promise.set_slot("result", value.clone());
-    promise.set_slot("state", Value::from("fulfilled"));
+    promise.set_slot("promise state", Value::from("fulfilled"));
     promise.set_slot("fulfill reactions", Value::Null);
     promise.set_slot("reject reactions", Value::Null);
     trigger_promise_reactions(agent, reactions, value)
@@ -69,7 +69,7 @@ fn fulfill_promise(agent: &Agent, promise: Value, value: Value) -> Result<Value,
 fn reject_promise(agent: &Agent, promise: Value, reason: Value) -> Result<Value, Value> {
     let reactions = promise.get_slot("reject reactions");
     promise.set_slot("result", reason.clone());
-    promise.set_slot("state", Value::from("rejected"));
+    promise.set_slot("promise state", Value::from("rejected"));
     promise.set_slot("fulfill reactions", Value::Null);
     promise.set_slot("reject reactions", Value::Null);
     trigger_promise_reactions(agent, reactions, reason)
@@ -129,7 +129,7 @@ fn promise(agent: &Agent, _ctx: &ExecutionContext, args: Vec<Value>) -> Result<V
     }
 
     let promise = new_custom_object(agent.intrinsics.promise_prototype.clone());
-    promise.set_slot("state", Value::from("pending"));
+    promise.set_slot("promise state", Value::from("pending"));
     promise.set_slot("fulfill reactions", Value::new_list());
     promise.set_slot("reject reactions", Value::new_list());
 
@@ -153,11 +153,73 @@ fn promise(agent: &Agent, _ctx: &ExecutionContext, args: Vec<Value>) -> Result<V
     Ok(promise)
 }
 
+fn get_capabilities_executor(
+    _agent: &Agent,
+    ctx: &ExecutionContext,
+    args: Vec<Value>,
+) -> Result<Value, Value> {
+    let f = ctx.function.clone().unwrap();
+
+    let resolve = args.get(0).unwrap_or(&Value::Null).clone();
+    let reject = args.get(1).unwrap_or(&Value::Null).clone();
+
+    if f.get_slot("resolve") != Value::Null || f.get_slot("reject") != Value::Null {
+        return Err(new_error("type error"));
+    }
+
+    f.set_slot("resolve", resolve);
+    f.set_slot("reject", reject);
+
+    Ok(Value::Null)
+}
+
+pub fn new_promise_capability(agent: &Agent, constructor: Value) -> Result<Value, Value> {
+    let executor = new_builtin_function(agent, get_capabilities_executor);
+    executor.set_slot("resolve", Value::Null);
+    executor.set_slot("reject", Value::Null);
+
+    let promise = constructor.construct(agent, vec![executor.clone()])?;
+    promise.set_slot("resolve", executor.get_slot("resolve"));
+    promise.set_slot("reject", executor.get_slot("reject"));
+
+    Ok(promise)
+}
+
+fn promise_resolve(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
+    let x = args.get(0).unwrap_or(&Value::Null);
+    let c = ctx.environment.borrow().this.clone().unwrap();
+    if c.type_of() != "object" && c.type_of() != "function" {
+        return Err(new_error("this must be an object"));
+    }
+    if x.has_slot("promise state") {
+        let x_constructor = x.get(&ObjectKey::from("constructor"))?;
+        if x_constructor == c {
+            return Ok(x.clone());
+        }
+    }
+    let capability = new_promise_capability(agent, c)?;
+    capability.get_slot("resolve").call(agent, Value::Null, vec![x.clone()])?;
+    Ok(capability)
+}
+
+fn promise_reject(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
+    let x = args.get(0).unwrap_or(&Value::Null);
+    let c = ctx.environment.borrow().this.clone().unwrap();
+    if c.type_of() != "object" && c.type_of() != "function" {
+        return Err(new_error("this must be an object"));
+    }
+    let capability = new_promise_capability(agent, c)?;
+    capability.get_slot("reject").call(agent, Value::Null, vec![x.clone()])?;
+    Ok(capability)
+}
+
 pub fn create_promise(agent: &Agent, prototype: Value) -> Value {
     let p = new_builtin_function(agent, promise);
 
     p.set(&ObjectKey::from("prototype"), prototype.clone())
         .unwrap();
+    p.set(&ObjectKey::from("resolve"), new_builtin_function(agent, promise_resolve)).unwrap();
+    p.set(&ObjectKey::from("reject"), new_builtin_function(agent, promise_reject)).unwrap();
     prototype
         .set(&ObjectKey::from("constructor"), p.clone())
         .unwrap();

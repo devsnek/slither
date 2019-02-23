@@ -480,7 +480,7 @@ impl<'a> Parser<'a> {
 
     fn parse_function(&mut self, expression: bool) -> Result<Node, Error> {
         let name = if expression {
-            if let Some(Token::Identifier(_)) = self.lexer.peek() {
+            if let Some(Token::Identifier(..)) = self.lexer.peek() {
                 Some(self.parse_identifier(false)?)
             } else {
                 None
@@ -617,7 +617,7 @@ impl<'a> Parser<'a> {
                 self.lexer.next();
                 match self.lexer.peek() {
                     // import "specifier";
-                    Some(Token::StringLiteral(_)) => {
+                    Some(Token::StringLiteral(..)) => {
                         let specifier = match self.lexer.next() {
                             Some(Token::StringLiteral(s)) => s,
                             _ => unreachable!(),
@@ -652,7 +652,7 @@ impl<'a> Parser<'a> {
                         }
                     }
                     // import binding from "specifier";
-                    Some(Token::Identifier(_)) => {
+                    Some(Token::Identifier(..)) => {
                         let binding = self.parse_identifier(false)?;
                         self.expect(Token::From)?;
                         let specifier = match self.lexer.next() {
@@ -812,15 +812,15 @@ impl<'a> Parser<'a> {
             | Operator::MulAssign
             | Operator::DivAssign
             | Operator::PowAssign => match left {
-                Node::CallExpression(_, _)
-                | Node::UnaryExpression(_, _)
+                Node::CallExpression(..)
+                | Node::UnaryExpression(..)
                 | Node::NullLiteral
                 | Node::TrueLiteral
                 | Node::FalseLiteral
-                | Node::ArrayLiteral(_)
-                | Node::ObjectLiteral(_)
-                | Node::FloatLiteral(_)
-                | Node::StringLiteral(_) => {
+                | Node::ArrayLiteral(..)
+                | Node::ObjectLiteral(..)
+                | Node::FloatLiteral(..)
+                | Node::StringLiteral(..) => {
                     return Err(Error::UnexpectedToken);
                 }
                 _ => {}
@@ -944,9 +944,9 @@ impl<'a> Parser<'a> {
             }
             Node::FalseLiteral => Ok(alternative),
             Node::NullLiteral => Ok(alternative),
-            Node::ArrayLiteral(_) => Ok(consequent),
-            Node::ObjectLiteral(_) => Ok(consequent),
-            Node::UnaryExpression(Operator::Void, _) => Ok(alternative),
+            Node::ArrayLiteral(..) => Ok(consequent),
+            Node::ObjectLiteral(..) => Ok(consequent),
+            Node::UnaryExpression(Operator::Void, ..) => Ok(alternative),
             _ => Err(()),
         }
     }

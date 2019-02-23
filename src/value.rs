@@ -369,6 +369,19 @@ impl Value {
         }
     }
 
+    pub fn has_slot(&self, property: &str) -> bool {
+        if let Value::Object(o) = self {
+            match &o.kind {
+                ObjectKind::Custom(cell) | ObjectKind::BuiltinFunction(_, cell) => {
+                    cell.borrow().contains_key(property)
+                }
+                _ => false,
+            }
+        } else {
+            false
+        }
+    }
+
     pub fn get_slot(&self, property: &str) -> Value {
         if let Value::Object(o) = self {
             match &o.kind {

@@ -1,29 +1,9 @@
 use crate::agent::Agent;
-use crate::intrinsics::promise::promise_reaction_job;
+use crate::intrinsics::promise::{promise_reaction_job, new_promise_capability};
 use crate::value::{
-    new_builtin_function, new_custom_object, new_error, new_object, ObjectKey, Value,
+    new_builtin_function, new_custom_object, new_object, ObjectKey, Value,
 };
 use crate::vm::ExecutionContext;
-
-fn get_capabilities_executor(
-    _agent: &Agent,
-    ctx: &ExecutionContext,
-    args: Vec<Value>,
-) -> Result<Value, Value> {
-    let f = ctx.function.clone().unwrap();
-
-    let resolve = args.get(0).unwrap_or(&Value::Null).clone();
-    let reject = args.get(1).unwrap_or(&Value::Null).clone();
-
-    if f.get_slot("resolve") != Value::Null || f.get_slot("reject") != Value::Null {
-        return Err(new_error("type error"));
-    }
-
-    f.set_slot("resolve", resolve);
-    f.set_slot("reject", reject);
-
-    Ok(Value::Null)
-}
 
 fn promise_proto_then(
     agent: &Agent,
@@ -37,13 +17,7 @@ fn promise_proto_then(
 
     let constructor = this.get(&ObjectKey::from("constructor"))?;
 
-    let executor = new_builtin_function(agent, get_capabilities_executor);
-    executor.set_slot("resolve", Value::Null);
-    executor.set_slot("reject", Value::Null);
-
-    let promise = constructor.construct(agent, vec![executor.clone()])?;
-    promise.set_slot("resolve", executor.get_slot("resolve"));
-    promise.set_slot("reject", executor.get_slot("reject"));
+    let promise = new_promise_capability(agent, constructor)?;
 
     if on_fulfilled.type_of() != "function" {
         on_fulfilled = Value::Null;
@@ -62,7 +36,7 @@ fn promise_proto_then(
     reject_reaction.set_slot("promise", promise.clone());
     reject_reaction.set_slot("handler", on_rejected);
 
-    let state = this.get_slot("state");
+    let state = this.get_slot("promise state");
     if let Value::String(s) = &state {
         match s.as_str() {
             "pending" => {
