@@ -597,7 +597,7 @@ impl<'a> Parser<'a> {
                     } else {
                         self.parse_block_statement(ParseScope::Block)?
                     };
-                    if let Ok(n) =
+                    if let Some(n) =
                         self.fold_conditional(test.clone(), consequent.clone(), alternative.clone())
                     {
                         return Ok(n);
@@ -608,7 +608,7 @@ impl<'a> Parser<'a> {
                         Box::new(alternative),
                     ))
                 } else {
-                    if let Ok(n) = self.fold_conditional(
+                    if let Some(n) = self.fold_conditional(
                         test.clone(),
                         consequent.clone(),
                         Node::ExpressionStatement(Box::new(Node::NullLiteral)),
@@ -622,7 +622,11 @@ impl<'a> Parser<'a> {
                 self.lexer.next();
                 let test = self.parse_expression()?;
                 let body = self.parse_block_statement(ParseScope::Block)?;
-                Ok(Node::WhileStatement(Box::new(test), Box::new(body)))
+                if let Some(n) = self.fold_while_loop(test.clone()) {
+                    Ok(n)
+                } else {
+                    Ok(Node::WhileStatement(Box::new(test), Box::new(body)))
+                }
             }
             Some(Token::Export) if self.scope(ParseScope::TopLevel) => {
                 self.lexer.next();
@@ -948,36 +952,68 @@ impl<'a> Parser<'a> {
         test: Node,
         consequent: Node,
         alternative: Node,
-    ) -> Result<Node, ()> {
+    ) -> Option<Node> {
         match test {
-            Node::TrueLiteral => Ok(consequent),
             Node::FloatLiteral(n) => {
                 if n != 0f64 {
-                    Ok(consequent)
+                    Some(consequent)
                 } else {
-                    Ok(alternative)
+                    Some(alternative)
                 }
             }
             Node::IntegerLiteral(n) => {
                 if n != BigInt::from(0) {
-                    Ok(consequent)
+                    Some(consequent)
                 } else {
-                    Ok(alternative)
+                    Some(alternative)
                 }
             }
             Node::StringLiteral(s) => {
                 if s.chars().count() > 0 {
-                    Ok(consequent)
+                    Some(consequent)
                 } else {
-                    Ok(alternative)
+                    Some(alternative)
                 }
             }
-            Node::FalseLiteral => Ok(alternative),
-            Node::NullLiteral => Ok(alternative),
-            Node::ArrayLiteral(..) => Ok(consequent),
-            Node::ObjectLiteral(..) => Ok(consequent),
-            Node::UnaryExpression(Operator::Void, ..) => Ok(alternative),
-            _ => Err(()),
+            Node::FalseLiteral
+            | Node::NullLiteral
+            | Node::UnaryExpression(Operator::Void, ..) => Some(alternative),
+            Node::TrueLiteral
+            | Node::ArrayLiteral(..)
+            | Node::ObjectLiteral(..) => Some(consequent),
+            _ => None,
+        }
+    }
+
+    fn fold_while_loop(&self, test: Node) -> Option<Node> {
+        match test {
+            Node::NullLiteral
+            | Node::FalseLiteral
+            | Node::UnaryExpression(Operator::Void, ..) => {
+                Some(Node::ExpressionStatement(Box::new(test)))
+            }
+            Node::FloatLiteral(n) => {
+                if n == 0f64 {
+                    Some(Node::ExpressionStatement(Box::new(test)))
+                } else {
+                    None
+                }
+            }
+            Node::IntegerLiteral(ref n) => {
+                if n == &BigInt::from(0) {
+                    Some(Node::ExpressionStatement(Box::new(test)))
+                } else {
+                    None
+                }
+            }
+            Node::StringLiteral(ref s) => {
+                if s.chars().count() == 0 {
+                    Some(Node::ExpressionStatement(Box::new(test)))
+                } else {
+                    None
+                }
+            }
+            _ => None,
         }
     }
 
@@ -988,7 +1024,7 @@ impl<'a> Parser<'a> {
             let consequent = self.parse_assignment_expression()?;
             self.expect(Token::Colon)?;
             let alternative = self.parse_assignment_expression()?;
-            if let Ok(n) =
+            if let Some(n) =
                 self.fold_conditional(lhs.clone(), consequent.clone(), alternative.clone())
             {
                 return Ok(n);
@@ -1310,5 +1346,17 @@ fn test_parser() {
                 "a" => false
             },
         ),
-    )
+    );
+
+    assert_eq!(
+        Parser::parse("while false { 1; }").unwrap(),
+        Node::BlockStatement(
+            vec![
+                Node::ParenthesizedExpression(Box::new(
+                    Node::FalseLiteral,
+                ))
+            ],
+            HashMap::new(),
+        ),
+    );
 }
