@@ -1,5 +1,10 @@
 import { print } from standard:debug;
 
-let a = 1.0;
-
-print(((a) => { return a; })(2));
+let i = 1;
+while true {
+  i += 1;
+  print(i);
+  if i > 5 {
+    break;
+  }
+}

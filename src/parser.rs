@@ -66,6 +66,7 @@ enum Token {
     Dot,
     Comma,
     Throw,
+    Break,
     Try,
     Catch,
     Finally,
@@ -98,6 +99,7 @@ pub enum Node {
     IfStatement(Box<Node>, Box<Node>), // test, consequent
     IfElseStatement(Box<Node>, Box<Node>, Box<Node>), // test, consequent, alternative
     WhileStatement(Box<Node>, Box<Node>), // test, body
+    BreakStatement,
     TryStatement(
         Box<Node>,         // try clause
         Option<String>,    // catch binding
@@ -216,6 +218,7 @@ impl<'a> Lexer<'a> {
                             "try" => Token::Try,
                             "catch" => Token::Catch,
                             "finally" => Token::Finally,
+                            "break" => Token::Break,
                             "if" => Token::If,
                             "else" => Token::Else,
                             "while" => Token::While,
@@ -388,6 +391,7 @@ impl<'a> Lexer<'a> {
 enum ParseScope {
     TopLevel,
     Block,
+    Loop,
     Function,
 }
 
@@ -444,6 +448,26 @@ impl<'a> Parser<'a> {
         match scope {
             ParseScope::TopLevel => self.scope_stack.last().unwrap() == &ParseScope::TopLevel,
             ParseScope::Block => self.scope_stack.last().unwrap() == &ParseScope::Block,
+            ParseScope::Loop => {
+                let mut loop_pos = None;
+                let mut func_pos = None;
+                self.scope_stack
+                    .iter()
+                    .enumerate()
+                    .rev()
+                    .for_each(|(i, s)| match s {
+                        ParseScope::Loop if loop_pos.is_none() => loop_pos = Some(i),
+                        ParseScope::Function if func_pos.is_none() => func_pos = Some(i),
+                        _ => {}
+                    });
+                match loop_pos {
+                    None => false,
+                    Some(loop_pos) => match func_pos {
+                        None => true,
+                        Some(func_pos) => loop_pos > func_pos,
+                    },
+                }
+            }
             ParseScope::Function => self.scope_stack.contains(&ParseScope::Function),
         }
     }
@@ -621,12 +645,17 @@ impl<'a> Parser<'a> {
             Some(Token::While) => {
                 self.lexer.next();
                 let test = self.parse_expression()?;
-                let body = self.parse_block_statement(ParseScope::Block)?;
+                let body = self.parse_block_statement(ParseScope::Loop)?;
                 if let Some(n) = self.fold_while_loop(test.clone()) {
                     Ok(n)
                 } else {
                     Ok(Node::WhileStatement(Box::new(test), Box::new(body)))
                 }
+            }
+            Some(Token::Break) if self.scope(ParseScope::Loop) => {
+                self.lexer.next();
+                self.expect(Token::Semicolon)?;
+                Ok(Node::BreakStatement)
             }
             Some(Token::Export) if self.scope(ParseScope::TopLevel) => {
                 self.lexer.next();

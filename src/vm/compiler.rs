@@ -48,6 +48,9 @@ pub enum Op {
     ExceptionToStack,
     PushTry,
     PopTry,
+    PushLoop,
+    PopLoop,
+    Break,
     Add,
     Sub,
     UnarySub,
@@ -277,6 +280,7 @@ impl Compiler {
                 self.compile_if_else_statement(test, consequent, alternative)
             }
             Node::WhileStatement(test, body) => self.compile_while_statement(test, body),
+            Node::BreakStatement => self.compile_break_statement(),
             Node::ThrowStatement(value) => self.compile_throw_statement(value),
             Node::TryStatement(try_clause, binding, catch, finally) => {
                 self.compile_try_statement(try_clause, binding, catch, finally)
@@ -603,10 +607,17 @@ impl Compiler {
         label!(end);
         mark!(self, check);
         self.compile(test)?;
+        self.push_op(Op::PushLoop);
         jump_if_false!(self, end);
         self.compile(body)?;
+        self.push_op(Op::PopLoop);
         jump!(self, check);
         mark!(self, end);
+        Ok(())
+    }
+
+    fn compile_break_statement(&mut self) -> Result<(), Error> {
+        self.push_op(Op::Break);
         Ok(())
     }
 

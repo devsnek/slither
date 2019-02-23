@@ -387,6 +387,7 @@ macro_rules! test {
     ( $name:ident, $source:expr, $result:expr ) => {
         #[test]
         fn $name() {
+            use num::BigInt;
             let agent = Agent::new();
             match ModuleX::new(stringify!(test_$name.sl), $source, &agent) {
                 Err(e) => assert_eq!(Err::<Value, Value>(e), $result),
@@ -429,3 +430,18 @@ test!(
 
 // TODO: figure out matching objects
 // test!(test_arrow_expr_invalid_arg, "(1) => {};", Err(Value::Null));
+
+test!(
+    test_while_break,
+    r#"
+    let i = 0;
+    while true {
+      i += 1;
+      if i > 5 {
+        break;
+      }
+    }
+    i;
+    "#,
+    Ok(Value::Integer(BigInt::from(6)))
+);

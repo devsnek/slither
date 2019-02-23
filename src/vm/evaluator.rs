@@ -155,6 +155,7 @@ pub fn evaluate_at(
     positions: &mut Vec<usize>,
 ) -> Result<Value, Value> {
     let mut try_stack: Vec<usize> = vec![compiled.code.len()];
+    let mut loop_stack: Vec<usize> = Vec::new();
     let mut pc: usize = pc;
 
     let get_u8 = |pc: &mut usize| {
@@ -541,7 +542,7 @@ pub fn evaluate_at(
                 }
             }
             Op::InitReplace => {
-                assert!(get_u8(&mut pc) == Op::Jump as u8);
+                assert_eq!(get_u8(&mut pc), Op::Jump as u8);
                 let position = get_i32(&mut pc) as usize;
                 if stack.last().unwrap() == &Value::Empty {
                     stack.pop(); // will be pushed by default evaluation next
@@ -588,12 +589,24 @@ pub fn evaluate_at(
                 stack.push(e);
             }
             Op::PushTry => {
-                assert!(get_u8(&mut pc) == Op::Jump as u8);
+                assert_eq!(get_u8(&mut pc), Op::Jump as u8);
                 let position = get_i32(&mut pc) as usize;
                 try_stack.push(position);
             }
             Op::PopTry => {
                 try_stack.pop();
+            }
+            Op::PushLoop => {
+                assert_eq!(get_u8(&mut pc), Op::JumpIfFalse as u8);
+                let position = get_i32(&mut pc) as usize;
+                loop_stack.push(position);
+            }
+            Op::PopLoop => {
+                loop_stack.pop();
+            }
+            Op::Break => {
+                let position = loop_stack.pop().unwrap();
+                pc = position;
             }
             Op::Eq => {
                 let right = handle!(get_value(stack));
