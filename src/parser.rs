@@ -799,6 +799,7 @@ impl<'a> Parser<'a> {
             Some(Token::Null) if allow_keyword => Ok("null".to_string()),
             Some(Token::This) if allow_keyword => Ok("this".to_string()),
             Some(Token::Class) if allow_keyword => Ok("class".to_string()),
+            Some(Token::Finally) if allow_keyword => Ok("finally".to_string()),
             /*
             "function" => Token::Function,
             "let" => Token::Let,
@@ -807,7 +808,6 @@ impl<'a> Parser<'a> {
             "return" => Token::Return,
             "try" => Token::Try,
             "catch" => Token::Catch,
-            "finally" => Token::Finally,
             "if" => Token::If,
             "else" => Token::Else,
             "new" => Token::New,

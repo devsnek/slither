@@ -1,10 +1,9 @@
 import { print } from standard:debug;
 
-let i = 1;
-while true {
-  i += 1;
-  print(i);
-  if i > 5 {
-    break;
-  }
-}
+const p = new Promise((resolve, reject) => {
+  resolve(5);
+});
+
+p.finally((v) => {
+  print('finally!', v);
+});

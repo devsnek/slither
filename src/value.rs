@@ -3,7 +3,7 @@ use crate::vm::{evaluate_at, Compiled, ExecutionContext, LexicalEnvironment};
 use gc::{Gc, GcCell};
 use indexmap::IndexMap;
 use num::BigInt;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 macro_rules! custom_trace {
@@ -291,6 +291,45 @@ pub enum Value {
     ValueReference(Box<Value>, ObjectKey),
 }
 
+/*
+impl Eq for Value {}
+impl std::hash::Hash for Value {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            Value::Empty => 0.hash(state),
+            Value::Null => 1.hash(state),
+            Value::True => 2.hash(state),
+            Value::False => 3.hash(state),
+            Value::String(s) => {
+                4.hash(state);
+                s.hash(state);
+            }
+            Value::Float(n) => {
+                5.hash(state);
+                unsafe {
+                    // hash raw bits of f64
+                    std::mem::transmute::<f64, u64>(*n).hash(state);
+                }
+            }
+            Value::Integer(n) => {
+                6.hash(state);
+                n.hash(state);
+            }
+            Value::Symbol(s) => {
+                7.hash(state);
+                s.hash(state);
+            }
+            Value::Object(o) => {
+                8.hash(state);
+                // hash the memory address of the map sigh
+                (&*o.properties.borrow() as *const IndexMap<ObjectKey, Value>).hash(state);
+            }
+            _ => unreachable!(),
+        }
+    }
+}
+*/
+
 unsafe impl gc::Trace for Value {
     custom_trace!(this, {
         match this {
@@ -498,7 +537,11 @@ impl Value {
     }
 }
 
-fn inspect(value: &Value, indent: usize) -> Result<String, Value> {
+fn inspect(
+    value: &Value,
+    indent: usize,
+    inspected: &mut HashSet<*const IndexMap<ObjectKey, Value>>,
+) -> Result<String, Value> {
     match value {
         Value::Null => Ok("null".to_string()),
         Value::True => Ok("true".to_string()),
@@ -514,25 +557,34 @@ fn inspect(value: &Value, indent: usize) -> Result<String, Value> {
             }
         }
         Value::Object(o) => {
-            let keys = value.keys()?;
-            let array = match o.kind {
-                ObjectKind::Array => true,
-                _ => false,
-            };
-            if keys.is_empty() {
-                return Ok(if array { "[]" } else { "{}" }.to_string());
+            let hash_key = &*o.properties.borrow() as *const IndexMap<ObjectKey, Value>;
+            if inspected.contains(&hash_key) {
+                Ok("[Circular]".to_string())
+            } else {
+                inspected.insert(hash_key);
+                let keys = value.keys()?;
+                let array = match o.kind {
+                    ObjectKind::Array => true,
+                    _ => false,
+                };
+                let function = value.type_of() == "function";
+                let mut out = String::from(if function { "[Function] " } else { "" });
+                out += if array { "[" } else { "{" };
+                if keys.is_empty() {
+                    out += if array { "[]" } else { "{}" };
+                    return Ok(out);
+                }
+                for key in keys {
+                    out += &format!(
+                        "\n{}{}: {},",
+                        "  ".repeat(indent + 1),
+                        key,
+                        inspect(&value.get(&key)?, indent + 1, inspected)?
+                    )
+                }
+                out += &format!("\n{}{}", "  ".repeat(indent), if array { "]" } else { "}" });
+                Ok(out)
             }
-            let mut out = String::from(if array { "[" } else { "{" });
-            for key in keys {
-                out += &format!(
-                    "\n{}{}: {},",
-                    "  ".repeat(indent + 1),
-                    key,
-                    inspect(&value.get(&key)?, indent + 1)?
-                )
-            }
-            out += &format!("\n{}{}", "  ".repeat(indent), if array { "]" } else { "}" });
-            Ok(out)
         }
         _ => unreachable!(),
     }
@@ -540,7 +592,7 @@ fn inspect(value: &Value, indent: usize) -> Result<String, Value> {
 
 impl std::fmt::Display for Value {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match inspect(self, 0) {
+        match inspect(self, 0, &mut HashSet::new()) {
             Ok(s) => write!(fmt, "{}", s),
             Err(_e) => Err(std::fmt::Error),
         }

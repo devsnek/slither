@@ -209,16 +209,7 @@ pub fn new_promise_capability(agent: &Agent, constructor: Value) -> Result<Value
     Ok(promise)
 }
 
-fn promise_resolve(
-    agent: &Agent,
-    ctx: &ExecutionContext,
-    args: Vec<Value>,
-) -> Result<Value, Value> {
-    let x = args.get(0).unwrap_or(&Value::Null);
-    let c = ctx.environment.borrow().this.clone().unwrap();
-    if c.type_of() != "object" && c.type_of() != "function" {
-        return Err(new_error("this must be an object"));
-    }
+pub fn promise_resolve_i(agent: &Agent, c: Value, x: Value) -> Result<Value, Value> {
     if x.has_slot("promise state") {
         let x_constructor = x.get(&ObjectKey::from("constructor"))?;
         if x_constructor == c {
@@ -230,6 +221,19 @@ fn promise_resolve(
         .get_slot("resolve")
         .call(agent, Value::Null, vec![x.clone()])?;
     Ok(capability)
+}
+
+fn promise_resolve(
+    agent: &Agent,
+    ctx: &ExecutionContext,
+    args: Vec<Value>,
+) -> Result<Value, Value> {
+    let c = ctx.environment.borrow().this.clone().unwrap();
+    if c.type_of() != "object" && c.type_of() != "function" {
+        return Err(new_error("this must be an object"));
+    }
+    let x = args.get(0).unwrap_or(&Value::Null).clone();
+    promise_resolve_i(agent, c, x)
 }
 
 fn promise_reject(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
