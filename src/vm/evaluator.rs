@@ -279,14 +279,6 @@ pub fn evaluate_at(
         let op = compiled.code[pc].into();
         pc += 1;
         match op {
-            Op::PushContext => {
-                // println!("PushContext");
-                scope.push(ExecutionContext::new(LexicalEnvironment::new(None)));
-            }
-            Op::PopContext => {
-                // println!("PopContext");
-                scope.pop();
-            }
             Op::PushScope => {
                 // println!("PushScope");
                 let mut ctx = scope.last().unwrap().borrow_mut();
@@ -573,9 +565,11 @@ pub fn evaluate_at(
                 stack.push(result);
             }
             Op::End => {
+                scope.pop();
                 pc = positions.pop().unwrap();
             }
             Op::Return => {
+                scope.pop();
                 pc = positions.pop().unwrap();
             }
             Op::Throw => {

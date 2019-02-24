@@ -9,8 +9,6 @@ pub struct Error;
 #[repr(u8)]
 #[derive(PartialEq, Debug)]
 pub enum Op {
-    PushContext,
-    PopContext,
     PushScope,
     PopScope,
     End,
@@ -498,7 +496,6 @@ impl Compiler {
             unreachable!();
         }
 
-        self.push_op(Op::PopContext);
         self.push_op(Op::End);
 
         mark!(self, end);
@@ -560,7 +557,6 @@ impl Compiler {
 
     fn compile_return_statement(&mut self, expr: &Node) -> Result<(), Error> {
         self.compile(expr)?;
-        self.push_op(Op::PopContext);
         self.push_op(Op::Return);
         Ok(())
     }

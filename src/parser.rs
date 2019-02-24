@@ -385,6 +385,17 @@ impl<'a> Lexer<'a> {
             _ => unreachable!(),
         }
     }
+
+    pub fn peek_immutable(&self) -> Option<&Token> {
+        if self.peeked.is_none() {
+            panic!();
+        }
+        match self.peeked {
+            Some(Some(ref value)) => Some(value),
+            Some(None) => None,
+            _ => unreachable!(),
+        }
+    }
 }
 
 #[derive(PartialEq, Clone, Copy)]
@@ -547,7 +558,8 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_statement_list_item(&mut self) -> Result<Node, Error> {
-        match self.lexer.peek() {
+        self.lexer.peek();
+        match self.lexer.peek_immutable() {
             None => Err(Error::NormalEOF),
             Some(Token::LeftBrace) => self.parse_block_statement(ParseScope::Block),
             Some(Token::Let) | Some(Token::Const) => self.parse_lexical_declaration(),
