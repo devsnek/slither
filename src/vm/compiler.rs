@@ -17,9 +17,7 @@ pub enum Op {
     NewString,
     NewFunction,
     NewObject,
-    SetLastObjectProperty,
     NewArray,
-    SetLastArrayProperty,
     NewIdentifier,
     NewMemberReference,
     NewComputedMemberReference,
@@ -381,28 +379,27 @@ impl Compiler {
     }
 
     fn compile_object_literal(&mut self, inits: &[Node]) -> Result<(), Error> {
-        self.push_op(Op::NewObject);
         for init in inits {
             if let Node::Initializer(key, expr) = init {
-                self.compile(expr)?;
-                self.push_op(Op::SetLastObjectProperty);
+                self.push_op(Op::NewString);
                 let id = self.string_id(key);
                 self.push_i32(id);
+                self.compile(expr)?;
             } else {
                 unreachable!();
             }
         }
+        self.push_op(Op::NewObject);
+        self.push_i32(inits.len() as i32);
         Ok(())
     }
 
     fn compile_array_literal(&mut self, inits: &[Node]) -> Result<(), Error> {
+        for init in inits {
+            self.compile(init)?;
+        }
         self.push_op(Op::NewArray);
         self.push_i32(inits.len() as i32);
-        for (i, init) in inits.iter().enumerate() {
-            self.compile(init)?;
-            self.push_op(Op::SetLastArrayProperty);
-            self.push_i32(i as i32);
-        }
         Ok(())
     }
 

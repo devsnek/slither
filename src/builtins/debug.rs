@@ -14,7 +14,7 @@ fn print(_: &Agent, _: &ExecutionContext, args: Vec<Value>) -> Result<Value, Val
     Ok(Value::Null)
 }
 
-pub fn create_debug(agent: &Agent) -> HashMap<String, Value> {
+pub fn create(agent: &Agent) -> HashMap<String, Value> {
     let mut module = HashMap::new();
     module.insert("print".to_string(), new_builtin_function(agent, print));
 

@@ -1,3 +1,10 @@
 import { print } from standard:debug;
+import { createTimeout } from standard:timers;
 
-print(((a) => { return a; })(1));
+print('before');
+
+createTimeout(() => {
+  print('in timeout');
+}, 100);
+
+print('after');

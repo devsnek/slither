@@ -1,4 +1,3 @@
-use crate::builtins::create_debug;
 use crate::intrinsics::{
     create_array_prototype, create_boolean_prototype, create_float_prototype,
     create_function_prototype, create_object_prototype, create_promise, create_promise_prototype,
@@ -268,12 +267,23 @@ pub struct Intrinsics {
     pub symbol: Value,
 }
 
+pub enum MioMapType {
+    Timer(mio::Registration, Value),
+}
+
+fn call_timer_job(agent: &Agent, args: Vec<Value>) -> Result<(), Value> {
+    args[0].call(agent, Value::Null, Vec::new())?;
+    Ok(())
+}
+
 pub struct Agent {
     pub intrinsics: Intrinsics,
     builtins: HashMap<String, HashMap<String, Value>>,
     modules: GcCell<HashMap<String, Module>>,
     pub root_env: Gc<GcCell<LexicalEnvironment>>,
     job_queue: GcCell<VecDeque<Job>>,
+    pub mio: mio::Poll,
+    pub mio_map: std::cell::RefCell<HashMap<mio::Token, MioMapType>>,
 }
 
 impl Default for Agent {
@@ -308,6 +318,8 @@ impl Agent {
             root_env: LexicalEnvironment::new(None),
             modules: GcCell::new(HashMap::new()),
             job_queue: GcCell::new(VecDeque::new()),
+            mio: mio::Poll::new().expect("create mio poll failed"),
+            mio_map: std::cell::RefCell::new(HashMap::new()),
         };
 
         agent.intrinsics.promise_prototype =
@@ -328,9 +340,7 @@ impl Agent {
                 .unwrap();
         }
 
-        agent
-            .builtins
-            .insert("debug".to_string(), create_debug(&agent));
+        agent.builtins = crate::builtins::create(&agent);
 
         agent
     }
@@ -367,17 +377,53 @@ impl Agent {
         self.job_queue.borrow_mut().push_back(Job(f, args));
     }
 
-    pub fn run_jobs(&self) {
-        loop {
-            let job = self.job_queue.borrow_mut().pop_front();
-            match job {
-                Some(Job(f, args)) => {
-                    f(self, args).unwrap_or_else(|e: Value| {
-                        eprintln!("Uncaught Exception: {}", e);
-                        std::process::exit(1);
-                    });
+    fn run_mio(&self, block: bool) -> bool {
+        let mut events = mio::Events::with_capacity(1024);
+        self.mio
+            .poll(
+                &mut events,
+                if block {
+                    None
+                } else {
+                    Some(std::time::Duration::from_millis(0))
+                },
+            )
+            .expect("mio poll failed");
+        for event in events.iter() {
+            let data = self
+                .mio_map
+                .borrow_mut()
+                .remove(&event.token())
+                .expect("mio_map did not have event");
+            match data {
+                MioMapType::Timer(_r, callback) => {
+                    self.enqueue_job(call_timer_job, vec![callback]);
                 }
-                None => break,
+            }
+        }
+        true
+    }
+
+    pub fn run_jobs(&self) {
+        self.run_mio(false);
+        loop {
+            loop {
+                let job = self.job_queue.borrow_mut().pop_front();
+                match job {
+                    Some(Job(f, args)) => {
+                        f(self, args).unwrap_or_else(|e: Value| {
+                            eprintln!("Uncaught Exception: {}", e);
+                            std::process::exit(1);
+                        });
+                    }
+                    None => break,
+                }
+            }
+
+            // job queue is empty
+
+            if !self.run_mio(true) {
+                break;
             }
         }
     }
@@ -430,6 +476,22 @@ test!(
 
 // TODO: figure out matching objects
 // test!(test_arrow_expr_invalid_arg, "(1) => {};", Err(Value::Null));
+
+test!(
+    test_object_literal,
+    r#"
+    const obj = {
+      a: 1.0,
+    };
+    const arr = [2.0];
+    const f = {
+      a: obj.a,
+      b: arr[0],
+    };
+    f.a + f.b;
+    "#,
+    Ok(Value::Float(3.0))
+);
 
 test!(
     test_while_break,

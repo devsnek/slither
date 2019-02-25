@@ -7,6 +7,7 @@ extern crate gc_derive;
 extern crate byteorder;
 extern crate clap;
 extern crate gc;
+extern crate mio;
 
 mod agent;
 mod builtins;

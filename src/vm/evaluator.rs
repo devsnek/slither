@@ -322,33 +322,23 @@ pub fn evaluate_at(
             }
             Op::NewObject => {
                 let obj = new_object(Value::Null);
+                let inits = get_i32(&mut pc);
+                for _ in 0..inits {
+                    let value = handle!(get_value(stack));
+                    let key = handle!(get_value(stack));
+                    let key = handle!(key.to_object_key());
+                    handle!(obj.set(&key, value));
+                }
                 stack.push(obj);
-            }
-            Op::SetLastObjectProperty => {
-                let id = get_i32(&mut pc) as usize;
-                let name = &compiled.string_table[id];
-                let value = handle!(get_value(stack));
-                handle!(stack
-                    .last_mut()
-                    .unwrap()
-                    .set(&ObjectKey::from(name.to_string()), value));
             }
             Op::NewArray => {
                 let len = get_i32(&mut pc);
                 let a = new_array(agent);
-                handle!(a.set(
-                    &ObjectKey::from("length"),
-                    Value::Integer(BigInt::from(len))
-                ));
+                for i in 0..len {
+                    let value = handle!(get_value(stack));
+                    handle!(a.set(&ObjectKey::from(i), value));
+                }
                 stack.push(a);
-            }
-            Op::SetLastArrayProperty => {
-                let index = get_i32(&mut pc);
-                let value = handle!(get_value(stack));
-                handle!(stack
-                    .last_mut()
-                    .unwrap()
-                    .set(&ObjectKey::from(index), value));
             }
             Op::NewIdentifier => {
                 let id = get_i32(&mut pc) as usize;

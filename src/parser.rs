@@ -2,6 +2,8 @@ use num::BigInt;
 use std::collections::HashMap;
 use std::iter::Peekable;
 use std::str::Chars;
+use num::traits::{Pow, ToPrimitive};
+use std::ops::{Div, Mul, Rem, Sub};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Operator {
@@ -410,6 +412,22 @@ pub struct Parser<'a> {
     lexer: Lexer<'a>,
     scope_stack: Vec<ParseScope>,
     lex_stack: Vec<HashMap<String, bool>>,
+}
+
+fn f64_shl(a: f64, b: f64) -> f64 {
+    ((a as i64) << b as i64) as f64
+}
+
+fn f64_shr(a: f64, b: f64) -> f64 {
+    (a as i64 >> b as i64) as f64
+}
+
+fn int_shl(a: BigInt, b: BigInt) -> BigInt {
+    a << b.to_usize().unwrap()
+}
+
+fn int_shr(a: BigInt, b: BigInt) -> BigInt {
+    a >> b.to_usize().unwrap()
 }
 
 macro_rules! binop_production {
@@ -896,94 +914,113 @@ impl<'a> Parser<'a> {
             _ => {}
         };
 
-        match &left {
-            Node::FloatLiteral(lnum) => {
-                if let Node::FloatLiteral(rnum) = right {
-                    match op {
-                        Operator::Add => return Ok(Node::FloatLiteral(lnum + rnum)),
-                        Operator::Sub => return Ok(Node::FloatLiteral(lnum - rnum)),
-                        Operator::Mul => return Ok(Node::FloatLiteral(lnum * rnum)),
-                        Operator::Div => return Ok(Node::FloatLiteral(lnum / rnum)),
-                        Operator::BitwiseOR => {
-                            return Ok(Node::FloatLiteral(
-                                (lnum.round() as i64 | rnum.round() as i64) as f64,
-                            ));
-                        }
-                        Operator::BitwiseAND => {
-                            return Ok(Node::FloatLiteral(
-                                (lnum.round() as i64 & rnum.round() as i64) as f64,
-                            ));
-                        }
-                        Operator::BitwiseXOR => {
-                            return Ok(Node::FloatLiteral(
-                                (lnum.round() as i64 ^ rnum.round() as i64) as f64,
-                            ));
-                        }
-                        Operator::LeftShift => {
-                            return Ok(Node::FloatLiteral(
-                                ((lnum.round() as i64) << rnum.round() as i64) as f64,
-                            ));
-                        }
-                        Operator::RightShift => {
-                            return Ok(Node::FloatLiteral(
-                                ((lnum.round() as i64) >> rnum.round() as i64) as f64,
-                            ));
-                        }
-                        Operator::Pow => return Ok(Node::FloatLiteral(lnum.powf(rnum))),
-                        Operator::LessThan => {
-                            if *lnum < rnum {
-                                return Ok(Node::TrueLiteral);
-                            } else {
-                                return Ok(Node::FalseLiteral);
-                            }
-                        }
-                        Operator::GreaterThan => {
-                            if *lnum > rnum {
-                                return Ok(Node::TrueLiteral);
-                            } else {
-                                return Ok(Node::FalseLiteral);
-                            }
-                        }
-                        Operator::LessThanOrEqual => {
-                            if *lnum <= rnum {
-                                return Ok(Node::TrueLiteral);
-                            } else {
-                                return Ok(Node::FalseLiteral);
-                            }
-                        }
-                        Operator::GreaterThanOrEqual => {
-                            if *lnum >= rnum {
-                                return Ok(Node::TrueLiteral);
-                            } else {
-                                return Ok(Node::FalseLiteral);
-                            }
-                        }
-                        Operator::Equal => {
-                            if *lnum == rnum {
-                                return Ok(Node::TrueLiteral);
-                            } else {
-                                return Ok(Node::FalseLiteral);
-                            }
-                        }
-                        Operator::NotEqual => {
-                            if *lnum == rnum {
-                                return Ok(Node::FalseLiteral);
-                            } else {
-                                return Ok(Node::TrueLiteral);
-                            }
+        macro_rules! num_binop_num {
+            ($f64:expr, $int:expr) => {{
+                match &left {
+                    Node::FloatLiteral(lnum) => match right {
+                        Node::FloatLiteral(rnum) => return Ok(Node::FloatLiteral($f64(*lnum, rnum))),
+                        Node::IntegerLiteral(rnum) => {
+                            return Ok(Node::FloatLiteral($f64(*lnum, rnum.to_f64().unwrap())));
                         }
                         _ => {}
-                    }
+                    },
+                    Node::IntegerLiteral(lnum) => match right {
+                        Node::IntegerLiteral(rnum) => return Ok(Node::IntegerLiteral($int(lnum.clone(), rnum))),
+                        Node::FloatLiteral(rnum) => {
+                            return Ok(Node::FloatLiteral($f64(lnum.to_f64().unwrap(), rnum)));
+                        }
+                        _ => {}
+                    },
+                    _ => {}
                 }
-            }
-            Node::StringLiteral(lstr) => match &right {
-                Node::StringLiteral(rstr) if Operator::Add == op => {
-                    return Ok(Node::StringLiteral(format!("{}{}", lstr, rstr)));
+            }};
+        }
+
+        macro_rules! num_binop_bool {
+            ($f64:expr, $int:expr) => {{
+                match &left {
+                    Node::FloatLiteral(lnum) => match right {
+                        Node::FloatLiteral(rnum) => if $f64(&lnum, &rnum) {
+                            return Ok(Node::TrueLiteral);
+                        } else {
+                            return Ok(Node::FalseLiteral);
+                        },
+                        Node::IntegerLiteral(rnum) => if $f64(&lnum, &rnum.to_f64().unwrap()) {
+                            return Ok(Node::TrueLiteral);
+                        } else {
+                            return Ok(Node::FalseLiteral);
+                        },
+                        _ => {},
+                    },
+                    Node::IntegerLiteral(lnum) => match right {
+                        Node::IntegerLiteral(rnum) => if $int(&lnum, &rnum) {
+                            return Ok(Node::TrueLiteral);
+                        } else {
+                            return Ok(Node::FalseLiteral);
+                        },
+                        Node::FloatLiteral(rnum) => if $f64(&lnum.to_f64().unwrap(), &rnum) {
+                            return Ok(Node::TrueLiteral);
+                        } else {
+                            return Ok(Node::FalseLiteral);
+                        },
+                        _ => {}
+                    },
+                    _ => {}
                 }
+            }};
+        }
+
+        match op {
+            Operator::Add => match &left {
+                Node::FloatLiteral(lnum) => match right {
+                    Node::FloatLiteral(rnum) => return Ok(Node::FloatLiteral(lnum + rnum)),
+                    Node::IntegerLiteral(rnum) => return Ok(Node::FloatLiteral(lnum + rnum.to_f64().unwrap())),
+                    _ => {}
+                },
+                Node::IntegerLiteral(lnum) => match right {
+                    Node::FloatLiteral(rnum) => return Ok(Node::FloatLiteral(lnum.to_f64().unwrap() + rnum)),
+                    Node::IntegerLiteral(rnum) => return Ok(Node::IntegerLiteral(lnum + rnum)),
+                    _ => {}
+                },
+                Node::StringLiteral(lstr) => match right {
+                    Node::StringLiteral(rstr) => return Ok(Node::StringLiteral(format!("{}{}", lstr, rstr))),
+                    _ => {}
+                },
                 _ => {}
             },
+            Operator::Sub => num_binop_num!(f64::sub, BigInt::sub),
+            Operator::Mul => num_binop_num!(f64::mul, BigInt::mul),
+            Operator::Div => num_binop_num!(f64::div, BigInt::div),
+            Operator::Mod => num_binop_num!(f64::rem, BigInt::rem),
+            Operator::Pow => match &left {
+                Node::FloatLiteral(base) => match right {
+                    Node::FloatLiteral(exponent) => return Ok(Node::FloatLiteral(base.powf(exponent))),
+                    Node::IntegerLiteral(exponent) => return Ok(Node::FloatLiteral(base.powf(exponent.to_f64().unwrap()))),
+                    _ => {}
+                },
+                Node::IntegerLiteral(base) => match right {
+                    Node::FloatLiteral(exponent) => return Ok(Node::FloatLiteral(base.to_f64().unwrap().powf(exponent))),
+                    Node::IntegerLiteral(exponent) => {
+                        if exponent < BigInt::from(0) {
+                            return Ok(Node::FloatLiteral(
+                                base.to_f64().unwrap().powf(exponent.to_f64().unwrap()),
+                            ))
+                        } else {
+                            return Ok(Node::IntegerLiteral(base.pow(exponent.to_u128().unwrap())))
+                        }
+                    }
+                    _ => {}
+                },
+                _ => {}
+            },
+            Operator::LeftShift => num_binop_num!(f64_shl, int_shl),
+            Operator::RightShift => num_binop_num!(f64_shr, int_shr),
+            Operator::LessThan => num_binop_bool!(f64::lt, BigInt::lt),
+            Operator::GreaterThan => num_binop_bool!(f64::gt, BigInt::gt),
+            Operator::LessThanOrEqual => num_binop_bool!(f64::le, BigInt::le),
+            Operator::GreaterThanOrEqual => num_binop_bool!(f64::ge, BigInt::ge),
             _ => {}
-        };
+        }
 
         Ok(Node::BinaryExpression(Box::new(left), op, Box::new(right)))
     }
