@@ -3,6 +3,9 @@
 #![allow(clippy::option_option)]
 
 #[macro_use]
+extern crate lazy_static;
+
+#[macro_use]
 extern crate gc_derive;
 extern crate byteorder;
 extern crate clap;

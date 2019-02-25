@@ -1,9 +1,9 @@
+use num::traits::{Pow, ToPrimitive};
 use num::BigInt;
 use std::collections::HashMap;
 use std::iter::Peekable;
-use std::str::Chars;
-use num::traits::{Pow, ToPrimitive};
 use std::ops::{Div, Mul, Rem, Sub};
+use std::str::Chars;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Operator {
@@ -918,14 +918,18 @@ impl<'a> Parser<'a> {
             ($f64:expr, $int:expr) => {{
                 match &left {
                     Node::FloatLiteral(lnum) => match right {
-                        Node::FloatLiteral(rnum) => return Ok(Node::FloatLiteral($f64(*lnum, rnum))),
+                        Node::FloatLiteral(rnum) => {
+                            return Ok(Node::FloatLiteral($f64(*lnum, rnum)));
+                        }
                         Node::IntegerLiteral(rnum) => {
                             return Ok(Node::FloatLiteral($f64(*lnum, rnum.to_f64().unwrap())));
                         }
                         _ => {}
                     },
                     Node::IntegerLiteral(lnum) => match right {
-                        Node::IntegerLiteral(rnum) => return Ok(Node::IntegerLiteral($int(lnum.clone(), rnum))),
+                        Node::IntegerLiteral(rnum) => {
+                            return Ok(Node::IntegerLiteral($int(lnum.clone(), rnum)));
+                        }
                         Node::FloatLiteral(rnum) => {
                             return Ok(Node::FloatLiteral($f64(lnum.to_f64().unwrap(), rnum)));
                         }
@@ -940,29 +944,37 @@ impl<'a> Parser<'a> {
             ($f64:expr, $int:expr) => {{
                 match &left {
                     Node::FloatLiteral(lnum) => match right {
-                        Node::FloatLiteral(rnum) => if $f64(&lnum, &rnum) {
-                            return Ok(Node::TrueLiteral);
-                        } else {
-                            return Ok(Node::FalseLiteral);
-                        },
-                        Node::IntegerLiteral(rnum) => if $f64(&lnum, &rnum.to_f64().unwrap()) {
-                            return Ok(Node::TrueLiteral);
-                        } else {
-                            return Ok(Node::FalseLiteral);
-                        },
-                        _ => {},
+                        Node::FloatLiteral(rnum) => {
+                            if $f64(&lnum, &rnum) {
+                                return Ok(Node::TrueLiteral);
+                            } else {
+                                return Ok(Node::FalseLiteral);
+                            }
+                        }
+                        Node::IntegerLiteral(rnum) => {
+                            if $f64(&lnum, &rnum.to_f64().unwrap()) {
+                                return Ok(Node::TrueLiteral);
+                            } else {
+                                return Ok(Node::FalseLiteral);
+                            }
+                        }
+                        _ => {}
                     },
                     Node::IntegerLiteral(lnum) => match right {
-                        Node::IntegerLiteral(rnum) => if $int(&lnum, &rnum) {
-                            return Ok(Node::TrueLiteral);
-                        } else {
-                            return Ok(Node::FalseLiteral);
-                        },
-                        Node::FloatLiteral(rnum) => if $f64(&lnum.to_f64().unwrap(), &rnum) {
-                            return Ok(Node::TrueLiteral);
-                        } else {
-                            return Ok(Node::FalseLiteral);
-                        },
+                        Node::IntegerLiteral(rnum) => {
+                            if $int(&lnum, &rnum) {
+                                return Ok(Node::TrueLiteral);
+                            } else {
+                                return Ok(Node::FalseLiteral);
+                            }
+                        }
+                        Node::FloatLiteral(rnum) => {
+                            if $f64(&lnum.to_f64().unwrap(), &rnum) {
+                                return Ok(Node::TrueLiteral);
+                            } else {
+                                return Ok(Node::FalseLiteral);
+                            }
+                        }
                         _ => {}
                     },
                     _ => {}
@@ -974,17 +986,20 @@ impl<'a> Parser<'a> {
             Operator::Add => match &left {
                 Node::FloatLiteral(lnum) => match right {
                     Node::FloatLiteral(rnum) => return Ok(Node::FloatLiteral(lnum + rnum)),
-                    Node::IntegerLiteral(rnum) => return Ok(Node::FloatLiteral(lnum + rnum.to_f64().unwrap())),
+                    Node::IntegerLiteral(rnum) => {
+                        return Ok(Node::FloatLiteral(lnum + rnum.to_f64().unwrap()));
+                    }
                     _ => {}
                 },
                 Node::IntegerLiteral(lnum) => match right {
-                    Node::FloatLiteral(rnum) => return Ok(Node::FloatLiteral(lnum.to_f64().unwrap() + rnum)),
+                    Node::FloatLiteral(rnum) => {
+                        return Ok(Node::FloatLiteral(lnum.to_f64().unwrap() + rnum));
+                    }
                     Node::IntegerLiteral(rnum) => return Ok(Node::IntegerLiteral(lnum + rnum)),
                     _ => {}
                 },
-                Node::StringLiteral(lstr) => match right {
-                    Node::StringLiteral(rstr) => return Ok(Node::StringLiteral(format!("{}{}", lstr, rstr))),
-                    _ => {}
+                Node::StringLiteral(lstr) => if let Node::StringLiteral(rstr) = right {
+                    return Ok(Node::StringLiteral(format!("{}{}", lstr, rstr)));
                 },
                 _ => {}
             },
@@ -994,19 +1009,25 @@ impl<'a> Parser<'a> {
             Operator::Mod => num_binop_num!(f64::rem, BigInt::rem),
             Operator::Pow => match &left {
                 Node::FloatLiteral(base) => match right {
-                    Node::FloatLiteral(exponent) => return Ok(Node::FloatLiteral(base.powf(exponent))),
-                    Node::IntegerLiteral(exponent) => return Ok(Node::FloatLiteral(base.powf(exponent.to_f64().unwrap()))),
+                    Node::FloatLiteral(exponent) => {
+                        return Ok(Node::FloatLiteral(base.powf(exponent)));
+                    }
+                    Node::IntegerLiteral(exponent) => {
+                        return Ok(Node::FloatLiteral(base.powf(exponent.to_f64().unwrap())));
+                    }
                     _ => {}
                 },
                 Node::IntegerLiteral(base) => match right {
-                    Node::FloatLiteral(exponent) => return Ok(Node::FloatLiteral(base.to_f64().unwrap().powf(exponent))),
+                    Node::FloatLiteral(exponent) => {
+                        return Ok(Node::FloatLiteral(base.to_f64().unwrap().powf(exponent)));
+                    }
                     Node::IntegerLiteral(exponent) => {
                         if exponent < BigInt::from(0) {
                             return Ok(Node::FloatLiteral(
                                 base.to_f64().unwrap().powf(exponent.to_f64().unwrap()),
-                            ))
+                            ));
                         } else {
-                            return Ok(Node::IntegerLiteral(base.pow(exponent.to_u128().unwrap())))
+                            return Ok(Node::IntegerLiteral(base.pow(exponent.to_u128().unwrap())));
                         }
                     }
                     _ => {}
