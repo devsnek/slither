@@ -15,6 +15,7 @@ extern crate mio;
 mod agent;
 mod builtins;
 mod intrinsics;
+mod linked_list;
 mod parser;
 mod value;
 mod vm;

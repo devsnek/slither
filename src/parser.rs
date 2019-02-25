@@ -998,9 +998,11 @@ impl<'a> Parser<'a> {
                     Node::IntegerLiteral(rnum) => return Ok(Node::IntegerLiteral(lnum + rnum)),
                     _ => {}
                 },
-                Node::StringLiteral(lstr) => if let Node::StringLiteral(rstr) = right {
-                    return Ok(Node::StringLiteral(format!("{}{}", lstr, rstr)));
-                },
+                Node::StringLiteral(lstr) => {
+                    if let Node::StringLiteral(rstr) = right {
+                        return Ok(Node::StringLiteral(format!("{}{}", lstr, rstr)));
+                    }
+                }
                 _ => {}
             },
             Operator::Sub => num_binop_num!(f64::sub, BigInt::sub),
