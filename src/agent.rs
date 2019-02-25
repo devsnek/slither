@@ -267,6 +267,7 @@ pub struct Intrinsics {
     pub symbol: Value,
 }
 
+#[derive(Debug)]
 pub enum MioMapType {
     Timer(mio::Registration, Value),
 }
@@ -401,12 +402,14 @@ impl Agent {
                 }
             }
         }
-        true
+        !self.mio_map.borrow().is_empty()
     }
 
     pub fn run_jobs(&self) {
         self.run_mio(false);
         loop {
+            self.run_mio(false);
+
             loop {
                 let job = self.job_queue.borrow_mut().pop_front();
                 match job {
@@ -419,10 +422,9 @@ impl Agent {
                     None => break,
                 }
             }
-
             // job queue is empty
 
-            if !self.run_mio(true) {
+            if self.mio_map.borrow().is_empty() {
                 break;
             }
         }
