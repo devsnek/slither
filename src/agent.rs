@@ -370,37 +370,26 @@ impl Agent {
         self.job_queue.borrow_mut().push_back(Job(f, args));
     }
 
-    fn run_mio(&self, block: bool) -> bool {
-        let mut events = mio::Events::with_capacity(1024);
-        self.mio
-            .poll(
-                &mut events,
-                if block {
-                    None
-                } else {
-                    Some(std::time::Duration::from_millis(0))
-                },
-            )
-            .expect("mio poll failed");
-        for event in events.iter() {
-            let data = self
-                .mio_map
-                .borrow_mut()
-                .remove(&event.token())
-                .expect("mio_map did not have event");
-            match data {
-                MioMapType::Timer(_r, callback) => {
-                    self.enqueue_job(call_timer_job, vec![callback]);
+    pub fn run_jobs(&self) {
+        let mut events = mio::Events::with_capacity(128);
+        loop {
+            {
+                self.mio
+                    .poll(&mut events, Some(std::time::Duration::from_millis(0)))
+                    .expect("mio poll failed");
+                for event in events.iter() {
+                    let data = self
+                        .mio_map
+                        .borrow_mut()
+                        .remove(&event.token())
+                        .expect("mio_map did not have event");
+                    match data {
+                        MioMapType::Timer(_r, callback) => {
+                            self.enqueue_job(call_timer_job, vec![callback]);
+                        }
+                    }
                 }
             }
-        }
-        !self.mio_map.borrow().is_empty()
-    }
-
-    pub fn run_jobs(&self) {
-        self.run_mio(false);
-        loop {
-            self.run_mio(false);
 
             loop {
                 let job = self.job_queue.borrow_mut().pop_front();

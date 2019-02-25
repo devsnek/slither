@@ -15,4 +15,6 @@ createTimeout(() => {
   print('in timeout 2');
 }, 100);
 
+Promise.resolve('promise').then(print);
+
 print('after');
