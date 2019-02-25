@@ -102,18 +102,10 @@ impl ModuleX {
                                 for name in names {
                                     match s.get(name) {
                                         Some(v) => {
-                                            module
-                                                .context
-                                                .borrow()
-                                                .environment
-                                                .borrow_mut()
-                                                .create(name, false)?;
-                                            module
-                                                .context
-                                                .borrow()
-                                                .environment
-                                                .borrow_mut()
-                                                .initialize(name, v.clone())?;
+                                            let ctx = module.context.borrow();
+                                            let mut env = ctx.environment.borrow_mut();
+                                            env.create(name, false)?;
+                                            env.initialize(name, v.clone())?;
                                         }
                                         None => return Err(new_error("unknown export")),
                                     }
