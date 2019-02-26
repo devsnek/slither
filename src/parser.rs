@@ -95,7 +95,7 @@ pub enum Node {
     ObjectLiteral(Vec<Node>),       // initialiers
     ArrayLiteral(Vec<Node>),
     Identifier(String),
-    BlockStatement(Vec<Node>, HashMap<String, bool>), // nodes, declarations
+    BlockStatement(Vec<Node>, HashMap<String, bool>, bool), // nodes, declarations, top
     ReturnStatement(Box<Node>),
     ThrowStatement(Box<Node>),
     IfStatement(Box<Node>, Box<Node>), // test, consequent
@@ -456,7 +456,7 @@ impl<'a> Parser<'a> {
             lex_stack: Vec::new(),
         };
 
-        if let Node::BlockStatement(items, decls) =
+        if let Node::BlockStatement(items, decls, top) =
             parser.parse_block_statement(ParseScope::TopLevel)?
         {
             if let Node::ExpressionStatement(expr) = items.last().unwrap() {
@@ -464,9 +464,9 @@ impl<'a> Parser<'a> {
                 // so that the value will be left on the stack to inspect in tests
                 let mut sliced = items[0..items.len() - 1].to_vec();
                 sliced.push(Node::ParenthesizedExpression((*expr).clone()));
-                Ok(Node::BlockStatement(sliced, decls))
+                Ok(Node::BlockStatement(sliced, decls, top))
             } else {
-                Ok(Node::BlockStatement(items, decls))
+                Ok(Node::BlockStatement(items, decls, top))
             }
         } else {
             unreachable!();
@@ -806,7 +806,11 @@ impl<'a> Parser<'a> {
         }
         self.scope_stack.pop();
         let declarations = self.lex_stack.pop().unwrap();
-        Ok(Node::BlockStatement(nodes, declarations))
+        Ok(Node::BlockStatement(
+            nodes,
+            declarations,
+            scope == ParseScope::TopLevel,
+        ))
     }
 
     fn parse_expression_statement(&mut self) -> Result<Node, Error> {

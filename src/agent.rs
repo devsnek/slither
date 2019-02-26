@@ -71,11 +71,11 @@ impl ModuleX {
             dfs_ancestor_index: 0,
         };
 
-        if let Node::BlockStatement(nodes, declarations) = ast {
+        if let Node::BlockStatement(nodes, declarations, ..) = ast {
             for node in nodes {
                 match &node {
                     Node::ImportDefaultDeclaration(specifier, name) => {
-                        let mr = agent.load(specifier, name)?;
+                        let mr = agent.load(specifier, filename)?;
                         module
                             .context
                             .borrow()
@@ -105,7 +105,7 @@ impl ModuleX {
                                             let ctx = module.context.borrow();
                                             let mut env = ctx.environment.borrow_mut();
                                             env.create(name, false)?;
-                                            env.initialize(name, v.clone())?;
+                                            env.initialize(name, v.clone());
                                         }
                                         None => return Err(new_error("unknown export")),
                                     }
@@ -325,12 +325,10 @@ impl Agent {
         {
             let mut env = agent.root_env.borrow_mut();
             env.create("Promise", true).unwrap();
-            env.initialize("Promise", agent.intrinsics.promise.clone())
-                .unwrap();
+            env.initialize("Promise", agent.intrinsics.promise.clone());
 
             env.create("Symbol", true).unwrap();
-            env.initialize("Symbol", agent.intrinsics.symbol.clone())
-                .unwrap();
+            env.initialize("Symbol", agent.intrinsics.symbol.clone());
         }
 
         agent.builtins = crate::builtins::create(&agent);
@@ -347,7 +345,6 @@ impl Agent {
         if !self.modules.borrow().contains_key(filename) {
             let source = std::fs::read_to_string(filename).expect("no such file");
             let module = Gc::new(GcCell::new(ModuleX::new(filename, source.as_str(), self)?));
-            // let imports = module.imports.clone();
             self.modules
                 .borrow_mut()
                 .insert(filename.to_string(), module.clone());

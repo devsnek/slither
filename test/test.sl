@@ -1,10 +1,12 @@
 import { print } from standard:debug;
 import { createTimeout } from standard:timers;
+import { a, setA } from './exports.sl';
 
-print('before');
+print('a is', a);
+setA(10);
 
 createTimeout(() => {
-  print('in timeout 150');
+  print('in timeout 150', a);
 }, 150);
 
 createTimeout(() => {

@@ -214,8 +214,8 @@ impl Compiler {
                 self.push_op(Op::GetValue);
                 Ok(())
             }
-            Node::BlockStatement(nodes, declarations) => {
-                self.compile_block_statement(nodes, declarations)
+            Node::BlockStatement(nodes, declarations, top) => {
+                self.compile_block_statement(nodes, declarations, *top)
             }
             Node::LexicalInitialization(name, val) => {
                 self.compile_lexical_initialization(name, val)
@@ -303,8 +303,11 @@ impl Compiler {
         &mut self,
         nodes: &[Node],
         declarations: &HashMap<String, bool>,
+        top: bool,
     ) -> Result<(), Error> {
-        self.push_op(Op::PushScope);
+        if !top {
+            self.push_op(Op::PushScope);
+        }
         for (name, mutable) in declarations {
             self.create_lexical_declaration(name, *mutable)?;
         }
@@ -314,7 +317,9 @@ impl Compiler {
                 break;
             }
         }
-        self.push_op(Op::PopScope);
+        if !top {
+            self.push_op(Op::PopScope);
+        }
         Ok(())
     }
 
@@ -482,7 +487,7 @@ impl Compiler {
             }
         }
 
-        if let Node::BlockStatement(nodes, declarations) = body {
+        if let Node::BlockStatement(nodes, declarations, ..) = body {
             for (name, mutable) in declarations {
                 self.create_lexical_declaration(name, *mutable)?;
             }
@@ -648,7 +653,7 @@ impl Compiler {
             self.push_op(Op::DropValue); // drop thrown value
         }
         if let Some(catch_clause) = catch_clause {
-            if let Node::BlockStatement(nodes, declarations) = &**catch_clause {
+            if let Node::BlockStatement(nodes, declarations, ..) = &**catch_clause {
                 for (name, mutable) in declarations {
                     self.create_lexical_declaration(name, *mutable)?;
                 }

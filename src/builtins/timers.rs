@@ -24,6 +24,20 @@ impl TimerList {
 
 lazy_static! {
     static ref TIMERS: Mutex<LinkedList<TimerList>> = Mutex::new(LinkedList::new());
+    static ref THREAD: std::thread::JoinHandle<()> = std::thread::spawn(move || loop {
+        let mut timers = TIMERS.lock().unwrap();
+        if let Some(list) = timers.cursor().next() {
+            if Instant::now() >= list.instant {
+                while let Some(r) = list.timers.pop_front() {
+                    r.set_readiness(Ready::readable())
+                        .expect("failed to set timer readiness");
+                }
+                timers.pop_front();
+            }
+        } else {
+            std::thread::park();
+        }
+    });
 }
 
 fn insert(instant: Instant, timer: SetReadiness) {
@@ -74,6 +88,7 @@ fn create_timeout(
                 .insert(token, MioMapType::Timer(registration, callback.clone()));
 
             insert(end, set_readiness);
+            THREAD.thread().unpark();
 
             Ok(Value::Null)
         }
@@ -87,19 +102,6 @@ pub fn create(agent: &Agent) -> HashMap<String, Value> {
         "createTimeout".to_string(),
         new_builtin_function(agent, create_timeout),
     );
-
-    std::thread::spawn(move || loop {
-        let mut timers = TIMERS.lock().unwrap();
-        if let Some(list) = timers.cursor().next() {
-            if Instant::now() >= list.instant {
-                while let Some(r) = list.timers.pop_front() {
-                    r.set_readiness(Ready::readable())
-                        .expect("failed to set timer readiness");
-                }
-                timers.pop_front();
-            }
-        }
-    });
 
     module
 }

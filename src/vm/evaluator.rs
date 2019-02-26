@@ -53,19 +53,22 @@ impl LexicalEnvironment {
         exported: bool,
         module: Option<Module>,
     ) -> Result<(), Value> {
-        if self.bindings.contains_key(name) {
-            Err(new_error(&format!("binding {} already declared", name)))
-        } else {
-            self.bindings.insert(
-                name.to_string(),
-                Binding {
-                    value: None,
-                    mutable,
-                    exported,
-                    module,
-                },
-            );
-            Ok(())
+        match self.bindings.get(name) {
+            Some(binding) if !binding.exported => {
+                Err(new_error(&format!("binding {} already declared", name)))
+            }
+            _ => {
+                self.bindings.insert(
+                    name.to_string(),
+                    Binding {
+                        value: None,
+                        mutable,
+                        exported,
+                        module,
+                    },
+                );
+                Ok(())
+            }
         }
     }
 
@@ -81,24 +84,28 @@ impl LexicalEnvironment {
         self.create_binding(name, false, false, Some(module))
     }
 
-    pub fn initialize(&mut self, name: &str, value: Value) -> Result<(), Value> {
+    pub fn initialize(&mut self, name: &str, value: Value) {
         match self.bindings.get_mut(name) {
             Some(b) => {
                 if b.value.is_some() {
                     panic!(format!("already initialized {}", name));
                 } else {
                     b.value = Some(value);
-                    Ok(())
                 }
             }
-            _ => Err(new_error(&format!("reference error: {}", name))),
+            _ => panic!(format!(
+                "tried to initialize binding '{}' that doesn't exist!",
+                name
+            )),
         }
     }
 
     pub fn set(&mut self, name: &str, value: Value) -> Result<(), Value> {
         match self.bindings.get_mut(name) {
             Some(b) => {
-                if b.value.is_none() {
+                if b.module.is_some() {
+                    Err(new_error("cannot reassign constant binding"))
+                } else if b.value.is_none() {
                     Err(new_error(&format!("reference error: {}", name)))
                 } else if !b.mutable {
                     Err(new_error("cannot reassign constant binding"))
@@ -118,7 +125,12 @@ impl LexicalEnvironment {
         match self.bindings.get(name) {
             Some(Binding {
                 module: Some(m), ..
-            }) => m.borrow().context.borrow().environment.borrow().get(name),
+            }) => {
+                let module = m.borrow();
+                let ctx = module.context.borrow();
+                let env = ctx.environment.borrow();
+                env.get(name)
+            }
             Some(Binding { value: Some(v), .. }) => Ok((*v).clone()),
             Some(Binding { value: None, .. }) => {
                 Err(new_error(&format!("reference error: {}", name)))
@@ -258,21 +270,21 @@ pub fn evaluate_at(
 
     let mut exception: Option<Value> = None;
 
-    macro_rules! handle {
-        ($ex:expr) => {
-            match $ex {
-                Ok(v) => v,
-                Err(e) => {
-                    let position = try_stack.pop().unwrap();
-                    pc = position;
-                    exception = Some(e);
-                    continue;
+    'main: loop {
+        macro_rules! handle {
+            ($ex:expr) => {
+                match $ex {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let position = try_stack.pop().expect("try_stack context missing");
+                        pc = position;
+                        exception = Some(e);
+                        continue 'main;
+                    }
                 }
-            }
-        };
-    }
+            };
+        }
 
-    loop {
         if pc >= compiled.code.len() {
             break;
         }
@@ -364,7 +376,11 @@ pub fn evaluate_at(
             }
             Op::NewComputedMemberReference | Op::NewComputedMemberReferenceNoConsumeStack => {
                 let key = handle!(get_value(stack));
-                let base = handle!(get_value(stack));
+                let base = handle!(if op == Op::NewComputedMemberReferenceNoConsumeStack {
+                    get_value_no_consume(&stack)
+                } else {
+                    get_value(stack)
+                });
                 let base = handle!(base.to_object(agent));
                 let key = handle!(key.to_object_key());
                 stack.push(Value::ValueReference(Box::new(base), key));
@@ -418,14 +434,9 @@ pub fn evaluate_at(
                 let id = get_i32(&mut pc) as usize;
                 let name = &compiled.string_table[id];
                 let value = handle!(get_value(stack));
-                // println!("LexicalInitialization {}", name);
-                handle!(scope
-                    .last()
-                    .unwrap()
-                    .borrow()
-                    .environment
-                    .borrow_mut()
-                    .initialize(name, value));
+                let ctx = scope.last().unwrap().borrow();
+                let mut env = ctx.environment.borrow_mut();
+                env.initialize(name, value);
             }
             Op::Jump => {
                 let position = get_i32(&mut pc) as usize;
@@ -486,11 +497,9 @@ pub fn evaluate_at(
                                 let mut args: Vec<Value> = Vec::with_capacity(argc as usize);
                                 let p = args.as_mut_ptr();
                                 for i in (0..argc).rev() {
+                                    let value = handle!(get_value(stack));
                                     unsafe {
-                                        std::ptr::write(
-                                            p.offset(i as isize),
-                                            handle!(get_value(stack)),
-                                        );
+                                        std::ptr::write(p.offset(i as isize), value);
                                     }
                                 }
                                 unsafe {
@@ -504,11 +513,9 @@ pub fn evaluate_at(
                             let mut args: Vec<Value> = Vec::with_capacity(argc as usize);
                             let p = args.as_mut_ptr();
                             for i in (0..argc).rev() {
+                                let value = handle!(get_value(stack));
                                 unsafe {
-                                    std::ptr::write(
-                                        p.offset(i as isize),
-                                        handle!(get_value(stack)),
-                                    );
+                                    std::ptr::write(p.offset(i as isize), value);
                                 }
                             }
                             unsafe {
