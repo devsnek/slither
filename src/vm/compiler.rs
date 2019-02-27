@@ -14,6 +14,7 @@ pub enum Op {
     End,
     NewNumber,
     NewString,
+    ProcessTemplateLiteral,
     NewFunction,
     NewObject,
     NewArray,
@@ -244,6 +245,7 @@ impl Compiler {
                 self.push_i32(id);
                 Ok(())
             }
+            Node::TemplateLiteral(quasis, exprs) => self.compile_template_literal(quasis, exprs),
             Node::ObjectLiteral(inits) => self.compile_object_literal(inits),
             Node::ArrayLiteral(inits) => self.compile_array_literal(inits),
             Node::FunctionDeclaration(name, args, body) => {
@@ -370,6 +372,19 @@ impl Compiler {
             Operator::Assign => self.push_op(Op::SetValue),
             _ => panic!("{:?}", op),
         };
+        Ok(())
+    }
+
+    fn compile_template_literal(&mut self, quasis: &[String], exprs: &[Node]) -> Result<(), Error> {
+        for expr in exprs {
+            self.compile(expr)?;
+        }
+        self.push_op(Op::ProcessTemplateLiteral);
+        self.push_i32(quasis.len() as i32);
+        for quasi in quasis.iter().rev() {
+            let id = self.string_id(quasi);
+            self.push_i32(id);
+        }
         Ok(())
     }
 

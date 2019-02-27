@@ -295,6 +295,31 @@ pub fn evaluate_at(
                 let value = new_compiled_function(agent, argc, index, compiled, inherits_this, env);
                 stack.push(value);
             }
+            Op::ProcessTemplateLiteral => {
+                let len = get_i32(&mut pc);
+                let last_id = get_i32(&mut pc) as usize;
+                let mut end = compiled.string_table[last_id].to_string();
+                for _ in 0..(len - 1) {
+                    // end = quasi + part + end
+                    let id = get_i32(&mut pc) as usize;
+                    let quasi = compiled.string_table[id].to_string();
+                    let value = handle!(get_value(stack));
+                    let part = if let Value::String(part) = value {
+                        part
+                    } else {
+                        let value = handle!(value.to_object(agent));
+                        let to_string = handle!(value.get(&ObjectKey::from("toString")));
+                        if let Value::String(part) = handle!(to_string.call(agent, value, vec![])) {
+                            part
+                        } else {
+                            handle!(Err(new_error("cannot convert template part to string")));
+                            unreachable!();
+                        }
+                    };
+                    end = quasi + part.as_str() + end.as_str();
+                }
+                stack.push(Value::String(end));
+            }
             Op::NewObject => {
                 let obj = new_object(Value::Null);
                 let inits = get_i32(&mut pc);
