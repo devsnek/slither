@@ -1,6 +1,6 @@
 use crate::intrinsics::{
-    create_array_prototype, create_boolean_prototype, create_float_prototype,
-    create_function_prototype, create_object_prototype, create_promise, create_promise_prototype,
+    create_array_prototype, create_boolean_prototype, create_function_prototype,
+    create_number_prototype, create_object_prototype, create_promise, create_promise_prototype,
     create_string_prototype, create_symbol, create_symbol_prototype,
 };
 use crate::parser::{Node, Parser};
@@ -252,7 +252,7 @@ pub struct Intrinsics {
     pub function_prototype: Value,
     pub boolean_prototype: Value,
     pub string_prototype: Value,
-    pub float_prototype: Value,
+    pub number_prototype: Value,
     pub promise_prototype: Value,
     pub promise: Value,
     pub symbol_prototype: Value,
@@ -291,7 +291,7 @@ impl Agent {
         let array_prototype = create_array_prototype(object_prototype.clone());
         let function_prototype = create_function_prototype(object_prototype.clone());
         let boolean_prototype = create_boolean_prototype(object_prototype.clone());
-        let float_prototype = create_float_prototype(object_prototype.clone());
+        let number_prototype = create_number_prototype(object_prototype.clone());
         let string_prototype = create_string_prototype(object_prototype.clone());
         let symbol_prototype = create_symbol_prototype(object_prototype.clone());
         let mut agent = Agent {
@@ -300,7 +300,7 @@ impl Agent {
                 array_prototype,
                 function_prototype,
                 boolean_prototype,
-                float_prototype,
+                number_prototype,
                 string_prototype,
                 promise_prototype: Value::Null,
                 promise: Value::Null,

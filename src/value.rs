@@ -716,6 +716,6 @@ pub fn new_number_object(agent: &Agent, v: Decimal) -> Value {
     Value::Object(Gc::new(ObjectInfo {
         kind: ObjectKind::Number(v),
         properties: GcCell::new(IndexMap::new()),
-        prototype: agent.intrinsics.float_prototype.clone(),
+        prototype: agent.intrinsics.number_prototype.clone(),
     }))
 }
