@@ -7,7 +7,10 @@ use crate::parser::{Node, Parser};
 use crate::value::{new_error, Value};
 use crate::vm::{evaluate_at, Compiled, Compiler, ExecutionContext, LexicalEnvironment};
 use gc::{Gc, GcCell};
+use num_cpus;
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
+use threadpool::ThreadPool;
 
 #[derive(PartialEq, Clone, Trace, Finalize, Debug)]
 enum ModuleStatus {
@@ -262,6 +265,7 @@ pub struct Intrinsics {
 #[derive(Debug)]
 pub enum MioMapType {
     Timer(mio::Registration, Value),
+    FS(mio::Registration, Value),
 }
 
 fn call_timer_job(agent: &Agent, args: Vec<Value>) -> Result<(), Value> {
@@ -276,7 +280,8 @@ pub struct Agent {
     pub root_env: Gc<GcCell<LexicalEnvironment>>,
     job_queue: GcCell<VecDeque<Job>>,
     pub mio: mio::Poll,
-    pub mio_map: std::cell::RefCell<HashMap<mio::Token, MioMapType>>,
+    pub mio_map: RefCell<HashMap<mio::Token, MioMapType>>,
+    pub pool: ThreadPool,
 }
 
 impl Default for Agent {
@@ -312,7 +317,8 @@ impl Agent {
             modules: GcCell::new(HashMap::new()),
             job_queue: GcCell::new(VecDeque::new()),
             mio: mio::Poll::new().expect("create mio poll failed"),
-            mio_map: std::cell::RefCell::new(HashMap::new()),
+            mio_map: RefCell::new(HashMap::new()),
+            pool: ThreadPool::new(num_cpus::get()),
         };
 
         agent.intrinsics.promise_prototype =
@@ -383,6 +389,9 @@ impl Agent {
                     match data {
                         MioMapType::Timer(_r, callback) => {
                             self.enqueue_job(call_timer_job, vec![callback]);
+                        }
+                        MioMapType::FS(_r, promise) => {
+                            crate::builtins::fs::handle(self, event.token(), promise);
                         }
                     }
                 }

@@ -75,7 +75,6 @@ fn create_timeout(
             let end = Instant::now() + Duration::from_millis(n.to_u64().unwrap());
 
             let (registration, set_readiness) = Registration::new2();
-
             let token = Token(agent.mio_map.borrow().len());
 
             agent

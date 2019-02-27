@@ -4,14 +4,15 @@
 
 #[macro_use]
 extern crate lazy_static;
-
 #[macro_use]
 extern crate gc_derive;
 extern crate byteorder;
 extern crate clap;
 extern crate gc;
 extern crate mio;
+extern crate num_cpus;
 extern crate rust_decimal;
+extern crate threadpool;
 
 mod agent;
 mod builtins;
