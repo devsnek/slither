@@ -178,16 +178,14 @@ impl<'a> Lexer<'a> {
                             }
                             let c = self.chars.next().unwrap();
                             match c {
-                                '\\' => {
-                                    match self.chars.next().unwrap() {
-                                        'n' => str.push('\n'),
-                                        't' => str.push('\t'),
-                                        '"' => str.push('"'),
-                                        '\'' => str.push('\''),
-                                        '\\' => str.push('\\'),
-                                        c => str.push(c),
-                                    }
-                                }
+                                '\\' => match self.chars.next().unwrap() {
+                                    'n' => str.push('\n'),
+                                    't' => str.push('\t'),
+                                    '"' => str.push('"'),
+                                    '\'' => str.push('\''),
+                                    '\\' => str.push('\\'),
+                                    c => str.push(c),
+                                },
                                 '\r' | '\n' => {
                                     panic!("unexpected end of string");
                                 }

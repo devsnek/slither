@@ -1,6 +1,6 @@
 use crate::agent::{Agent, MioMapType};
 use crate::intrinsics::promise::new_promise_capability;
-use crate::value::{new_builtin_function, new_error, Value};
+use crate::value::{new_builtin_function, new_error, new_object, ObjectKey, Value};
 use crate::vm::ExecutionContext;
 use mio::{PollOpt, Ready, Registration, Token};
 use std::collections::HashMap;
@@ -12,6 +12,7 @@ lazy_static! {
 
 pub enum FsResponse {
     Read(String),
+    Metadata(std::fs::Metadata),
     Success,
     Error(String),
 }
@@ -23,6 +24,57 @@ pub fn handle(agent: &Agent, token: Token, promise: Value) {
             promise
                 .get_slot("resolve")
                 .call(agent, promise, vec![Value::String(s)])
+                .unwrap();
+        }
+        FsResponse::Metadata(m) => {
+            let o = new_object(agent.intrinsics.object_prototype.clone());
+            macro_rules! p {
+                ($target:expr, $name:expr, $value:expr) => {
+                    $target.set(&ObjectKey::from($name), $value).unwrap();
+                };
+            }
+            let ft = m.file_type();
+            if ft.is_file() {
+                p!(o, "type", Value::String("file".to_string()));
+            } else if ft.is_dir() {
+                p!(o, "type", Value::String("directory".to_string()));
+            } else if ft.is_symlink() {
+                p!(o, "type", Value::String("symlink".to_string()));
+            } else {
+                unreachable!();
+            }
+            p!(o, "size", Value::Number(m.len().into()));
+            macro_rules! t {
+                ($name:expr, $value:expr) => {
+                    let d = $value
+                        .unwrap()
+                        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                        .unwrap();
+                    let seconds = d.as_secs();
+                    let subsec_millis = u64::from(d.subsec_millis());
+                    let ms = seconds * 1000 + subsec_millis;
+                    p!(o, $name, Value::Number(ms.into()));
+                };
+            }
+            t!("modifiedAt", m.modified());
+            t!("accessedAt", m.accessed());
+            t!("createdAt", m.created());
+
+            let permissions = new_object(agent.intrinsics.object_prototype.clone());
+            p!(
+                permissions,
+                "read",
+                if m.permissions().readonly() {
+                    Value::False
+                } else {
+                    Value::True
+                }
+            );
+            p!(o, "permissions", permissions);
+
+            promise
+                .get_slot("resolve")
+                .call(agent, promise, vec![o])
                 .unwrap();
         }
         FsResponse::Success => {
@@ -162,6 +214,48 @@ fn remove_file(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Result
     }
 }
 
+fn get_metadata(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
+    if let Some(Value::String(filename)) = args.get(0) {
+        let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
+
+        let (registration, set_readiness) = Registration::new2();
+        let token = Token(agent.mio_map.borrow().len());
+
+        agent
+            .mio
+            .register(&registration, token, Ready::readable(), PollOpt::edge())
+            .unwrap();
+        agent
+            .mio_map
+            .borrow_mut()
+            .insert(token, MioMapType::FS(registration, promise.clone()));
+
+        let filename = filename.to_string();
+        agent
+            .pool
+            .execute(move || match std::fs::metadata(filename) {
+                Ok(metadata) => {
+                    RESPONSES
+                        .lock()
+                        .unwrap()
+                        .insert(token, FsResponse::Metadata(metadata));
+                    set_readiness.set_readiness(Ready::readable()).unwrap();
+                }
+                Err(e) => {
+                    RESPONSES
+                        .lock()
+                        .unwrap()
+                        .insert(token, FsResponse::Error(format!("{}", e)));
+                    set_readiness.set_readiness(Ready::readable()).unwrap();
+                }
+            });
+
+        Ok(promise)
+    } else {
+        Err(new_error("filename must be a string"))
+    }
+}
+
 pub fn create(agent: &Agent) -> HashMap<String, Value> {
     let mut module = HashMap::new();
 
@@ -173,6 +267,7 @@ pub fn create(agent: &Agent) -> HashMap<String, Value> {
     method!("readFile", read_file);
     method!("writeFile", write_file);
     method!("removeFile", remove_file);
+    method!("getMetadata", get_metadata);
     // stat
     // copy
     // move
