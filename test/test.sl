@@ -1,5 +1,15 @@
 import { print } from standard:debug;
-import { readFile } from standard:fs;
+import { readFile, writeFile, removeFile } from standard:fs;
 
-readFile('./test/exports.sl').then(print);
-Promise.resolve('before').then(print);
+writeFile('./test/out.txt', 'hello this is\n  a test')
+  .then(() => {
+    print('write finished!');
+    return readFile('./test/out.txt');
+  })
+  .then((s) => {
+    print('read finished', s);
+    return removeFile('./test/out.txt');
+  })
+  .then(() => {
+    print('remove finished');
+  });
