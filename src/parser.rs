@@ -156,10 +156,19 @@ impl<'a> Lexer<'a> {
                     ' ' | '\t' | '\r' | '\n' => self.next(),
                     '0'...'9' => {
                         let mut str = char.to_string();
+                        let mut one_dot = false;
                         while let Some(c) = self.chars.peek() {
                             match c {
-                                '0'...'9' | '.' => {
+                                '0'...'9' => {
                                     str.push(self.chars.next().unwrap());
+                                }
+                                '.' => {
+                                    if !one_dot {
+                                        one_dot = true;
+                                        str.push(self.chars.next().unwrap());
+                                    } else {
+                                        break;
+                                    }
                                 }
                                 _ => break,
                             }

@@ -296,7 +296,6 @@ impl Agent {
         let array_prototype = create_array_prototype(object_prototype.clone());
         let function_prototype = create_function_prototype(object_prototype.clone());
         let boolean_prototype = create_boolean_prototype(object_prototype.clone());
-        let number_prototype = create_number_prototype(object_prototype.clone());
         let string_prototype = create_string_prototype(object_prototype.clone());
         let symbol_prototype = create_symbol_prototype(object_prototype.clone());
         let mut agent = Agent {
@@ -305,7 +304,7 @@ impl Agent {
                 array_prototype,
                 function_prototype,
                 boolean_prototype,
-                number_prototype,
+                number_prototype: Value::Null,
                 string_prototype,
                 promise_prototype: Value::Null,
                 promise: Value::Null,
@@ -321,6 +320,8 @@ impl Agent {
             pool: ThreadPool::new(num_cpus::get()),
         };
 
+        agent.intrinsics.number_prototype =
+            create_number_prototype(&agent, object_prototype.clone());
         agent.intrinsics.promise_prototype =
             create_promise_prototype(&agent, object_prototype.clone());
         agent.intrinsics.promise =

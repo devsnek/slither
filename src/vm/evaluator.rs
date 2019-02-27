@@ -33,7 +33,7 @@ impl LexicalEnvironment {
         }))
     }
 
-    fn get_this(&self) -> Result<Value, Value> {
+    pub fn get_this(&self) -> Result<Value, Value> {
         match self.this {
             Some(ref t) => Ok(t.clone()),
             None => match &self.parent {
@@ -422,6 +422,7 @@ pub fn evaluate_at(
                 // println!("Call");
                 let callee = handle!(get_value(stack));
                 let this = handle!(get_value(stack));
+                let this = if this == Value::Null { this } else { this.to_object(agent)? };
                 let argc = get_u8(&mut pc);
                 if let Value::Object(o) = callee.clone() {
                     match &o.kind {
