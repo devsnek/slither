@@ -1,5 +1,4 @@
-use num::traits::{Pow, ToPrimitive};
-use num::BigInt;
+use rust_decimal::Decimal;
 use std::collections::HashMap;
 use std::iter::Peekable;
 use std::ops::{Div, Mul, Rem, Sub};
@@ -41,8 +40,7 @@ pub enum Operator {
 
 #[derive(Debug, PartialEq, Clone)]
 enum Token {
-    FloatLiteral(f64),
-    IntegerLiteral(BigInt),
+    NumberLiteral(Decimal),
     StringLiteral(String),
     Identifier(String),
     Operator(Operator),
@@ -88,8 +86,7 @@ pub enum Node {
     NullLiteral,
     TrueLiteral,
     FalseLiteral,
-    FloatLiteral(f64),
-    IntegerLiteral(BigInt),
+    NumberLiteral(Decimal),
     StringLiteral(String),
     Initializer(String, Box<Node>), // Name, value
     ObjectLiteral(Vec<Node>),       // initialiers
@@ -159,30 +156,18 @@ impl<'a> Lexer<'a> {
                     ' ' | '\t' | '\r' | '\n' => self.next(),
                     '0'...'9' => {
                         let mut str = char.to_string();
-                        let mut float = false;
                         while let Some(c) = self.chars.peek() {
                             match c {
-                                '0'...'9' => {
-                                    str.push(self.chars.next().unwrap());
-                                }
-                                '.' => {
-                                    float = true;
+                                '0'...'9' | '.' => {
                                     str.push(self.chars.next().unwrap());
                                 }
                                 _ => break,
                             }
                         }
-                        if float {
-                            let num = str
-                                .parse::<f64>()
-                                .unwrap_or_else(|_| panic!("Invalid float {}", str));
-                            Some(Token::FloatLiteral(num))
-                        } else {
-                            let num = str
-                                .parse::<BigInt>()
-                                .unwrap_or_else(|_| panic!("Invalid integer {}", str));
-                            Some(Token::IntegerLiteral(num))
-                        }
+                        let num = str
+                            .parse::<Decimal>()
+                            .unwrap_or_else(|_| panic!("Invalid number {}", str));
+                        Some(Token::NumberLiteral(num))
                     }
                     '"' | '\'' => {
                         let mut str = String::new();
@@ -412,22 +397,6 @@ pub struct Parser<'a> {
     lexer: Lexer<'a>,
     scope_stack: Vec<ParseScope>,
     lex_stack: Vec<HashMap<String, bool>>,
-}
-
-fn f64_shl(a: f64, b: f64) -> f64 {
-    ((a as i64) << b as i64) as f64
-}
-
-fn f64_shr(a: f64, b: f64) -> f64 {
-    (a as i64 >> b as i64) as f64
-}
-
-fn int_shl(a: BigInt, b: BigInt) -> BigInt {
-    a << b.to_usize().unwrap()
-}
-
-fn int_shr(a: BigInt, b: BigInt) -> BigInt {
-    a >> b.to_usize().unwrap()
 }
 
 macro_rules! binop_production {
@@ -909,7 +878,7 @@ impl<'a> Parser<'a> {
                 | Node::FalseLiteral
                 | Node::ArrayLiteral(..)
                 | Node::ObjectLiteral(..)
-                | Node::FloatLiteral(..)
+                | Node::NumberLiteral(..)
                 | Node::StringLiteral(..) => {
                     return Err(Error::UnexpectedToken);
                 }
@@ -919,89 +888,36 @@ impl<'a> Parser<'a> {
         };
 
         macro_rules! num_binop_num {
-            ($f64:expr, $int:expr) => {{
-                match &left {
-                    Node::FloatLiteral(lnum) => match right {
-                        Node::FloatLiteral(rnum) => {
-                            return Ok(Node::FloatLiteral($f64(*lnum, rnum)));
-                        }
-                        Node::IntegerLiteral(rnum) => {
-                            return Ok(Node::FloatLiteral($f64(*lnum, rnum.to_f64().unwrap())));
-                        }
-                        _ => {}
-                    },
-                    Node::IntegerLiteral(lnum) => match right {
-                        Node::IntegerLiteral(rnum) => {
-                            return Ok(Node::IntegerLiteral($int(lnum.clone(), rnum)));
-                        }
-                        Node::FloatLiteral(rnum) => {
-                            return Ok(Node::FloatLiteral($f64(lnum.to_f64().unwrap(), rnum)));
-                        }
-                        _ => {}
-                    },
-                    _ => {}
+            ($op:expr) => {
+                if let Node::NumberLiteral(lnum) = left {
+                    if let Node::NumberLiteral(rnum) = right {
+                        return Ok(Node::NumberLiteral($op(lnum, rnum)));
+                    }
                 }
-            }};
+            };
         }
 
         macro_rules! num_binop_bool {
-            ($f64:expr, $int:expr) => {{
-                match &left {
-                    Node::FloatLiteral(lnum) => match right {
-                        Node::FloatLiteral(rnum) => {
-                            if $f64(&lnum, &rnum) {
-                                return Ok(Node::TrueLiteral);
-                            } else {
-                                return Ok(Node::FalseLiteral);
-                            }
+            ($op:expr) => {
+                if let Node::NumberLiteral(lnum) = left {
+                    if let Node::NumberLiteral(rnum) = right {
+                        if $op(&lnum, &rnum) {
+                            return Ok(Node::TrueLiteral);
+                        } else {
+                            return Ok(Node::FalseLiteral);
                         }
-                        Node::IntegerLiteral(rnum) => {
-                            if $f64(&lnum, &rnum.to_f64().unwrap()) {
-                                return Ok(Node::TrueLiteral);
-                            } else {
-                                return Ok(Node::FalseLiteral);
-                            }
-                        }
-                        _ => {}
-                    },
-                    Node::IntegerLiteral(lnum) => match right {
-                        Node::IntegerLiteral(rnum) => {
-                            if $int(&lnum, &rnum) {
-                                return Ok(Node::TrueLiteral);
-                            } else {
-                                return Ok(Node::FalseLiteral);
-                            }
-                        }
-                        Node::FloatLiteral(rnum) => {
-                            if $f64(&lnum.to_f64().unwrap(), &rnum) {
-                                return Ok(Node::TrueLiteral);
-                            } else {
-                                return Ok(Node::FalseLiteral);
-                            }
-                        }
-                        _ => {}
-                    },
-                    _ => {}
+                    }
                 }
-            }};
+            };
         }
 
         match op {
             Operator::Add => match &left {
-                Node::FloatLiteral(lnum) => match right {
-                    Node::FloatLiteral(rnum) => return Ok(Node::FloatLiteral(lnum + rnum)),
-                    Node::IntegerLiteral(rnum) => {
-                        return Ok(Node::FloatLiteral(lnum + rnum.to_f64().unwrap()));
+                Node::NumberLiteral(lnum) => {
+                    if let Node::NumberLiteral(rnum) = right {
+                        return Ok(Node::NumberLiteral(lnum + rnum));
                     }
-                    _ => {}
-                },
-                Node::IntegerLiteral(lnum) => match right {
-                    Node::FloatLiteral(rnum) => {
-                        return Ok(Node::FloatLiteral(lnum.to_f64().unwrap() + rnum));
-                    }
-                    Node::IntegerLiteral(rnum) => return Ok(Node::IntegerLiteral(lnum + rnum)),
-                    _ => {}
-                },
+                }
                 Node::StringLiteral(lstr) => {
                     if let Node::StringLiteral(rstr) = right {
                         return Ok(Node::StringLiteral(format!("{}{}", lstr, rstr)));
@@ -1009,43 +925,17 @@ impl<'a> Parser<'a> {
                 }
                 _ => {}
             },
-            Operator::Sub => num_binop_num!(f64::sub, BigInt::sub),
-            Operator::Mul => num_binop_num!(f64::mul, BigInt::mul),
-            Operator::Div => num_binop_num!(f64::div, BigInt::div),
-            Operator::Mod => num_binop_num!(f64::rem, BigInt::rem),
-            Operator::Pow => match &left {
-                Node::FloatLiteral(base) => match right {
-                    Node::FloatLiteral(exponent) => {
-                        return Ok(Node::FloatLiteral(base.powf(exponent)));
-                    }
-                    Node::IntegerLiteral(exponent) => {
-                        return Ok(Node::FloatLiteral(base.powf(exponent.to_f64().unwrap())));
-                    }
-                    _ => {}
-                },
-                Node::IntegerLiteral(base) => match right {
-                    Node::FloatLiteral(exponent) => {
-                        return Ok(Node::FloatLiteral(base.to_f64().unwrap().powf(exponent)));
-                    }
-                    Node::IntegerLiteral(exponent) => {
-                        if exponent < BigInt::from(0) {
-                            return Ok(Node::FloatLiteral(
-                                base.to_f64().unwrap().powf(exponent.to_f64().unwrap()),
-                            ));
-                        } else {
-                            return Ok(Node::IntegerLiteral(base.pow(exponent.to_u128().unwrap())));
-                        }
-                    }
-                    _ => {}
-                },
-                _ => {}
-            },
-            Operator::LeftShift => num_binop_num!(f64_shl, int_shl),
-            Operator::RightShift => num_binop_num!(f64_shr, int_shr),
-            Operator::LessThan => num_binop_bool!(f64::lt, BigInt::lt),
-            Operator::GreaterThan => num_binop_bool!(f64::gt, BigInt::gt),
-            Operator::LessThanOrEqual => num_binop_bool!(f64::le, BigInt::le),
-            Operator::GreaterThanOrEqual => num_binop_bool!(f64::ge, BigInt::ge),
+            Operator::Sub => num_binop_num!(Decimal::sub),
+            Operator::Mul => num_binop_num!(Decimal::mul),
+            Operator::Div => num_binop_num!(Decimal::div),
+            Operator::Mod => num_binop_num!(Decimal::rem),
+            // Operator::Pow => num_binop_num!(Decimal::pow),
+            // Operator::LeftShift => num_binop_num!(Decimal::shl),
+            // Operator::RightShift => num_binop_num!(Decimal::shr),
+            Operator::LessThan => num_binop_bool!(Decimal::lt),
+            Operator::GreaterThan => num_binop_bool!(Decimal::gt),
+            Operator::LessThanOrEqual => num_binop_bool!(Decimal::le),
+            Operator::GreaterThanOrEqual => num_binop_bool!(Decimal::ge),
             _ => {}
         }
 
@@ -1054,15 +944,8 @@ impl<'a> Parser<'a> {
 
     fn fold_conditional(&self, test: Node, consequent: Node, alternative: Node) -> Option<Node> {
         match test {
-            Node::FloatLiteral(n) => {
-                if n != 0f64 {
-                    Some(consequent)
-                } else {
-                    Some(alternative)
-                }
-            }
-            Node::IntegerLiteral(n) => {
-                if n != BigInt::from(0) {
+            Node::NumberLiteral(n) => {
+                if n != 0.into() {
                     Some(consequent)
                 } else {
                     Some(alternative)
@@ -1090,15 +973,8 @@ impl<'a> Parser<'a> {
             Node::NullLiteral | Node::FalseLiteral | Node::UnaryExpression(Operator::Void, ..) => {
                 Some(Node::ExpressionStatement(Box::new(test)))
             }
-            Node::FloatLiteral(n) => {
-                if n == 0f64 {
-                    Some(Node::ExpressionStatement(Box::new(test)))
-                } else {
-                    None
-                }
-            }
-            Node::IntegerLiteral(ref n) => {
-                if n == &BigInt::from(0) {
+            Node::NumberLiteral(n) => {
+                if n == 0.into() {
                     Some(Node::ExpressionStatement(Box::new(test)))
                 } else {
                     None
@@ -1322,8 +1198,7 @@ impl<'a> Parser<'a> {
                     Box::new(self.parse_unary_expression()?),
                 )),
                 Token::StringLiteral(v) => Ok(Node::StringLiteral(v)),
-                Token::FloatLiteral(v) => Ok(Node::FloatLiteral(v)),
-                Token::IntegerLiteral(v) => Ok(Node::IntegerLiteral(v)),
+                Token::NumberLiteral(v) => Ok(Node::NumberLiteral(v)),
                 Token::Identifier(v) => Ok(Node::Identifier(v)),
                 Token::Function => self.parse_function(true),
                 Token::LeftParen => match self.lexer.peek() {
@@ -1410,7 +1285,7 @@ fn test_parser() {
             vec![
                 Node::LexicalInitialization(
                     "a".to_string(),
-                    Box::new(Node::IntegerLiteral(BigInt::from(1)))
+                    Box::new(Node::NumberLiteral(1.into()))
                 ),
                 Node::IfStatement(
                     Box::new(Node::Identifier("a".to_string())),
@@ -1421,10 +1296,11 @@ fn test_parser() {
                             Box::new(Node::BinaryExpression(
                                 Box::new(Node::Identifier("a".to_string())),
                                 Operator::Add,
-                                Box::new(Node::IntegerLiteral(BigInt::from(2))),
+                                Box::new(Node::NumberLiteral(2.into())),
                             )),
-                        ),)),],
+                        )))],
                         HashMap::new(),
+                        false,
                     )),
                 ),
                 Node::BlockStatement(
@@ -1434,15 +1310,17 @@ fn test_parser() {
                         Box::new(Node::BinaryExpression(
                             Box::new(Node::Identifier("a".to_string())),
                             Operator::Add,
-                            Box::new(Node::IntegerLiteral(BigInt::from(3))),
+                            Box::new(Node::NumberLiteral(3.into())),
                         )),
-                    ),)),],
+                    )))],
                     HashMap::new(),
+                    false,
                 ),
             ],
             hashmap! {
                 "a" => false
             },
+            true,
         ),
     );
 
@@ -1451,6 +1329,7 @@ fn test_parser() {
         Node::BlockStatement(
             vec![Node::ParenthesizedExpression(Box::new(Node::FalseLiteral))],
             HashMap::new(),
+            true,
         ),
     );
 }

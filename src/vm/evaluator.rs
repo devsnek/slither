@@ -5,10 +5,7 @@ use crate::value::{
 use crate::vm::{Compiled, Op};
 use byteorder::{LittleEndian, ReadBytesExt};
 use gc::{Gc, GcCell};
-use num::{
-    traits::{Pow, ToPrimitive},
-    BigInt,
-};
+use rust_decimal::Decimal;
 use std::collections::HashMap;
 use std::ops::{Div, Mul, Rem, Sub};
 
@@ -184,12 +181,6 @@ pub fn evaluate_at(
         n
     };
 
-    let get_f64 = |pc: &mut usize| {
-        let n = (&compiled.code[*pc..]).read_f64::<LittleEndian>().unwrap();
-        *pc += 8;
-        n
-    };
-
     let get_value = |stack: &mut Vec<Value>| {
         let value = stack.pop().unwrap();
         match value {
@@ -209,61 +200,37 @@ pub fn evaluate_at(
     };
 
     macro_rules! num_binop_num {
-        ($f64:expr, $int:expr) => {{
+        ($op:expr) => {{
             let right = handle!(get_value(stack));
             let left = handle!(get_value(stack));
-            match left {
-                Value::Float(lnum) => match right {
-                    Value::Float(rnum) => stack.push(Value::Float($f64(lnum, rnum))),
-                    Value::Integer(rnum) => {
-                        stack.push(Value::Float($f64(lnum, rnum.to_f64().unwrap())))
-                    }
-                    _ => handle!(Err(new_error("rval must be a number"))),
-                },
-                Value::Integer(lnum) => match right {
-                    Value::Integer(rnum) => stack.push(Value::Integer($int(lnum, rnum))),
-                    Value::Float(rnum) => {
-                        stack.push(Value::Float($f64(lnum.to_f64().unwrap(), rnum)))
-                    }
-                    _ => handle!(Err(new_error("rval must be a number"))),
-                },
-                _ => handle!(Err(new_error("lval must be a number"))),
+            if let Value::Number(lnum) = left {
+                if let Value::Number(rnum) = right {
+                    stack.push(Value::Number($op(lnum, rnum)));
+                } else {
+                    handle!(Err(new_error("rval must be a number")))
+                }
+            } else {
+                handle!(Err(new_error("lval must be a umber")))
             }
         }};
     }
 
     macro_rules! num_binop_bool {
-        ($f64:expr, $int:expr) => {{
+        ($op:expr) => {{
             let right = handle!(get_value(stack));
             let left = handle!(get_value(stack));
-            match left {
-                Value::Float(lnum) => match right {
-                    Value::Float(rnum) => stack.push(if $f64(&lnum, &rnum) {
+            if let Value::Number(lnum) = left {
+                if let Value::Number(rnum) = right {
+                    stack.push(if $op(&lnum, &rnum) {
                         Value::True
                     } else {
                         Value::False
-                    }),
-                    Value::Integer(rnum) => stack.push(if $f64(&lnum, &rnum.to_f64().unwrap()) {
-                        Value::True
-                    } else {
-                        Value::False
-                    }),
-                    _ => handle!(Err(new_error("rval must be a number"))),
-                },
-                Value::Integer(lnum) => match right {
-                    Value::Integer(rnum) => stack.push(if $int(&lnum, &rnum) {
-                        Value::True
-                    } else {
-                        Value::False
-                    }),
-                    Value::Float(rnum) => stack.push(if $f64(&lnum.to_f64().unwrap(), &rnum) {
-                        Value::True
-                    } else {
-                        Value::False
-                    }),
-                    _ => handle!(Err(new_error("rval must be a number"))),
-                },
-                _ => handle!(Err(new_error("lval must be a number"))),
+                    });
+                } else {
+                    handle!(Err(new_error("rval must be a number")))
+                }
+            } else {
+                handle!(Err(new_error("lval must be a umber")))
             }
         }};
     }
@@ -306,14 +273,10 @@ pub fn evaluate_at(
             Op::PushNull => stack.push(Value::Null),
             Op::PushTrue => stack.push(Value::True),
             Op::PushFalse => stack.push(Value::False),
-            Op::NewFloat => {
-                let v = get_f64(&mut pc);
-                stack.push(Value::Float(v));
-            }
-            Op::NewInteger => {
+            Op::NewNumber => {
                 let id = get_i32(&mut pc) as usize;
-                let n = &compiled.integer_table[id];
-                stack.push(Value::Integer(n.clone()));
+                let value = compiled.number_table[id];
+                stack.push(Value::Number(value));
             }
             Op::NewString => {
                 let id = get_i32(&mut pc) as usize;
@@ -617,40 +580,33 @@ pub fn evaluate_at(
                     Value::True
                 });
             }
-            Op::Mul => num_binop_num!(f64::mul, BigInt::mul),
-            Op::Div => num_binop_num!(f64::div, BigInt::div),
-            Op::Mod => num_binop_num!(f64::rem, BigInt::rem),
-            Op::Sub => num_binop_num!(f64::sub, BigInt::sub),
+            Op::Mul => num_binop_num!(Decimal::mul),
+            Op::Div => num_binop_num!(Decimal::div),
+            Op::Mod => num_binop_num!(Decimal::rem),
+            Op::Sub => num_binop_num!(Decimal::sub),
+            Op::Pow => panic!(), // num_binop_num!(Decimal::pow),
             Op::UnarySub => {
                 let value = handle!(get_value(stack));
                 match value {
-                    Value::Float(num) => stack.push(Value::Float(-num)),
-                    Value::Integer(num) => stack.push(Value::Integer(-num)),
+                    Value::Number(num) => stack.push(Value::Number(-num)),
                     _ => handle!(Err(new_error("invalid number"))),
                 };
             }
-            Op::LessThan => num_binop_bool!(f64::lt, BigInt::lt),
-            Op::GreaterThan => num_binop_bool!(f64::gt, BigInt::gt),
-            Op::LessThanOrEqual => num_binop_bool!(f64::le, BigInt::le),
-            Op::GreaterThanOrEqual => num_binop_bool!(f64::ge, BigInt::ge),
+            Op::LessThan => num_binop_bool!(Decimal::lt),
+            Op::GreaterThan => num_binop_bool!(Decimal::gt),
+            Op::LessThanOrEqual => num_binop_bool!(Decimal::le),
+            Op::GreaterThanOrEqual => num_binop_bool!(Decimal::ge),
             Op::Add => {
                 let right = handle!(get_value(stack));
                 let left = handle!(get_value(stack));
                 match left {
-                    Value::Float(lnum) => match right {
-                        Value::Float(rnum) => stack.push(Value::Float(lnum + rnum)),
-                        Value::Integer(rnum) => {
-                            stack.push(Value::Float(lnum + rnum.to_f64().unwrap()))
+                    Value::Number(lnum) => {
+                        if let Value::Number(rnum) = right {
+                            stack.push(Value::Number(rnum + lnum));
+                        } else {
+                            handle!(Err(new_error("rhs must be a number")))
                         }
-                        _ => handle!(Err(new_error("rhs must be a number"))),
-                    },
-                    Value::Integer(lnum) => match right {
-                        Value::Float(rnum) => {
-                            stack.push(Value::Float(lnum.to_f64().unwrap() + rnum))
-                        }
-                        Value::Integer(rnum) => stack.push(Value::Integer(lnum + rnum)),
-                        _ => handle!(Err(new_error("rhs must be a number"))),
-                    },
+                    }
                     Value::String(lstr) => {
                         if let Value::String(rstr) = right {
                             stack.push(Value::String(format!("{}{}", lstr, rstr)));
@@ -659,35 +615,6 @@ pub fn evaluate_at(
                         }
                     }
                     _ => handle!(Err(new_error("lhs must be a number or a string"))),
-                }
-            }
-            Op::Pow => {
-                let right = handle!(get_value(stack));
-                let left = handle!(get_value(stack));
-                match left {
-                    Value::Float(base) => match right {
-                        Value::Float(exponent) => stack.push(Value::Float(base.powf(exponent))),
-                        Value::Integer(exponent) => {
-                            stack.push(Value::Float(base.powf(exponent.to_f64().unwrap())))
-                        }
-                        _ => handle!(Err(new_error("exponent must be a number"))),
-                    },
-                    Value::Integer(base) => match right {
-                        Value::Integer(exponent) => {
-                            if exponent < BigInt::from(0) {
-                                stack.push(Value::Float(
-                                    base.to_f64().unwrap().powf(exponent.to_f64().unwrap()),
-                                ))
-                            } else {
-                                stack.push(Value::Integer(base.pow(exponent.to_u128().unwrap())))
-                            }
-                        }
-                        Value::Float(exponent) => {
-                            stack.push(Value::Float(base.to_f64().unwrap().powf(exponent)))
-                        }
-                        _ => handle!(Err(new_error("exponent must be a number"))),
-                    },
-                    _ => handle!(Err(new_error("base must be a number"))),
                 }
             }
             Op::Typeof => {

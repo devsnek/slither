@@ -1,6 +1,6 @@
 use crate::parser::{Node, Operator};
 use byteorder::{LittleEndian, WriteBytesExt};
-use num::BigInt;
+use rust_decimal::Decimal;
 use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
@@ -12,8 +12,7 @@ pub enum Op {
     PushScope,
     PopScope,
     End,
-    NewFloat,
-    NewInteger,
+    NewNumber,
     NewString,
     NewFunction,
     NewObject,
@@ -72,7 +71,7 @@ impl From<u8> for Op {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Compiled {
     pub string_table: Vec<String>,
-    pub integer_table: Vec<BigInt>,
+    pub number_table: Vec<Decimal>,
     pub code: Vec<u8>,
 }
 
@@ -139,7 +138,7 @@ macro_rules! jump_if_false {
 
 pub struct Compiler {
     string_table: Vec<String>,
-    bigint_table: Vec<BigInt>,
+    number_table: Vec<Decimal>,
     code: Vec<u8>,
 }
 
@@ -147,7 +146,7 @@ impl Compiler {
     pub fn go(node: &Node) -> Result<Compiled, Error> {
         let mut compiler = Compiler {
             string_table: Vec::new(),
-            bigint_table: Vec::new(),
+            number_table: Vec::new(),
             code: Vec::new(),
         };
 
@@ -156,7 +155,7 @@ impl Compiler {
         Ok(Compiled {
             code: compiler.code,
             string_table: compiler.string_table,
-            integer_table: compiler.bigint_table,
+            number_table: compiler.number_table,
         })
     }
 
@@ -176,13 +175,13 @@ impl Compiler {
         }
     }
 
-    fn bigint_id(&mut self, n: &BigInt) -> i32 {
-        let index = self.bigint_table.iter().position(|v| v == n);
+    fn number_id(&mut self, number: &Decimal) -> i32 {
+        let index = self.number_table.iter().position(|n| n == number);
         match index {
             Some(i) => i as i32,
             None => {
-                let id = self.bigint_table.len();
-                self.bigint_table.push(n.clone());
+                let id = self.number_table.len();
+                self.number_table.push(*number);
                 id as i32
             }
         }
@@ -194,10 +193,6 @@ impl Compiler {
 
     fn push_u8(&mut self, n: u8) {
         self.code.push(n);
-    }
-
-    fn push_f64(&mut self, n: f64) {
-        self.code.write_f64::<LittleEndian>(n).unwrap();
     }
 
     fn compile(&mut self, node: &Node) -> Result<(), Error> {
@@ -225,14 +220,9 @@ impl Compiler {
             Node::BinaryExpression(left, op, right) => {
                 self.compile_binary_expression(left, op, right)
             }
-            Node::FloatLiteral(n) => {
-                self.push_op(Op::NewFloat);
-                self.push_f64(*n);
-                Ok(())
-            }
-            Node::IntegerLiteral(n) => {
-                let id = self.bigint_id(n);
-                self.push_op(Op::NewInteger);
+            Node::NumberLiteral(n) => {
+                self.push_op(Op::NewNumber);
+                let id = self.number_id(n);
                 self.push_i32(id);
                 Ok(())
             }

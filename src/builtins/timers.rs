@@ -71,7 +71,7 @@ fn create_timeout(
         return Err(new_error("callback must be a function"));
     }
     match args.get(1).unwrap_or(&Value::Null) {
-        Value::Integer(n) => {
+        Value::Number(n) => {
             let end = Instant::now() + Duration::from_millis(n.to_u64().unwrap());
 
             let (registration, set_readiness) = Registration::new2();
@@ -92,7 +92,7 @@ fn create_timeout(
 
             Ok(Value::Null)
         }
-        _ => Err(new_error("duration must be an integer")),
+        _ => Err(new_error("duration must be a number")),
     }
 }
 

@@ -11,6 +11,7 @@ extern crate byteorder;
 extern crate clap;
 extern crate gc;
 extern crate mio;
+extern crate rust_decimal;
 
 mod agent;
 mod builtins;

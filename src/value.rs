@@ -2,7 +2,7 @@ use crate::agent::Agent;
 use crate::vm::{evaluate_at, Compiled, ExecutionContext, LexicalEnvironment};
 use gc::{Gc, GcCell};
 use indexmap::IndexMap;
-use num::BigInt;
+use rust_decimal::Decimal;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -69,8 +69,7 @@ pub enum ObjectKind {
     Array,
     Boolean(bool),
     String(String),
-    Float(f64),
-    Integer(BigInt),
+    Number(Decimal),
     Custom(Gc<GcCell<HashMap<String, Value>>>), // internal slots
     CompiledFunction(
         u8,                             // param count
@@ -89,8 +88,7 @@ impl std::fmt::Debug for ObjectKind {
             ObjectKind::Array => "Array".to_string(),
             ObjectKind::Boolean(b) => format!("Boolean({})", b),
             ObjectKind::String(s) => format!("String({})", s),
-            ObjectKind::Float(f) => format!("Float({})", f),
-            ObjectKind::Integer(i) => format!("Integer({})", i),
+            ObjectKind::Number(i) => format!("Number({}", i),
             ObjectKind::Custom(..) => "Custom".to_string(),
             ObjectKind::CompiledFunction(_, index, ..) => format!("CompiledFunction @ {}", index),
             ObjectKind::BuiltinFunction(f, ..) => format!("BuiltinFunction @ {:p}", f),
@@ -148,28 +146,28 @@ impl ObjectInfo {
                 kind: ObjectKind::Array,
                 ..
             } if property == ObjectKey::from("length") => {
-                if let Value::Integer(int_len) = value {
+                if let Value::Number(int_len) = value {
                     let old_len = self.get(ObjectKey::from("length"))?;
                     let mut old_len = match old_len {
-                        Value::Integer(n) => n,
-                        Value::Null => BigInt::from(0),
+                        Value::Number(n) => n,
+                        Value::Null => 0.into(),
                         _ => unreachable!(),
                     };
                     if int_len >= old_len {
                         self.properties
                             .borrow_mut()
-                            .insert(property, Value::Integer(int_len.clone()));
+                            .insert(property, Value::Number(int_len));
                     } else if int_len < old_len {
                         while int_len < old_len {
-                            old_len -= 1;
+                            old_len -= 1.into();
                             self.properties
                                 .borrow_mut()
-                                .remove(&ObjectKey::from(old_len.clone()));
+                                .remove(&ObjectKey::from(old_len));
                         }
                     } else {
                         // nothing!
                     }
-                    Ok(Value::Integer(int_len))
+                    Ok(Value::Number(int_len))
                 } else {
                     Err(new_error("invalid array length"))
                 }
@@ -269,8 +267,8 @@ impl From<i32> for ObjectKey {
     }
 }
 
-impl From<BigInt> for ObjectKey {
-    fn from(n: BigInt) -> Self {
+impl From<Decimal> for ObjectKey {
+    fn from(n: Decimal) -> Self {
         ObjectKey::String(n.to_string())
     }
 }
@@ -282,8 +280,7 @@ pub enum Value {
     True,
     False,
     String(String),
-    Float(f64),
-    Integer(BigInt),
+    Number(Decimal),
     Symbol(Symbol),
     Object(Gc<ObjectInfo>),
     List(Gc<GcCell<VecDeque<Value>>>),
@@ -304,15 +301,8 @@ impl std::hash::Hash for Value {
                 4.hash(state);
                 s.hash(state);
             }
-            Value::Float(n) => {
+            Value::Number(n) => {
                 5.hash(state);
-                unsafe {
-                    // hash raw bits of f64
-                    std::mem::transmute::<f64, u64>(*n).hash(state);
-                }
-            }
-            Value::Integer(n) => {
-                6.hash(state);
                 n.hash(state);
             }
             Value::Symbol(s) => {
@@ -338,8 +328,7 @@ unsafe impl gc::Trace for Value {
             | Value::True
             | Value::False
             | Value::String(_)
-            | Value::Float(_)
-            | Value::Integer(_)
+            | Value::Number(_)
             | Value::Symbol(_) => {}
             Value::Object(o) => mark(o),
             Value::List(list) => mark(list),
@@ -361,8 +350,7 @@ impl Value {
     pub fn type_of(&self) -> &str {
         match &self {
             Value::Null => "null",
-            Value::Float(_) => "float",
-            Value::Integer(_) => "integer",
+            Value::Number(_) => "number",
             Value::String(_) => "string",
             Value::Object(o) => match o.kind {
                 ObjectKind::CompiledFunction(..) | ObjectKind::BuiltinFunction(..) => "function",
@@ -378,8 +366,7 @@ impl Value {
             Value::True => true,
             Value::False => false,
             Value::String(s) => s.chars().count() > 0,
-            Value::Float(n) => *n != 0.0f64,
-            Value::Integer(n) => *n != BigInt::from(0),
+            Value::Number(n) => *n != 0.into(),
             Value::Object(_) => true,
             _ => unreachable!(),
         }
@@ -389,8 +376,7 @@ impl Value {
         match self {
             Value::Symbol(s) => Ok(ObjectKey::Symbol(s.clone())),
             Value::String(s) => Ok(ObjectKey::String(s.clone())),
-            Value::Float(n) => Ok(ObjectKey::String(n.to_string())),
-            Value::Integer(n) => Ok(ObjectKey::String(n.to_string())),
+            Value::Number(n) => Ok(ObjectKey::String(n.to_string())),
             _ => Err(new_error("cannot convert to object key")),
         }
     }
@@ -401,8 +387,7 @@ impl Value {
             Value::True => Ok(new_boolean_object(a, true)),
             Value::False => Ok(new_boolean_object(a, false)),
             Value::Object(_) => Ok(self.clone()),
-            Value::Float(n) => Ok(new_float_object(a, *n)),
-            Value::Integer(i) => Ok(new_integer_object(a, i.clone())),
+            Value::Number(n) => Ok(new_number_object(a, *n)),
             Value::String(s) => Ok(new_string_object(a, s.clone())),
             _ => unreachable!(),
         }
@@ -546,8 +531,7 @@ fn inspect(
         Value::Null => Ok("null".to_string()),
         Value::True => Ok("true".to_string()),
         Value::False => Ok("false".to_string()),
-        Value::Float(n) => Ok(format!("{}f", n)),
-        Value::Integer(n) => Ok(format!("{}i", n)),
+        Value::Number(n) => Ok(format!("{}", n)),
         Value::String(s) => Ok(format!("'{}'", s)),
         Value::Symbol(Symbol(_, _, d)) => {
             if let Some(s) = d {
@@ -636,12 +620,8 @@ impl PartialEq for Value {
                 Value::String(vs) => s == vs,
                 _ => false,
             },
-            Value::Float(n) => match &other {
-                Value::Float(vn) => n == vn,
-                _ => false,
-            },
-            Value::Integer(n) => match &other {
-                Value::Integer(vn) => n == vn,
+            Value::Number(n) => match &other {
+                Value::Number(vn) => n == vn,
                 _ => false,
             },
             Value::Symbol(s) => match &other {
@@ -732,17 +712,9 @@ pub fn new_string_object(agent: &Agent, v: String) -> Value {
     }))
 }
 
-pub fn new_float_object(agent: &Agent, v: f64) -> Value {
+pub fn new_number_object(agent: &Agent, v: Decimal) -> Value {
     Value::Object(Gc::new(ObjectInfo {
-        kind: ObjectKind::Float(v),
-        properties: GcCell::new(IndexMap::new()),
-        prototype: agent.intrinsics.float_prototype.clone(),
-    }))
-}
-
-pub fn new_integer_object(agent: &Agent, v: BigInt) -> Value {
-    Value::Object(Gc::new(ObjectInfo {
-        kind: ObjectKind::Integer(v),
+        kind: ObjectKind::Number(v),
         properties: GcCell::new(IndexMap::new()),
         prototype: agent.intrinsics.float_prototype.clone(),
     }))

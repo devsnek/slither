@@ -413,7 +413,6 @@ macro_rules! test {
     ( $name:ident, $source:expr, $result:expr ) => {
         #[test]
         fn $name() {
-            use num::BigInt;
             let agent = Agent::new();
             match ModuleX::new(stringify!(test_$name.sl), $source, &agent) {
                 Err(e) => assert_eq!(Err::<Value, Value>(e), $result),
@@ -438,20 +437,20 @@ macro_rules! test {
 test!(test_decl_return, "const a = 1;", Ok(Value::Null));
 test!(
     test_decl_assign,
-    "let a = 1.0; a += 1; a;",
-    Ok(Value::Float(2.0))
+    "let a = 1; a += 1; a;",
+    Ok(Value::Number(2.into()))
 );
-test!(test_throw, "throw 5.0;", Err(Value::Float(5.0)));
+test!(test_throw, "throw 5.0;", Err(Value::Number(5.into())));
 
 test!(
     test_paren_expr,
-    "const a = 1.0; (a);",
-    Ok(Value::Float(1.0))
+    "const a = 1; (a);",
+    Ok(Value::Number(1.into()))
 );
 test!(
     test_arrow_expr,
-    "const a = 1.0; ((a) => { return a; })(2.0);",
-    Ok(Value::Float(2.0))
+    "const a = 1; ((a) => { return a; })(2);",
+    Ok(Value::Number(2.into()))
 );
 
 // TODO: figure out matching objects
@@ -470,7 +469,7 @@ test!(
     };
     f.a + f.b;
     "#,
-    Ok(Value::Float(3.0))
+    Ok(Value::Number(3.into()))
 );
 
 test!(
@@ -485,5 +484,5 @@ test!(
     }
     i;
     "#,
-    Ok(Value::Integer(BigInt::from(6)))
+    Ok(Value::Number(6.into()))
 );
