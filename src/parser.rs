@@ -176,7 +176,23 @@ impl<'a> Lexer<'a> {
                                 self.chars.next();
                                 break;
                             }
-                            str.push(self.chars.next().unwrap());
+                            let c = self.chars.next().unwrap();
+                            match c {
+                                '\\' => {
+                                    match self.chars.next().unwrap() {
+                                        'n' => str.push('\n'),
+                                        't' => str.push('\t'),
+                                        '"' => str.push('"'),
+                                        '\'' => str.push('\''),
+                                        '\\' => str.push('\\'),
+                                        c => str.push(c),
+                                    }
+                                }
+                                '\r' | '\n' => {
+                                    panic!("unexpected end of string");
+                                }
+                                c => str.push(c),
+                            }
                         }
                         Some(Token::StringLiteral(str))
                     }
