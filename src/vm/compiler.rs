@@ -47,6 +47,7 @@ pub enum Op {
     PushLoop,
     PopLoop,
     Break,
+    Continue,
     Add,
     Sub,
     UnarySub,
@@ -269,6 +270,7 @@ impl Compiler {
             }
             Node::WhileStatement(test, body) => self.compile_while_statement(test, body),
             Node::BreakStatement => self.compile_break_statement(),
+            Node::ContinueStatement => self.compile_continue_statement(),
             Node::ThrowStatement(value) => self.compile_throw_statement(value),
             Node::TryStatement(try_clause, binding, catch, finally) => {
                 self.compile_try_statement(try_clause, binding, catch, finally)
@@ -608,19 +610,33 @@ impl Compiler {
     fn compile_while_statement(&mut self, test: &Node, body: &Node) -> Result<(), Error> {
         label!(check);
         label!(end);
+        label!(real_end);
+
+        self.push_op(Op::PushLoop);
+        jump!(self, real_end); // break location, not actually evaluated
+
         mark!(self, check);
         self.compile(test)?;
-        self.push_op(Op::PushLoop);
         jump_if_false!(self, end);
+
         self.compile(body)?;
-        self.push_op(Op::PopLoop);
         jump!(self, check);
+
         mark!(self, end);
+        self.push_op(Op::PopLoop);
+
+        mark!(self, real_end);
+
         Ok(())
     }
 
     fn compile_break_statement(&mut self) -> Result<(), Error> {
         self.push_op(Op::Break);
+        Ok(())
+    }
+
+    fn compile_continue_statement(&mut self) -> Result<(), Error> {
+        self.push_op(Op::Continue);
         Ok(())
     }
 

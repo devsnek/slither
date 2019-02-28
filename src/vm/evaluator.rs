@@ -155,6 +155,11 @@ impl ExecutionContext {
     }
 }
 
+struct LoopPosition {
+    r#break: usize,
+    r#continue: usize,
+}
+
 pub fn evaluate_at(
     agent: &Agent,
     compiled: &Compiled,
@@ -164,7 +169,7 @@ pub fn evaluate_at(
     positions: &mut Vec<usize>,
 ) -> Result<Value, Value> {
     let mut try_stack: Vec<usize> = vec![compiled.code.len()];
-    let mut loop_stack: Vec<usize> = Vec::new();
+    let mut loop_stack: Vec<LoopPosition> = Vec::new();
     let mut pc: usize = pc;
 
     let get_u8 = |pc: &mut usize| {
@@ -581,16 +586,19 @@ pub fn evaluate_at(
                 try_stack.pop();
             }
             Op::PushLoop => {
-                assert_eq!(get_u8(&mut pc), Op::JumpIfFalse as u8);
-                let position = get_i32(&mut pc) as usize;
-                loop_stack.push(position);
+                assert_eq!(get_u8(&mut pc), Op::Jump as u8);
+                let r#break = get_i32(&mut pc) as usize;
+                let r#continue = pc;
+                loop_stack.push(LoopPosition { r#break, r#continue });
             }
             Op::PopLoop => {
-                loop_stack.pop();
+                loop_stack.pop().unwrap();
             }
             Op::Break => {
-                let position = loop_stack.pop().unwrap();
-                pc = position;
+                pc = loop_stack.pop().unwrap().r#break;
+            }
+            Op::Continue => {
+                pc = loop_stack.last().unwrap().r#continue;
             }
             Op::Eq => {
                 let right = handle!(get_value(stack));

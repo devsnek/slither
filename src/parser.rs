@@ -68,6 +68,7 @@ enum Token {
     Comma,
     Throw,
     Break,
+    Continue,
     Try,
     Catch,
     Finally,
@@ -101,6 +102,7 @@ pub enum Node {
     IfElseStatement(Box<Node>, Box<Node>, Box<Node>), // test, consequent, alternative
     WhileStatement(Box<Node>, Box<Node>), // test, body
     BreakStatement,
+    ContinueStatement,
     TryStatement(
         Box<Node>,         // try clause
         Option<String>,    // catch binding
@@ -231,6 +233,7 @@ impl<'a> Lexer<'a> {
                             "catch" => Token::Catch,
                             "finally" => Token::Finally,
                             "break" => Token::Break,
+                            "continue" => Token::Continue,
                             "if" => Token::If,
                             "else" => Token::Else,
                             "while" => Token::While,
@@ -682,6 +685,11 @@ impl<'a> Parser<'a> {
                 self.expect(Token::Semicolon)?;
                 Ok(Node::BreakStatement)
             }
+            Some(Token::Continue) if self.scope(ParseScope::Loop) => {
+                self.lexer.next();
+                self.expect(Token::Semicolon)?;
+                Ok(Node::ContinueStatement)
+            }
             Some(Token::Export) if self.scope(ParseScope::TopLevel) => {
                 self.lexer.next();
                 let decl = match self.lexer.peek() {
@@ -829,25 +837,25 @@ impl<'a> Parser<'a> {
             Some(Token::This) if allow_keyword => Ok("this".to_string()),
             Some(Token::Class) if allow_keyword => Ok("class".to_string()),
             Some(Token::Finally) if allow_keyword => Ok("finally".to_string()),
-            /*
-            "function" => Token::Function,
-            "let" => Token::Let,
-            "const" => Token::Const,
-            "throw" => Token::Throw,
-            "return" => Token::Return,
-            "try" => Token::Try,
-            "catch" => Token::Catch,
-            "if" => Token::If,
-            "else" => Token::Else,
-            "new" => Token::New,
-            "import" => Token::Import,
-            "export" => Token::Export,
-            "default" => Token::Default,
-            "from" => Token::From,
-            "async" => Token::Async,
-            "typeof" => Token::Operator(Operator::Typeof),
-            "void" => Token::Operator(Operator::Void),
-            */
+            Some(Token::Function) if allow_keyword => Ok("function".to_string()),
+            Some(Token::Let) if allow_keyword => Ok("let".to_string()),
+            Some(Token::Const) if allow_keyword => Ok("const".to_string()),
+            Some(Token::Throw) if allow_keyword => Ok("throw".to_string()),
+            Some(Token::Return) if allow_keyword => Ok("return".to_string()),
+            Some(Token::Break) if allow_keyword => Ok("break".to_string()),
+            Some(Token::Continue) if allow_keyword => Ok("continue".to_string()),
+            Some(Token::Try) if allow_keyword => Ok("try".to_string()),
+            Some(Token::Catch) if allow_keyword => Ok("catch".to_string()),
+            Some(Token::If) if allow_keyword => Ok("if".to_string()),
+            Some(Token::Else) if allow_keyword => Ok("else".to_string()),
+            Some(Token::New) if allow_keyword => Ok("new".to_string()),
+            Some(Token::Import) if allow_keyword => Ok("import".to_string()),
+            Some(Token::Export) if allow_keyword => Ok("export".to_string()),
+            Some(Token::Default) if allow_keyword => Ok("default".to_string()),
+            Some(Token::From) if allow_keyword => Ok("from".to_string()),
+            Some(Token::Async) if allow_keyword => Ok("async".to_string()),
+            Some(Token::Operator(Operator::Typeof)) if allow_keyword => Ok("typeof".to_string()),
+            Some(Token::Operator(Operator::Void)) if allow_keyword => Ok("void".to_string()),
             _ => Err(Error::UnexpectedToken),
         }
     }
