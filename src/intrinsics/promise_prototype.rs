@@ -159,8 +159,8 @@ fn promise_proto_finally(
         .call(agent, promise, vec![then_finally, catch_finally])
 }
 
-pub fn create_promise_prototype(agent: &Agent, object_prototype: Value) -> Value {
-    let p = new_object(object_prototype);
+pub fn create_promise_prototype(agent: &Agent) -> Value {
+    let p = new_object(agent.intrinsics.object_prototype.clone());
 
     p.set(
         &ObjectKey::from("then"),

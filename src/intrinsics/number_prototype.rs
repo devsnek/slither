@@ -14,8 +14,8 @@ fn to_string(_: &Agent, ctx: &ExecutionContext, _: Vec<Value>) -> Result<Value, 
     }
 }
 
-pub fn create_number_prototype(agent: &Agent, object_prototype: Value) -> Value {
-    let proto = new_object(object_prototype);
+pub fn create_number_prototype(agent: &Agent) -> Value {
+    let proto = new_object(agent.intrinsics.object_prototype.clone());
 
     proto
         .set(

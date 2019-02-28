@@ -8,7 +8,7 @@ while true {
     print('even', i);
     continue;
   }
-  print('odd', i);
+  print(`odd $(i)`);
 
   if i > 10 {
     break;

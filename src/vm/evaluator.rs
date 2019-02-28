@@ -589,7 +589,10 @@ pub fn evaluate_at(
                 assert_eq!(get_u8(&mut pc), Op::Jump as u8);
                 let r#break = get_i32(&mut pc) as usize;
                 let r#continue = pc;
-                loop_stack.push(LoopPosition { r#break, r#continue });
+                loop_stack.push(LoopPosition {
+                    r#break,
+                    r#continue,
+                });
             }
             Op::PopLoop => {
                 loop_stack.pop().unwrap();
