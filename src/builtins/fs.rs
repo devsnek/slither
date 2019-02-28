@@ -353,7 +353,7 @@ fn move_(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Result<Value
 
 #[cfg(windows)]
 fn symlink(from: String, to: String) -> std::io::Result<()> {
-    if std::fs::metadata(from)?.is_file() {
+    if std::fs::metadata(from.clone())?.is_file() {
         std::os::windows::fs::symlink_file(from, to)
     } else {
         std::os::windows::fs::symlink_dir(from, to)
