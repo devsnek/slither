@@ -32,23 +32,23 @@ syntax match   slParensError    /[)}\]]/
 
 " Program Keywords
 syntax keyword slStorageClass   const let skipwhite skipempty nextgroup=slDestructuringBlock,slDestructuringArray,slVariableDef
-syntax match   slVariableDef    contained /\<\K\k*/ skipwhite skipempty nextgroup=slFlowDefinition
-syntax keyword slOperatorKeyword delete instanceof typeof void new in of skipwhite skipempty nextgroup=@slExpression
+syntax match   slVariableDef    contained /\<\K\k*/ skipwhite skipempty
+syntax keyword slOperatorKeyword typeof void new skipwhite skipempty nextgroup=@slExpression
 syntax match   slOperator       "[-!|&+<>=%/*~^]" skipwhite skipempty nextgroup=@slExpression
 syntax match   slOperator       /::/ skipwhite skipempty nextgroup=@slExpression
 syntax keyword slBooleanTrue    true
 syntax keyword slBooleanFalse   false
 
 " Modules
-syntax keyword slImport                       import skipwhite skipempty nextgroup=slModuleAsterisk,slModuleKeyword,slModuleGroup,slFlowImportType
-syntax keyword slExport                       export skipwhite skipempty nextgroup=@slAll,slModuleGroup,slExportDefault,slModuleAsterisk,slModuleKeyword,slFlowTypeStatement
+syntax keyword slImport                       import skipwhite skipempty nextgroup=slModuleAsterisk,slModuleKeyword,slModuleGroup
+syntax keyword slExport                       export skipwhite skipempty nextgroup=@slAll,slModuleGroup,slExportDefault,slModuleAsterisk,slModuleKeyword,
 syntax match   slModuleKeyword      contained /\<\K\k*/ skipwhite skipempty nextgroup=slModuleAs,slFrom,slModuleComma
 syntax keyword slExportDefault      contained default skipwhite skipempty nextgroup=@slExpression
 syntax keyword slExportDefaultGroup contained default skipwhite skipempty nextgroup=slModuleAs,slFrom,slModuleComma
 syntax match   slModuleAsterisk     contained /\*/ skipwhite skipempty nextgroup=slModuleKeyword,slModuleAs,slFrom
 syntax keyword slModuleAs           contained as skipwhite skipempty nextgroup=slModuleKeyword,slExportDefaultGroup
 syntax keyword slFrom               contained from skipwhite skipempty nextgroup=slString
-syntax match   slModuleComma        contained /,/ skipwhite skipempty nextgroup=slModuleKeyword,slModuleAsterisk,slModuleGroup,slFlowTypeKeyword
+syntax match   slModuleComma        contained /,/ skipwhite skipempty nextgroup=slModuleKeyword,slModuleAsterisk,slModuleGroup
 
 " Strings, Templates, Numbers
 syntax region  slString           start=+\z(["']\)+  skip=+\\\%(\z1\|$\)+  end=+\z1+ end=+$+  contains=slSpecial,@Spell extend
@@ -106,13 +106,13 @@ syntax keyword slBuiltins           decodeURI decodeURIComponent encodeURI encod
 
 " Code blocks
 syntax region  slBracket                      matchgroup=slBrackets            start=/\[/ end=/\]/ contains=@slExpression,slSpreadExpression extend fold
-syntax region  slParen                        matchgroup=slParens              start=/(/  end=/)/  contains=@slExpression extend fold nextgroup=slFlowDefinition
+syntax region  slParen                        matchgroup=slParens              start=/(/  end=/)/  contains=@slExpression extend fold
 syntax region  slParenDecorator     contained matchgroup=slParensDecorator     start=/(/  end=/)/  contains=@slAll extend fold
 syntax region  slParenIfElse        contained matchgroup=slParensIfElse        start=/(/  end=/)/  contains=@slAll skipwhite skipempty nextgroup=slCommentIfElse,slIfElseBlock,slReturn extend fold
 syntax region  slParenRepeat        contained matchgroup=slParensRepeat        start=/(/  end=/)/  contains=@slAll skipwhite skipempty nextgroup=slCommentRepeat,slRepeatBlock,slReturn extend fold
 syntax region  slParenSwitch        contained matchgroup=slParensSwitch        start=/(/  end=/)/  contains=@slAll skipwhite skipempty nextgroup=slSwitchBlock extend fold
 syntax region  slParenCatch         contained matchgroup=slParensCatch         start=/(/  end=/)/  skipwhite skipempty nextgroup=slTryCatchBlock extend fold
-syntax region  slFuncArgs           contained matchgroup=slFuncParens          start=/(/  end=/)/  contains=slFuncArgCommas,slComment,slFuncArgExpression,slDestructuringBlock,slDestructuringArray,slRestExpression,slFlowArgumentDef skipwhite skipempty nextgroup=slCommentFunction,slFuncBlock,slFlowReturn extend fold
+syntax region  slFuncArgs           contained matchgroup=slFuncParens          start=/(/  end=/)/  contains=slFuncArgCommas,slComment,slFuncArgExpression,slDestructuringBlock,slDestructuringArray,slRestExpression skipwhite skipempty nextgroup=slCommentFunction,slFuncBlock extend fold
 syntax region  slClassBlock         contained matchgroup=slClassBraces         start=/{/  end=/}/  contains=slClassFuncName,slClassMethodType,slArrowFunction,slArrowFuncArgs,slComment,slGenerator,slDecorator,slClassProperty,slClassPropertyComputed,slClassStringKey,slAsyncKeyword,slNoise extend fold
 syntax region  slFuncBlock          contained matchgroup=slFuncBraces          start=/{/  end=/}/  contains=@slAll,slBlock extend fold
 syntax region  slIfElseBlock        contained matchgroup=slIfElseBraces        start=/{/  end=/}/  contains=@slAll,slBlock extend fold
@@ -120,18 +120,18 @@ syntax region  slTryCatchBlock      contained matchgroup=slTryCatchBraces      s
 syntax region  slFinallyBlock       contained matchgroup=slFinallyBraces       start=/{/  end=/}/  contains=@slAll,slBlock extend fold
 syntax region  slSwitchBlock        contained matchgroup=slSwitchBraces        start=/{/  end=/}/  contains=@slAll,slBlock,slSwitchCase extend fold
 syntax region  slRepeatBlock        contained matchgroup=slRepeatBraces        start=/{/  end=/}/  contains=@slAll,slBlock extend fold
-syntax region  slDestructuringBlock contained matchgroup=slDestructuringBraces start=/{/  end=/}/  contains=slDestructuringProperty,slDestructuringAssignment,slDestructuringNoise,slDestructuringPropertyComputed,slSpreadExpression,slComment nextgroup=slFlowDefinition extend fold
-syntax region  slDestructuringArray contained matchgroup=slDestructuringBraces start=/\[/ end=/\]/ contains=slDestructuringPropertyValue,slNoise,slDestructuringProperty,slSpreadExpression,slDestructuringBlock,slDestructuringArray,slComment nextgroup=slFlowDefinition extend fold
+syntax region  slDestructuringBlock contained matchgroup=slDestructuringBraces start=/{/  end=/}/  contains=slDestructuringProperty,slDestructuringAssignment,slDestructuringNoise,slDestructuringPropertyComputed,slSpreadExpression,slComment extend fold
+syntax region  slDestructuringArray contained matchgroup=slDestructuringBraces start=/\[/ end=/\]/ contains=slDestructuringPropertyValue,slNoise,slDestructuringProperty,slSpreadExpression,slDestructuringBlock,slDestructuringArray,slComment extend fold
 syntax region  slObject             contained matchgroup=slObjectBraces        start=/{/  end=/}/  contains=slObjectKey,slObjectKeyString,slObjectKeyComputed,slObjectShorthandProp,slObjectSeparator,slObjectFuncName,slObjectMethodType,slGenerator,slComment,slObjectStringKey,slSpreadExpression,slDecorator,slAsyncKeyword extend fold
 syntax region  slBlock                        matchgroup=slBraces              start=/{/  end=/}/  contains=@slAll,slSpreadExpression extend fold
-syntax region  slModuleGroup        contained matchgroup=slModuleBraces        start=/{/ end=/}/   contains=slModuleKeyword,slModuleComma,slModuleAs,slComment,slFlowTypeKeyword skipwhite skipempty nextgroup=slFrom fold
+syntax region  slModuleGroup        contained matchgroup=slModuleBraces        start=/{/ end=/}/   contains=slModuleKeyword,slModuleComma,slModuleAs,slComment skipwhite skipempty nextgroup=slFrom fold
 syntax region  slSpreadExpression   contained matchgroup=slSpreadOperator      start=/\.\.\./ end=/[,}\]]\@=/ contains=@slExpression
 syntax region  slRestExpression     contained matchgroup=slRestOperator        start=/\.\.\./ end=/[,)]\@=/
 syntax region  slTernaryIf                    matchgroup=slTernaryIfOperator   start=/?:\@!/  end=/\%(:\|}\@=\)/  contains=@slExpression extend skipwhite skipempty nextgroup=@slExpression
 syntax match   slOperator       /?\.\ze\_D/
 
-syntax match   slGenerator            contained /\*/ skipwhite skipempty nextgroup=slFuncName,slFuncArgs,slFlowFunctionGroup
-syntax match   slFuncName             contained /\<\K\k*/ skipwhite skipempty nextgroup=slFuncArgs,slFlowFunctionGroup
+syntax match   slGenerator            contained /\*/ skipwhite skipempty nextgroup=slFuncName,slFuncArgs
+syntax match   slFuncName             contained /\<\K\k*/ skipwhite skipempty nextgroup=slFuncArgs
 syntax region  slFuncArgExpression    contained matchgroup=slFuncArgOperator start=/=/ end=/[,)]\@=/ contains=@slExpression extend
 syntax match   slFuncArgCommas        contained ','
 syntax keyword slArguments            contained arguments
@@ -142,7 +142,7 @@ syntax match   slArrowFuncArgs  /\<\K\k*\ze\s*=>/ skipwhite contains=slFuncArgs 
 " Matches a series of arguments surrounded in parens
 syntax match   slArrowFuncArgs  /([^()]*)\ze\s*=>/ contains=slFuncArgs skipempty skipwhite nextgroup=slArrowFunction extend
 
-exe 'syntax match slFunction /\<function\>/      skipwhite skipempty nextgroup=slGenerator,slFuncName,slFuncArgs,slFlowFunctionGroup skipwhite '.(exists('g:slither_conceal_function') ? 'conceal cchar='.g:slither_conceal_function : '')
+exe 'syntax match slFunction /\<function\>/      skipwhite skipempty nextgroup=slGenerator,slFuncName,slFuncArgs skipwhite '.(exists('g:slither_conceal_function') ? 'conceal cchar='.g:slither_conceal_function : '')
 exe 'syntax match slArrowFunction /=>/           skipwhite skipempty nextgroup=slFuncBlock,slCommentFunction '.(exists('g:slither_conceal_arrow_function') ? 'conceal cchar='.g:slither_conceal_arrow_function : '')
 exe 'syntax match slArrowFunction /()\ze\s*=>/   skipwhite skipempty nextgroup=slArrowFunction '.(exists('g:slither_conceal_noarg_arrow_function') ? 'conceal cchar='.g:slither_conceal_noarg_arrow_function : '')
 exe 'syntax match slArrowFunction /_\ze\s*=>/    skipwhite skipempty nextgroup=slArrowFunction '.(exists('g:slither_conceal_underscore_arrow_function') ? 'conceal cchar='.g:slither_conceal_underscore_arrow_function : '')
@@ -151,10 +151,10 @@ exe 'syntax match slArrowFunction /_\ze\s*=>/    skipwhite skipempty nextgroup=s
 syntax keyword slClassKeyword           contained class
 syntax keyword slExtendsKeyword         contained extends skipwhite skipempty nextgroup=@slExpression
 syntax match   slClassNoise             contained /\./
-syntax match   slClassFuncName          contained /\<\K\k*\ze\s*[(<]/ skipwhite skipempty nextgroup=slFuncArgs,slFlowClassFunctionGroup
+syntax match   slClassFuncName          contained /\<\K\k*\ze\s*[(<]/ skipwhite skipempty nextgroup=slFuncArgs
 syntax match   slClassMethodType        contained /\<\%([gs]et\|static\)\ze\s\+\K\k*/ skipwhite skipempty nextgroup=slAsyncKeyword,slClassFuncName,slClassProperty
-syntax region  slClassDefinition                  start=/\<class\>/ end=/\(\<extends\>\s\+\)\@<!{\@=/ contains=slClassKeyword,slExtendsKeyword,slClassNoise,@slExpression,slFlowClassGroup skipwhite skipempty nextgroup=slCommentClass,slClassBlock,slFlowClassGroup
-syntax match   slClassProperty          contained /\<\K\k*\ze\s*=/ skipwhite skipempty nextgroup=slClassValue,slFlowClassDef
+syntax region  slClassDefinition                  start=/\<class\>/ end=/\(\<extends\>\s\+\)\@<!{\@=/ contains=slClassKeyword,slExtendsKeyword,slClassNoise,@slExpression skipwhite skipempty nextgroup=slCommentClass,slClassBlock
+syntax match   slClassProperty          contained /\<\K\k*\ze\s*=/ skipwhite skipempty nextgroup=slClassValue
 syntax region  slClassValue             contained start=/=/ end=/\_[;}]\@=/ contains=@slExpression
 syntax region  slClassPropertyComputed  contained matchgroup=slBrackets start=/\[/ end=/]/ contains=@slExpression skipwhite skipempty nextgroup=slFuncArgs,slClassValue extend
 syntax region  slClassStringKey         contained start=+\z(["']\)+  skip=+\\\%(\z1\|$\)+  end=+\z1\|$+  contains=slSpecial,@Spell extend skipwhite skipempty nextgroup=slFuncArgs
@@ -177,10 +177,10 @@ syntax region  slEnvComment     start=/\%^#!/ end=/$/ display
 " Specialized Comments - These are special comment regexes that are used in
 " odd places that maintain the proper nextgroup functionality. It sucks we
 " can't make slComment a skippable type of group for nextgroup
-syntax region  slCommentFunction    contained start=+//+ end=/$/    contains=slCommentTodo,@Spell skipwhite skipempty nextgroup=slFuncBlock,slFlowReturn extend keepend
-syntax region  slCommentFunction    contained start=+/\*+ end=+\*/+ contains=slCommentTodo,@Spell skipwhite skipempty nextgroup=slFuncBlock,slFlowReturn fold extend keepend
-syntax region  slCommentClass       contained start=+//+ end=/$/    contains=slCommentTodo,@Spell skipwhite skipempty nextgroup=slClassBlock,slFlowClassGroup extend keepend
-syntax region  slCommentClass       contained start=+/\*+ end=+\*/+ contains=slCommentTodo,@Spell skipwhite skipempty nextgroup=slClassBlock,slFlowClassGroup fold extend keepend
+syntax region  slCommentFunction    contained start=+//+ end=/$/    contains=slCommentTodo,@Spell skipwhite skipempty nextgroup=slFuncBlock extend keepend
+syntax region  slCommentFunction    contained start=+/\*+ end=+\*/+ contains=slCommentTodo,@Spell skipwhite skipempty nextgroup=slFuncBlock fold extend keepend
+syntax region  slCommentClass       contained start=+//+ end=/$/    contains=slCommentTodo,@Spell skipwhite skipempty nextgroup=slClassBlock extend keepend
+syntax region  slCommentClass       contained start=+/\*+ end=+\*/+ contains=slCommentTodo,@Spell skipwhite skipempty nextgroup=slClassBlock fold extend keepend
 syntax region  slCommentIfElse      contained start=+//+ end=/$/    contains=slCommentTodo,@Spell skipwhite skipempty nextgroup=slIfElseBlock extend keepend
 syntax region  slCommentIfElse      contained start=+/\*+ end=+\*/+ contains=slCommentTodo,@Spell skipwhite skipempty nextgroup=slIfElseBlock fold extend keepend
 syntax region  slCommentRepeat      contained start=+//+ end=/$/    contains=slCommentTodo,@Spell skipwhite skipempty nextgroup=slRepeatBlock extend keepend

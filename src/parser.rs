@@ -90,8 +90,8 @@ pub enum Node {
     NumberLiteral(Decimal),
     StringLiteral(String),
     TemplateLiteral(Vec<String>, Vec<Node>), // quasis, expressions
-    Initializer(String, Box<Node>), // Name, value
-    ObjectLiteral(Vec<Node>),       // initialiers
+    Initializer(String, Box<Node>),          // Name, value
+    ObjectLiteral(Vec<Node>),                // initialiers
     ArrayLiteral(Vec<Node>),
     Identifier(String),
     BlockStatement(Vec<Node>, HashMap<String, bool>, bool), // nodes, declarations, top
@@ -1244,7 +1244,7 @@ impl<'a> Parser<'a> {
                                 } else {
                                     current.push('$');
                                 }
-                            },
+                            }
                             Some('`') => break,
                             Some(c) => {
                                 current.push(c);

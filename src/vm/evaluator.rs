@@ -447,7 +447,11 @@ pub fn evaluate_at(
                 // println!("Call");
                 let callee = handle!(get_value(stack));
                 let this = handle!(get_value(stack));
-                let this = if this == Value::Null { this } else { this.to_object(agent)? };
+                let this = if this == Value::Null {
+                    this
+                } else {
+                    this.to_object(agent)?
+                };
                 let argc = get_u8(&mut pc);
                 if let Value::Object(o) = callee.clone() {
                     match &o.kind {
