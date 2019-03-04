@@ -1,9 +1,10 @@
 import { print } from standard:debug;
 import { readFile, writeFile, removeFile, getMetadata } from standard:fs;
 
+const s = :wk;
+
 const x = {
-  [1]: 'hi',
-  ['owo' + 'meme']: 'bye',
+  [s]: 'hi',
 };
 
-print(x);
+print(x, x[:wk]);

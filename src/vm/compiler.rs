@@ -14,6 +14,7 @@ pub enum Op {
     End,
     NewNumber,
     NewString,
+    NewSymbol,
     ProcessTemplateLiteral,
     NewFunction,
     NewObject,
@@ -242,6 +243,12 @@ impl Compiler {
             }
             Node::StringLiteral(s) => {
                 self.push_op(Op::NewString);
+                let id = self.string_id(s);
+                self.push_i32(id);
+                Ok(())
+            }
+            Node::SymbolLiteral(s) => {
+                self.push_op(Op::NewSymbol);
                 let id = self.string_id(s);
                 self.push_i32(id);
                 Ok(())

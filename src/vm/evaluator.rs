@@ -288,6 +288,21 @@ pub fn evaluate_at(
                 let str = &compiled.string_table[id];
                 stack.push(Value::String(str.clone()));
             }
+            Op::NewSymbol => {
+                let id = get_i32(&mut pc) as usize;
+                let name = &compiled.string_table[id];
+                let mut wks = agent.well_known_symbols.borrow_mut();
+                match wks.get(name) {
+                    Some(s) => {
+                        stack.push(s.clone());
+                    }
+                    None => {
+                        let s = Value::new_symbol(Some(name.to_string()));
+                        wks.insert(name.to_string(), s.clone());
+                        stack.push(s);
+                    }
+                }
+            }
             Op::NewFunction => {
                 let argc = get_u8(&mut pc);
                 let inherits_this = get_bool(&mut pc);

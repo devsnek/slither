@@ -275,6 +275,7 @@ fn call_timer_job(agent: &Agent, args: Vec<Value>) -> Result<(), Value> {
 
 pub struct Agent {
     pub intrinsics: Intrinsics,
+    pub well_known_symbols: RefCell<HashMap<String, Value>>,
     builtins: HashMap<String, HashMap<String, Value>>,
     modules: GcCell<HashMap<String, Module>>,
     pub root_env: Gc<GcCell<LexicalEnvironment>>,
@@ -310,6 +311,7 @@ impl Agent {
                 symbol_prototype,
                 symbol: Value::Null,
             },
+            well_known_symbols: RefCell::new(HashMap::new()),
             builtins: HashMap::new(),
             root_env: LexicalEnvironment::new(None),
             modules: GcCell::new(HashMap::new()),
@@ -493,4 +495,14 @@ test!(
     i;
     "#,
     Ok(Value::Number(6.into()))
+);
+
+test!(
+    test_well_known_symbols,
+    r#"
+    const x = :wk;
+    const y = { [x]: 5 };
+    y[:wk];
+    "#,
+    Ok(Value::Number(5.into()))
 );

@@ -90,6 +90,7 @@ pub enum Node {
     FalseLiteral,
     NumberLiteral(Decimal),
     StringLiteral(String),
+    SymbolLiteral(String),
     TemplateLiteral(Vec<String>, Vec<Node>), // quasis, expressions
     Initializer(String, Box<Node>),          // name, value
     ObjectLiteral(Vec<Node>),                // initialiers
@@ -1224,6 +1225,10 @@ impl<'a> Parser<'a> {
                 Token::Null => Ok(Node::NullLiteral),
                 Token::True => Ok(Node::TrueLiteral),
                 Token::False => Ok(Node::FalseLiteral),
+                Token::Colon => {
+                    let name = self.parse_identifier(false)?;
+                    Ok(Node::SymbolLiteral(name))
+                }
                 Token::Operator(Operator::Typeof) => Ok(Node::UnaryExpression(
                     Operator::Typeof,
                     Box::new(self.parse_unary_expression()?),
