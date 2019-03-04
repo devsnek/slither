@@ -328,6 +328,7 @@ pub fn evaluate_at(
             Op::NewObject => {
                 let obj = new_object(Value::Null);
                 let inits = get_i32(&mut pc);
+                // TODO: keys are inserted in wrong order due to stack
                 for _ in 0..inits {
                     let value = handle!(get_value(stack));
                     let key = handle!(get_value(stack));

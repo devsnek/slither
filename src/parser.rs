@@ -91,8 +91,9 @@ pub enum Node {
     NumberLiteral(Decimal),
     StringLiteral(String),
     TemplateLiteral(Vec<String>, Vec<Node>), // quasis, expressions
-    Initializer(String, Box<Node>),          // Name, value
+    Initializer(String, Box<Node>),          // name, value
     ObjectLiteral(Vec<Node>),                // initialiers
+    ObjectInitializer(Box<Node>, Box<Node>), // name, value
     ArrayLiteral(Vec<Node>),
     Identifier(String),
     BlockStatement(Vec<Node>, HashMap<String, bool>, bool), // nodes, declarations, top
@@ -1306,14 +1307,20 @@ impl<'a> Parser<'a> {
                                 break;
                             }
                         }
-                        let name = self.parse_identifier(true)?;
+                        let name = if self.eat(Token::LeftBracket) {
+                            let name = self.parse_expression()?;
+                            self.expect(Token::RightBracket)?;
+                            name
+                        } else {
+                            Node::StringLiteral(self.parse_identifier(true)?)
+                        };
                         let mut init;
                         if self.eat(Token::Colon) {
                             init = self.parse_expression()?;
                         } else {
                             init = self.parse_function(true)?
                         }
-                        fields.push(Node::Initializer(name, Box::new(init)));
+                        fields.push(Node::ObjectInitializer(Box::new(name), Box::new(init)));
                     }
                     Ok(Node::ObjectLiteral(fields))
                 }

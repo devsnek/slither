@@ -392,10 +392,8 @@ impl Compiler {
 
     fn compile_object_literal(&mut self, inits: &[Node]) -> Result<(), Error> {
         for init in inits {
-            if let Node::Initializer(key, expr) = init {
-                self.push_op(Op::NewString);
-                let id = self.string_id(key);
-                self.push_i32(id);
+            if let Node::ObjectInitializer(key, expr) = init {
+                self.compile(key)?;
                 self.compile(expr)?;
             } else {
                 unreachable!();
