@@ -1,5 +1,5 @@
 use crate::agent::Agent;
-use crate::vm::{evaluate_at, Compiled, ExecutionContext, LexicalEnvironment};
+use crate::vm::{Compiled, Evaluator, ExecutionContext, LexicalEnvironment};
 use gc::{Gc, GcCell};
 use indexmap::IndexMap;
 use rust_decimal::Decimal;
@@ -473,14 +473,10 @@ impl Value {
                     }
                     unsafe {
                         let compiled = &**compiled;
-                        evaluate_at(
-                            agent,
-                            compiled,
-                            index,
-                            &mut stack,
-                            &mut vec![ctx],
-                            &mut vec![compiled.code.len()],
-                        )
+                        let mut evaluator = Evaluator::new(compiled);
+                        evaluator.scope.push(ctx);
+                        evaluator.positions.push(index);
+                        evaluator.run(compiled, agent)?
                     }
                 }
                 ObjectKind::BuiltinFunction(f, _) => {

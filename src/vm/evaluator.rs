@@ -155,23 +155,60 @@ impl ExecutionContext {
     }
 }
 
-struct LoopPosition {
+pub struct LoopPosition {
     r#break: usize,
     r#continue: usize,
 }
 
-pub fn evaluate_at(
+pub struct Evaluator {
+    pc: usize,
+    pub stack: Vec<Value>,
+    pub scope: Vec<Gc<GcCell<ExecutionContext>>>,
+    pub positions: Vec<usize>,
+    try_stack: Vec<usize>,
+    loop_stack: Vec<LoopPosition>,
+}
+
+impl Evaluator {
+    pub fn new(compiled: &Compiled) -> Evaluator {
+        Evaluator {
+            pc: 0,
+            stack: Vec::new(),
+            scope: Vec::new(),
+            positions: Vec::new(),
+            try_stack: vec![compiled.code.len()],
+            loop_stack: Vec::new(),
+        }
+    }
+
+    pub fn run(
+        &mut self,
+        compiled: &Compiled,
+        agent: &Agent,
+    ) -> Result<Result<Value, Value>, Value> {
+        Ok(evaluate_at(
+            agent,
+            compiled,
+            &mut self.pc,
+            &mut self.stack,
+            &mut self.scope,
+            &mut self.positions,
+            &mut self.try_stack,
+            &mut self.loop_stack,
+        ))
+    }
+}
+
+fn evaluate_at(
     agent: &Agent,
     compiled: &Compiled,
-    pc: usize,
+    pc: &mut usize,
     stack: &mut Vec<Value>,
     scope: &mut Vec<Gc<GcCell<ExecutionContext>>>,
     positions: &mut Vec<usize>,
+    try_stack: &mut Vec<usize>,
+    loop_stack: &mut Vec<LoopPosition>,
 ) -> Result<Value, Value> {
-    let mut try_stack: Vec<usize> = vec![compiled.code.len()];
-    let mut loop_stack: Vec<LoopPosition> = Vec::new();
-    let mut pc: usize = pc;
-
     let get_u8 = |pc: &mut usize| {
         let v = compiled.code[*pc];
         *pc += 1;
@@ -249,7 +286,7 @@ pub fn evaluate_at(
                     Ok(v) => v,
                     Err(e) => {
                         let position = try_stack.pop().expect("try_stack context missing");
-                        pc = position;
+                        *pc = position;
                         exception = Some(e);
                         continue 'main;
                     }
@@ -257,11 +294,11 @@ pub fn evaluate_at(
             };
         }
 
-        if pc >= compiled.code.len() {
+        if *pc >= compiled.code.len() {
             break;
         }
-        let op = compiled.code[pc].into();
-        pc += 1;
+        let op = compiled.code[*pc].into();
+        *pc += 1;
         match op {
             Op::PushScope => {
                 // println!("PushScope");
@@ -279,17 +316,17 @@ pub fn evaluate_at(
             Op::PushTrue => stack.push(Value::True),
             Op::PushFalse => stack.push(Value::False),
             Op::NewNumber => {
-                let id = get_i32(&mut pc) as usize;
+                let id = get_i32(pc) as usize;
                 let value = compiled.number_table[id];
                 stack.push(Value::Number(value));
             }
             Op::NewString => {
-                let id = get_i32(&mut pc) as usize;
+                let id = get_i32(pc) as usize;
                 let str = &compiled.string_table[id];
                 stack.push(Value::String(str.clone()));
             }
             Op::NewSymbol => {
-                let id = get_i32(&mut pc) as usize;
+                let id = get_i32(pc) as usize;
                 let name = &compiled.string_table[id];
                 let mut wks = agent.well_known_symbols.borrow_mut();
                 match wks.get(name) {
@@ -304,9 +341,9 @@ pub fn evaluate_at(
                 }
             }
             Op::NewFunction => {
-                let argc = get_u8(&mut pc);
-                let inherits_this = get_bool(&mut pc);
-                let index = pc + 5; // jmp + i32 = 5
+                let argc = get_u8(pc);
+                let inherits_this = get_bool(pc);
+                let index = *pc + 5; // jmp + i32 = 5
                 let env = LexicalEnvironment::new(match scope.last() {
                     Some(r) => Some(r.borrow().environment.clone()),
                     None => None,
@@ -316,12 +353,12 @@ pub fn evaluate_at(
                 stack.push(value);
             }
             Op::ProcessTemplateLiteral => {
-                let len = get_i32(&mut pc);
-                let last_id = get_i32(&mut pc) as usize;
+                let len = get_i32(pc);
+                let last_id = get_i32(pc) as usize;
                 let mut end = compiled.string_table[last_id].to_string();
                 for _ in 0..(len - 1) {
                     // end = quasi + part + end
-                    let id = get_i32(&mut pc) as usize;
+                    let id = get_i32(pc) as usize;
                     let quasi = compiled.string_table[id].to_string();
                     let value = handle!(get_value(stack));
                     let part = if let Value::String(part) = value {
@@ -342,7 +379,7 @@ pub fn evaluate_at(
             }
             Op::NewObject => {
                 let obj = new_object(Value::Null);
-                let inits = get_i32(&mut pc);
+                let inits = get_i32(pc);
                 // TODO: keys are inserted in wrong order due to stack
                 for _ in 0..inits {
                     let value = handle!(get_value(stack));
@@ -353,7 +390,7 @@ pub fn evaluate_at(
                 stack.push(obj);
             }
             Op::NewArray => {
-                let len = get_i32(&mut pc);
+                let len = get_i32(pc);
                 let a = new_array(agent);
                 for i in 0..len {
                     let value = handle!(get_value(stack));
@@ -362,7 +399,7 @@ pub fn evaluate_at(
                 stack.push(a);
             }
             Op::NewIdentifier => {
-                let id = get_i32(&mut pc) as usize;
+                let id = get_i32(pc) as usize;
                 let name = &compiled.string_table[id];
                 stack.push(Value::EnvironmentReference(
                     scope.last().unwrap().borrow().environment.clone(),
@@ -370,7 +407,7 @@ pub fn evaluate_at(
                 ));
             }
             Op::NewMemberReference | Op::NewMemberReferenceNoConsumeStack => {
-                let id = get_i32(&mut pc) as usize;
+                let id = get_i32(pc) as usize;
                 let name = &compiled.string_table[id];
                 let base = handle!(if op == Op::NewMemberReferenceNoConsumeStack {
                     get_value_no_consume(&stack)
@@ -427,8 +464,8 @@ pub fn evaluate_at(
                 stack.push(this);
             }
             Op::LexicalDeclaration => {
-                let mutable = get_bool(&mut pc);
-                let id = get_i32(&mut pc) as usize;
+                let mutable = get_bool(pc);
+                let id = get_i32(pc) as usize;
                 let name = &compiled.string_table[id];
                 // println!("LexicalDeclaration {} {}", name, mutable);
                 handle!(scope
@@ -440,7 +477,7 @@ pub fn evaluate_at(
                     .create(name, mutable));
             }
             Op::LexicalInitialization => {
-                let id = get_i32(&mut pc) as usize;
+                let id = get_i32(pc) as usize;
                 let name = &compiled.string_table[id];
                 let value = handle!(get_value(stack));
                 let ctx = scope.last().unwrap().borrow();
@@ -448,14 +485,14 @@ pub fn evaluate_at(
                 env.initialize(name, value);
             }
             Op::Jump => {
-                let position = get_i32(&mut pc) as usize;
-                pc = position;
+                let position = get_i32(pc) as usize;
+                *pc = position;
             }
             Op::JumpIfFalse => {
-                let position = get_i32(&mut pc) as usize;
+                let position = get_i32(pc) as usize;
                 let value = handle!(get_value(stack));
                 if !value.is_truthy() {
-                    pc = position;
+                    *pc = position;
                 }
             }
             // calling convention:
@@ -473,7 +510,7 @@ pub fn evaluate_at(
                 } else {
                     this.to_object(agent)?
                 };
-                let argc = get_u8(&mut pc);
+                let argc = get_u8(pc);
                 if let Value::Object(o) = callee.clone() {
                     match &o.kind {
                         ObjectKind::CompiledFunction(paramc, index, cc, inherits_this, env) => {
@@ -495,7 +532,7 @@ pub fn evaluate_at(
                                 if op == Op::TailCall {
                                     scope.pop();
                                 } else {
-                                    positions.push(pc); // jump back to previous pc
+                                    positions.push(*pc); // jump back to previous pc
                                 }
                                 // println!("PushContext");
                                 let ctx = ExecutionContext::new(LexicalEnvironment::new(Some(
@@ -506,7 +543,7 @@ pub fn evaluate_at(
                                     ctx.borrow().environment.borrow_mut().this = Some(this);
                                 }
                                 scope.push(ctx);
-                                pc = index; // jump to index of function body
+                                *pc = index; // jump to index of function body
                             } else {
                                 let mut args: Vec<Value> = Vec::with_capacity(argc as usize);
                                 let p = args.as_mut_ptr();
@@ -545,13 +582,13 @@ pub fn evaluate_at(
                 }
             }
             Op::InitReplace => {
-                assert_eq!(get_u8(&mut pc), Op::Jump as u8);
-                let position = get_i32(&mut pc) as usize;
+                assert_eq!(get_u8(pc), Op::Jump as u8);
+                let position = get_i32(pc) as usize;
                 if stack.last().unwrap() == &Value::Empty {
                     stack.pop(); // will be pushed by default evaluation next
                 } else {
                     // skip past default evaluation
-                    pc = position;
+                    *pc = position;
                 }
             }
             Op::New => {
@@ -560,7 +597,7 @@ pub fn evaluate_at(
                 stack.push(result);
             }
             Op::NewWithArgs => {
-                let argc = get_i32(&mut pc);
+                let argc = get_i32(pc);
                 let mut args: Vec<Value> = Vec::with_capacity(argc as usize);
                 let p = args.as_mut_ptr();
                 for i in (0..argc).rev() {
@@ -577,16 +614,16 @@ pub fn evaluate_at(
             }
             Op::End => {
                 scope.pop();
-                pc = positions.pop().unwrap();
+                *pc = positions.pop().unwrap();
             }
             Op::Return => {
                 scope.pop();
-                pc = positions.pop().unwrap();
+                *pc = positions.pop().unwrap();
             }
             Op::Throw => {
                 let position = try_stack.pop().unwrap();
                 exception = Some(handle!(get_value(stack)));
-                pc = position;
+                *pc = position;
             }
             Op::ExceptionToStack => {
                 let e = exception.unwrap();
@@ -594,17 +631,17 @@ pub fn evaluate_at(
                 stack.push(e);
             }
             Op::PushTry => {
-                assert_eq!(get_u8(&mut pc), Op::Jump as u8);
-                let position = get_i32(&mut pc) as usize;
+                assert_eq!(get_u8(pc), Op::Jump as u8);
+                let position = get_i32(pc) as usize;
                 try_stack.push(position);
             }
             Op::PopTry => {
                 try_stack.pop();
             }
             Op::PushLoop => {
-                assert_eq!(get_u8(&mut pc), Op::Jump as u8);
-                let r#break = get_i32(&mut pc) as usize;
-                let r#continue = pc;
+                assert_eq!(get_u8(pc), Op::Jump as u8);
+                let r#break = get_i32(pc) as usize;
+                let r#continue = *pc;
                 loop_stack.push(LoopPosition {
                     r#break,
                     r#continue,
@@ -614,10 +651,10 @@ pub fn evaluate_at(
                 loop_stack.pop().unwrap();
             }
             Op::Break => {
-                pc = loop_stack.pop().unwrap().r#break;
+                *pc = loop_stack.pop().unwrap().r#break;
             }
             Op::Continue => {
-                pc = loop_stack.last().unwrap().r#continue;
+                *pc = loop_stack.last().unwrap().r#continue;
             }
             Op::Eq => {
                 let right = handle!(get_value(stack));

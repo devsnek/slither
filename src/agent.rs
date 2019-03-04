@@ -5,7 +5,7 @@ use crate::intrinsics::{
 };
 use crate::parser::{Node, Parser};
 use crate::value::{new_error, Value};
-use crate::vm::{evaluate_at, Compiled, Compiler, ExecutionContext, LexicalEnvironment};
+use crate::vm::{Compiled, Compiler, Evaluator, ExecutionContext, LexicalEnvironment};
 use gc::{Gc, GcCell};
 use num_cpus;
 use std::cell::RefCell;
@@ -208,16 +208,9 @@ fn inner_module_evaluation(
             }
         }
         {
-            let mut stack = Vec::new();
-            let mut scope = vec![module.borrow_mut().context.clone()];
-            evaluate_at(
-                agent,
-                &module.borrow().compiled,
-                0,
-                &mut stack,
-                &mut scope,
-                &mut vec![],
-            )?;
+            let mut evaluator = Evaluator::new(&module.borrow().compiled);
+            evaluator.scope.push(module.borrow_mut().context.clone());
+            evaluator.run(&module.borrow().compiled, agent)??;
         }
         if module.borrow().dfs_ancestor_index == module.borrow().dfs_index {
             let mut done = false;
@@ -427,16 +420,9 @@ macro_rules! test {
             match ModuleX::new(stringify!(test_$name.sl), $source, &agent) {
                 Err(e) => assert_eq!(Err::<Value, Value>(e), $result),
                 Ok(module) => {
-                    let mut stack = Vec::new();
-                    let mut scope = vec![module.context.clone()];
-                    let result = evaluate_at(
-                        &agent,
-                        &module.compiled,
-                        0,
-                        &mut stack,
-                        &mut scope,
-                        &mut vec![],
-                    );
+                    let mut evaluator = Evaluator::new(&module.compiled);
+                    evaluator.scope.push(module.context.clone());
+                    let result = evaluator.run(&module.compiled, &agent).unwrap();
                     assert_eq!(result, $result);
                 }
             }

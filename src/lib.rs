@@ -1,5 +1,6 @@
 #![allow(clippy::float_cmp)]
 #![allow(clippy::cyclomatic_complexity)]
+#![allow(clippy::too_many_arguments)]
 #![allow(clippy::option_option)]
 
 #[macro_use]
