@@ -155,11 +155,13 @@ impl ExecutionContext {
     }
 }
 
+#[derive(Trace, Finalize)]
 pub struct LoopPosition {
     r#break: usize,
     r#continue: usize,
 }
 
+#[derive(Trace, Finalize)]
 pub struct Evaluator {
     pc: usize,
     pub stack: Vec<Value>,
@@ -168,6 +170,9 @@ pub struct Evaluator {
     try_stack: Vec<usize>,
     loop_stack: Vec<LoopPosition>,
 }
+
+#[derive(Debug, Trace, Finalize)]
+pub struct SuspendValue(Value);
 
 impl Evaluator {
     pub fn new(compiled: &Compiled) -> Evaluator {
@@ -185,8 +190,8 @@ impl Evaluator {
         &mut self,
         compiled: &Compiled,
         agent: &Agent,
-    ) -> Result<Result<Value, Value>, Value> {
-        Ok(evaluate_at(
+    ) -> Result<Result<Value, Value>, SuspendValue> {
+        evaluate_at(
             agent,
             compiled,
             &mut self.pc,
@@ -195,7 +200,7 @@ impl Evaluator {
             &mut self.positions,
             &mut self.try_stack,
             &mut self.loop_stack,
-        ))
+        )
     }
 }
 
@@ -208,7 +213,7 @@ fn evaluate_at(
     positions: &mut Vec<usize>,
     try_stack: &mut Vec<usize>,
     loop_stack: &mut Vec<LoopPosition>,
-) -> Result<Value, Value> {
+) -> Result<Result<Value, Value>, SuspendValue> {
     let get_u8 = |pc: &mut usize| {
         let v = compiled.code[*pc];
         *pc += 1;
@@ -508,14 +513,20 @@ fn evaluate_at(
                 let this = if this == Value::Null {
                     this
                 } else {
-                    this.to_object(agent)?
+                    handle!(this.to_object(agent))
                 };
                 let argc = get_u8(pc);
                 if let Value::Object(o) = callee.clone() {
                     match &o.kind {
-                        ObjectKind::CompiledFunction(paramc, index, cc, inherits_this, env) => {
+                        ObjectKind::CompiledFunction {
+                            params,
+                            index,
+                            compiled: cc,
+                            inherits_this,
+                            env,
+                        } => {
                             if unsafe { &**cc } == compiled {
-                                let paramc = *paramc;
+                                let paramc = *params;
                                 let index = *index;
                                 let inherits_this = *inherits_this;
                                 if argc > paramc {
@@ -719,8 +730,8 @@ fn evaluate_at(
         }
     }
 
-    match exception {
+    Ok(match exception {
         Some(e) => Err(e),
         None => Ok(stack.pop().unwrap_or(Value::Null)),
-    }
+    })
 }

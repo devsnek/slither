@@ -210,7 +210,7 @@ fn inner_module_evaluation(
         {
             let mut evaluator = Evaluator::new(&module.borrow().compiled);
             evaluator.scope.push(module.borrow_mut().context.clone());
-            evaluator.run(&module.borrow().compiled, agent)??;
+            evaluator.run(&module.borrow().compiled, agent).unwrap()?;
         }
         if module.borrow().dfs_ancestor_index == module.borrow().dfs_index {
             let mut done = false;

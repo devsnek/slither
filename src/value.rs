@@ -71,13 +71,13 @@ pub enum ObjectKind {
     String(String),
     Number(Decimal),
     Custom(Gc<GcCell<HashMap<String, Value>>>), // internal slots
-    CompiledFunction(
-        u8,                             // param count
-        usize,                          // compiled code index
-        *const Compiled,                // compiled code
-        bool,                           // inherits this (arrow function)
-        Gc<GcCell<LexicalEnvironment>>, // environment
-    ),
+    CompiledFunction {
+        params: u8,
+        index: usize,
+        compiled: *const Compiled,
+        inherits_this: bool,
+        env: Gc<GcCell<LexicalEnvironment>>,
+    },
     BuiltinFunction(BuiltinFunction, Gc<GcCell<HashMap<String, Value>>>),
 }
 
@@ -90,7 +90,7 @@ impl std::fmt::Debug for ObjectKind {
             ObjectKind::String(s) => format!("String({})", s),
             ObjectKind::Number(i) => format!("Number({}", i),
             ObjectKind::Custom(..) => "Custom".to_string(),
-            ObjectKind::CompiledFunction(_, index, ..) => format!("CompiledFunction @ {}", index),
+            ObjectKind::CompiledFunction { index, .. } => format!("CompiledFunction @ {}", index),
             ObjectKind::BuiltinFunction(f, ..) => format!("BuiltinFunction @ {:p}", f),
         };
         write!(fmt, "{}", r)
@@ -101,7 +101,7 @@ impl std::fmt::Debug for ObjectKind {
 unsafe impl gc::Trace for ObjectKind {
     custom_trace!(this, {
         match this {
-            ObjectKind::CompiledFunction(_, _, _, _, env) => mark(env),
+            ObjectKind::CompiledFunction { env, .. } => mark(env),
             ObjectKind::Custom(slots) => mark(slots),
             ObjectKind::BuiltinFunction(_, slots) => mark(slots),
             _ => {}
@@ -353,7 +353,7 @@ impl Value {
             Value::Number(_) => "number",
             Value::String(_) => "string",
             Value::Object(o) => match o.kind {
-                ObjectKind::CompiledFunction(..) | ObjectKind::BuiltinFunction(..) => "function",
+                ObjectKind::CompiledFunction { .. } | ObjectKind::BuiltinFunction(..) => "function",
                 _ => "object",
             },
             _ => unreachable!(),
@@ -459,8 +459,14 @@ impl Value {
     pub fn call(&self, agent: &Agent, this: Value, args: Vec<Value>) -> Result<Value, Value> {
         match self {
             Value::Object(o) => match &o.kind {
-                ObjectKind::CompiledFunction(paramc, index, compiled, inherits_this, env) => {
-                    let paramc = *paramc;
+                ObjectKind::CompiledFunction {
+                    params,
+                    index,
+                    compiled,
+                    inherits_this,
+                    env,
+                } => {
+                    let paramc = *params;
                     let index = *index;
                     let ctx = ExecutionContext::new(LexicalEnvironment::new(Some(env.clone())));
                     if !inherits_this {
@@ -471,13 +477,11 @@ impl Value {
                     for i in (0..paramc).rev() {
                         stack.push(args.get(i as usize).unwrap_or(&Value::Empty).clone());
                     }
-                    unsafe {
-                        let compiled = &**compiled;
-                        let mut evaluator = Evaluator::new(compiled);
-                        evaluator.scope.push(ctx);
-                        evaluator.positions.push(index);
-                        evaluator.run(compiled, agent)?
-                    }
+                    let compiled = unsafe { &**compiled };
+                    let mut evaluator = Evaluator::new(compiled);
+                    evaluator.scope.push(ctx);
+                    evaluator.positions.push(index);
+                    evaluator.run(compiled, agent).unwrap()
                 }
                 ObjectKind::BuiltinFunction(f, _) => {
                     let ctx = ExecutionContext::new(LexicalEnvironment::new(None));
@@ -502,7 +506,7 @@ impl Value {
                 }
                 let this = new_object(prototype);
                 match &o.kind {
-                    ObjectKind::CompiledFunction(..) | ObjectKind::BuiltinFunction(..) => {
+                    ObjectKind::CompiledFunction { .. } | ObjectKind::BuiltinFunction(..) => {
                         let r = self.call(agent, this.clone(), args)?;
                         if r.type_of() == "object" {
                             Ok(r)
@@ -671,14 +675,20 @@ pub fn new_custom_object(proto: Value) -> Value {
 
 pub fn new_compiled_function(
     agent: &Agent,
-    argc: u8,
-    pc_index: usize,
+    params: u8,
+    index: usize,
     compiled: *const Compiled,
     inherits_this: bool,
     env: Gc<GcCell<LexicalEnvironment>>,
 ) -> Value {
     Value::Object(Gc::new(ObjectInfo {
-        kind: ObjectKind::CompiledFunction(argc, pc_index, compiled, inherits_this, env),
+        kind: ObjectKind::CompiledFunction {
+            params,
+            index,
+            compiled,
+            inherits_this,
+            env,
+        },
         properties: GcCell::new(IndexMap::new()),
         prototype: agent.intrinsics.function_prototype.clone(),
     }))
