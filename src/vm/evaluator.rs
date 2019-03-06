@@ -339,17 +339,8 @@ fn evaluate_at(
             Op::NewSymbol => {
                 let id = get_i32(pc) as usize;
                 let name = &agent.string_table[id];
-                let mut wks = agent.well_known_symbols.borrow_mut();
-                match wks.get(name) {
-                    Some(s) => {
-                        stack.push(s.clone());
-                    }
-                    None => {
-                        let s = Value::new_symbol(Some(name.to_string()));
-                        wks.insert(name.to_string(), s.clone());
-                        stack.push(s);
-                    }
-                }
+                let sym = agent.well_known_symbol(name);
+                stack.push(sym);
             }
             Op::NewRegex => {
                 let id = get_i32(pc) as usize;
@@ -684,6 +675,32 @@ fn evaluate_at(
             Op::Await => {
                 let value = handle!(get_value(stack));
                 return Err(SuspendValue(value));
+            }
+            Op::GetIterator => {
+                // println!("GetIterator");
+                let target = handle!(get_value(stack));
+                let sym = handle!(agent.well_known_symbol("iterator").to_object_key());
+                let iterator = handle!(target.get(&sym));
+                let iterator = handle!(iterator.call(agent, target, vec![]));
+                let next = handle!(iterator.get(&ObjectKey::from("next")));
+                let iterator = Value::Iterator(Box::new(iterator), Box::new(next));
+                stack.push(iterator);
+            }
+            Op::IteratorNext => {
+                // println!("IteratorNext");
+                let iterator = handle!(get_value_no_consume(stack));
+                if let Value::Iterator(iterator, next) = iterator {
+                    let result = handle!(next.call(agent, *iterator, vec![]));
+                    let done = handle!(result.get(&ObjectKey::from("done")));
+                    if done == Value::True {
+                        *pc = loop_stack.pop().unwrap().r#break;
+                    } else {
+                        let value = handle!(result.get(&ObjectKey::from("value")));
+                        stack.push(value);
+                    }
+                } else {
+                    unreachable!()
+                }
             }
             Op::Eq => {
                 let right = handle!(get_value(stack));

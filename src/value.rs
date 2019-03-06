@@ -284,6 +284,7 @@ pub enum Value {
     EnvironmentReference(Gc<GcCell<LexicalEnvironment>>, String),
     ValueReference(Box<Value>, ObjectKey),
     WrappedContext(Gc<GcCell<ExecutionContext>>, Box<Value>),
+    Iterator(Box<Value>, Box<Value>), // iterator, next method
 }
 
 unsafe impl gc::Trace for Value {
@@ -303,6 +304,10 @@ unsafe impl gc::Trace for Value {
             Value::WrappedContext(c, p) => {
                 mark(c);
                 mark(p);
+            }
+            Value::Iterator(i, n) => {
+                mark(i);
+                mark(n);
             }
         }
     });
@@ -722,7 +727,8 @@ impl PartialEq for Value {
             Value::List(..)
             | Value::EnvironmentReference(..)
             | Value::ValueReference(..)
-            | Value::WrappedContext(..) => ref_eq(self, other),
+            | Value::WrappedContext(..)
+            | Value::Iterator(..) => ref_eq(self, other),
         }
     }
 }

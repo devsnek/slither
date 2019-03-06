@@ -1,7 +1,8 @@
 use crate::intrinsics::{
     create_array_prototype, create_boolean_prototype, create_function_prototype,
-    create_number_prototype, create_object_prototype, create_promise, create_promise_prototype,
-    create_regex_prototype, create_string_prototype, create_symbol, create_symbol_prototype,
+    create_iterator_prototype, create_number_prototype, create_object_prototype, create_promise,
+    create_promise_prototype, create_regex_prototype, create_string_prototype, create_symbol,
+    create_symbol_prototype,
 };
 use crate::parser::{Node, Parser};
 use crate::value::{new_error, Value};
@@ -255,6 +256,7 @@ pub struct Intrinsics {
     pub symbol_prototype: Value,
     pub symbol: Value,
     pub regex_prototype: Value,
+    pub iterator_prototype: Value,
 }
 
 #[derive(Debug)]
@@ -270,7 +272,7 @@ fn call_timer_job(agent: &Agent, args: Vec<Value>) -> Result<(), Value> {
 
 pub struct Agent {
     pub intrinsics: Intrinsics,
-    pub well_known_symbols: RefCell<HashMap<String, Value>>,
+    well_known_symbols: RefCell<HashMap<String, Value>>,
     builtins: HashMap<String, HashMap<String, Value>>,
     modules: GcCell<HashMap<String, Module>>,
     pub root_env: Gc<GcCell<LexicalEnvironment>>,
@@ -309,6 +311,7 @@ impl Agent {
                 symbol_prototype,
                 symbol: Value::Null,
                 regex_prototype: Value::Null,
+                iterator_prototype: Value::Null,
             },
             well_known_symbols: RefCell::new(HashMap::new()),
             builtins: HashMap::new(),
@@ -326,11 +329,11 @@ impl Agent {
         agent.intrinsics.boolean_prototype = create_boolean_prototype(&agent);
         agent.intrinsics.number_prototype = create_number_prototype(&agent);
         agent.intrinsics.regex_prototype = create_regex_prototype(&agent);
-        agent.intrinsics.promise_prototype = create_promise_prototype(&agent);
-        agent.intrinsics.promise =
-            create_promise(&agent, agent.intrinsics.promise_prototype.clone());
+        agent.intrinsics.symbol = create_symbol(&agent);
+        agent.intrinsics.iterator_prototype = create_iterator_prototype(&agent);
 
-        agent.intrinsics.symbol = create_symbol(&agent, agent.intrinsics.symbol_prototype.clone());
+        agent.intrinsics.promise_prototype = create_promise_prototype(&agent);
+        agent.intrinsics.promise = create_promise(&agent);
 
         {
             let mut env = agent.root_env.borrow_mut();
@@ -371,6 +374,18 @@ impl Agent {
         inner_module_instantiation(self, module.clone(), &mut Vec::new(), 0)?;
         inner_module_evaluation(self, module.clone(), &mut Vec::new(), 0)?;
         Ok(())
+    }
+
+    pub fn well_known_symbol(&self, name: &str) -> Value {
+        let mut wks = self.well_known_symbols.borrow_mut();
+        match wks.get(name) {
+            Some(v) => v.clone(),
+            None => {
+                let v = Value::new_symbol(Some(name.to_string()));
+                wks.insert(name.to_string(), v.clone());
+                v
+            }
+        }
     }
 
     pub fn enqueue_job(&self, f: JobFn, args: Vec<Value>) {
@@ -539,4 +554,31 @@ test!(
     b();
     "#,
     Ok(Value::Number(10.into()))
+);
+
+test!(
+    test_for_loop,
+    r#"
+    const iterable = {
+      [:iterator]: () => {
+        let i = 0;
+        return {
+          next() {
+            i += 1;
+            if i > 10 {
+              return { done: true };
+            }
+            return { done: false, value: i };
+          }
+        };
+      },
+    };
+
+    let i = 0;
+    for item in iterable {
+      i += item;
+    }
+    i;
+    "#,
+    Ok(Value::Number(55.into()))
 );

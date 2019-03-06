@@ -53,6 +53,8 @@ pub enum Op {
     Break,
     Continue,
     Await,
+    GetIterator,
+    IteratorNext,
     Add,
     Sub,
     UnarySub,
@@ -272,6 +274,9 @@ fn compile(agent: &mut Agent, node: &Node) -> Result<(), Error> {
             compile_if_statement(agent, test, consequent, Some(alternative))
         }
         Node::WhileStatement(test, body) => compile_while_statement(agent, test, body),
+        Node::ForStatement(binding, target, body) => {
+            compile_for_statement(agent, binding, target, body)
+        }
         Node::BreakStatement => {
             push_op(agent, Op::Break);
             Ok(())
@@ -594,6 +599,69 @@ fn compile_while_statement(agent: &mut Agent, test: &Node, body: &Node) -> Resul
 
     compile(agent, body)?;
     jump!(agent, check);
+
+    mark!(agent, end);
+    push_op(agent, Op::PopLoop);
+
+    mark!(agent, real_end);
+
+    Ok(())
+}
+
+fn compile_for_statement(
+    agent: &mut Agent,
+    binding: &str,
+    target: &Node,
+    body: &Node,
+) -> Result<(), Error> {
+    label!(head);
+    label!(end);
+    label!(real_end);
+
+    /*
+    for BINDING in TARGET { BODY }
+    @=>
+    iterator = GetIterator(TARGET)
+    loop {
+      { done, value } = IteratorNext(iterator)
+      if done {
+        break
+      }
+      BINDING = value
+
+      BODY
+    }
+    */
+
+    push_op(agent, Op::PushLoop);
+    jump!(agent, real_end); // break location, not actually evaluated
+
+    compile(agent, target)?; // stack is [target]
+    push_op(agent, Op::GetIterator); // stack is [iterator]
+
+    mark!(agent, head);
+    push_op(agent, Op::IteratorNext);
+    // IteratorNext jumps if done is false
+    // stack is [iterator, value]
+
+    push_op(agent, Op::PushScope);
+    create_lexical_declaration(agent, binding, false)?;
+    push_op(agent, Op::LexicalInitialization);
+    let id = string_id(agent, binding);
+    push_i32(agent, id);
+    // stack is [iterator], `binding` is set to `value`
+    if let Node::BlockStatement(nodes, declarations, ..) = body {
+        for (name, mutable) in declarations {
+            create_lexical_declaration(agent, name, *mutable)?;
+        }
+        for node in nodes {
+            compile(agent, node)?;
+        }
+    } else {
+        unreachable!();
+    }
+    push_op(agent, Op::PopScope);
+    jump!(agent, head);
 
     mark!(agent, end);
     push_op(agent, Op::PopLoop);

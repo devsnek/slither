@@ -249,11 +249,14 @@ fn promise_reject(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Re
     Ok(capability)
 }
 
-pub fn create_promise(agent: &Agent, prototype: Value) -> Value {
+pub fn create_promise(agent: &Agent) -> Value {
     let p = new_builtin_function(agent, promise);
 
-    p.set(&ObjectKey::from("prototype"), prototype.clone())
-        .unwrap();
+    p.set(
+        &ObjectKey::from("prototype"),
+        agent.intrinsics.promise_prototype.clone(),
+    )
+    .unwrap();
     p.set(
         &ObjectKey::from("resolve"),
         new_builtin_function(agent, promise_resolve),
@@ -264,7 +267,9 @@ pub fn create_promise(agent: &Agent, prototype: Value) -> Value {
         new_builtin_function(agent, promise_reject),
     )
     .unwrap();
-    prototype
+    agent
+        .intrinsics
+        .promise_prototype
         .set(&ObjectKey::from("constructor"), p.clone())
         .unwrap();
 

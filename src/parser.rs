@@ -75,6 +75,8 @@ enum Token {
     If,
     Else,
     While,
+    For,
+    In,
     Return,
     Import,
     Export,
@@ -105,6 +107,7 @@ pub enum Node {
     IfStatement(Box<Node>, Box<Node>), // test, consequent
     IfElseStatement(Box<Node>, Box<Node>, Box<Node>), // test, consequent, alternative
     WhileStatement(Box<Node>, Box<Node>), // test, body
+    ForStatement(String, Box<Node>, Box<Node>), // binding, target, body
     BreakStatement,
     ContinueStatement,
     TryStatement(
@@ -242,6 +245,8 @@ impl<'a> Lexer<'a> {
                             "if" => Token::If,
                             "else" => Token::Else,
                             "while" => Token::While,
+                            "for" => Token::For,
+                            "in" => Token::In,
                             "new" => Token::New,
                             "import" => Token::Import,
                             "export" => Token::Export,
@@ -674,6 +679,18 @@ impl<'a> Parser<'a> {
                     Ok(Node::WhileStatement(Box::new(test), Box::new(body)))
                 }
             }
+            Some(Token::For) => {
+                self.lexer.next();
+                let binding = self.parse_identifier(false)?;
+                self.expect(Token::In)?;
+                let target = self.parse_assignment_expression()?;
+                let body = self.parse_block_statement(ParseScope::Loop)?;
+                Ok(Node::ForStatement(
+                    binding,
+                    Box::new(target),
+                    Box::new(body),
+                ))
+            }
             Some(Token::Break) if self.scope(ParseScope::Loop) => {
                 self.lexer.next();
                 self.expect(Token::Semicolon)?;
@@ -836,6 +853,9 @@ impl<'a> Parser<'a> {
             Some(Token::Const) if allow_keyword => Ok("const".to_string()),
             Some(Token::Throw) if allow_keyword => Ok("throw".to_string()),
             Some(Token::Return) if allow_keyword => Ok("return".to_string()),
+            Some(Token::While) if allow_keyword => Ok("while".to_string()),
+            Some(Token::For) if allow_keyword => Ok("for".to_string()),
+            Some(Token::In) if allow_keyword => Ok("in".to_string()),
             Some(Token::Break) if allow_keyword => Ok("break".to_string()),
             Some(Token::Continue) if allow_keyword => Ok("continue".to_string()),
             Some(Token::Try) if allow_keyword => Ok("try".to_string()),

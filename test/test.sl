@@ -1,11 +1,23 @@
 import { print } from standard:debug;
 
-async function test() {
-  const y = await Promise.resolve(5);
-  print('y is', y);
-  return y + 5;
+const iterable = {
+  [:iterator]: () => {
+    let i = 0;
+    return {
+      next() {
+        i += 1;
+        if i > 10 {
+          return { done: true };
+        }
+        return { done: false, value: i };
+      }
+    };
+  },
+};
+
+let i = 0;
+for item in iterable {
+  i += item;
 }
 
-print(test);
-
-test().then(print, print);
+print(i);

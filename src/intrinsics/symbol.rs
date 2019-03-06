@@ -11,12 +11,17 @@ fn symbol(_agent: &Agent, _ctx: &ExecutionContext, args: Vec<Value>) -> Result<V
     Ok(Value::new_symbol(desc))
 }
 
-pub fn create_symbol(agent: &Agent, prototype: Value) -> Value {
+pub fn create_symbol(agent: &Agent) -> Value {
     let s = new_builtin_function(agent, symbol);
 
-    s.set(&ObjectKey::from("prototype"), prototype.clone())
-        .expect("failed to set prototype on promise constructor");
-    prototype
+    s.set(
+        &ObjectKey::from("prototype"),
+        agent.intrinsics.symbol_prototype.clone(),
+    )
+    .expect("failed to set prototype on promise constructor");
+    agent
+        .intrinsics
+        .symbol_prototype
         .set(&ObjectKey::from("constructor"), s.clone())
         .expect("failed to set constructor on promise prototype");
 
