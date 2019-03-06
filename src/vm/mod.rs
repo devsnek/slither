@@ -1,5 +1,5 @@
 mod compiler;
 mod evaluator;
 
-pub use compiler::{Compiled, Compiler, Op};
+pub use compiler::{real_compile as compile, Op};
 pub use evaluator::{Evaluator, ExecutionContext, LexicalEnvironment};

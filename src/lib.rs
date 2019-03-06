@@ -28,7 +28,7 @@ use agent::Agent;
 use value::Value;
 
 pub fn run(specifier: &str, referrer: &str) -> Result<(), Value> {
-    let agent = Agent::new();
+    let mut agent = Agent::new();
 
     match agent.import(specifier, referrer) {
         Ok(()) => {

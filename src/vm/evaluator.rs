@@ -3,7 +3,7 @@ use crate::value::{
     new_array, new_compiled_function, new_error, new_object, new_regex_object, ObjectKey,
     ObjectKind, Value,
 };
-use crate::vm::{Compiled, Op};
+use crate::vm::Op;
 use byteorder::{LittleEndian, ReadBytesExt};
 use gc::{Gc, GcCell};
 use rust_decimal::Decimal;
@@ -176,25 +176,20 @@ pub struct Evaluator {
 pub struct SuspendValue(Value);
 
 impl Evaluator {
-    pub fn new(compiled: &Compiled) -> Evaluator {
+    pub fn new(pos: (usize, usize)) -> Evaluator {
         Evaluator {
-            pc: 0,
+            pc: pos.0,
             stack: Vec::new(),
             scope: Vec::new(),
             positions: Vec::new(),
-            try_stack: vec![compiled.code.len()],
+            try_stack: vec![pos.1],
             loop_stack: Vec::new(),
         }
     }
 
-    pub fn run(
-        &mut self,
-        compiled: &Compiled,
-        agent: &Agent,
-    ) -> Result<Result<Value, Value>, SuspendValue> {
+    pub fn run(&mut self, agent: &Agent) -> Result<Result<Value, Value>, SuspendValue> {
         evaluate_at(
             agent,
-            compiled,
             &mut self.pc,
             &mut self.stack,
             &mut self.scope,
@@ -207,7 +202,6 @@ impl Evaluator {
 
 fn evaluate_at(
     agent: &Agent,
-    compiled: &Compiled,
     pc: &mut usize,
     stack: &mut Vec<Value>,
     scope: &mut Vec<Gc<GcCell<ExecutionContext>>>,
@@ -216,7 +210,7 @@ fn evaluate_at(
     loop_stack: &mut Vec<LoopPosition>,
 ) -> Result<Result<Value, Value>, SuspendValue> {
     let get_u8 = |pc: &mut usize| {
-        let v = compiled.code[*pc];
+        let v = agent.code[*pc];
         *pc += 1;
         v
     };
@@ -224,7 +218,7 @@ fn evaluate_at(
     let get_bool = |pc: &mut usize| get_u8(pc) == 1;
 
     let get_i32 = |pc: &mut usize| {
-        let n = (&compiled.code[*pc..]).read_i32::<LittleEndian>().unwrap();
+        let n = (&agent.code[*pc..]).read_i32::<LittleEndian>().unwrap();
         *pc += 4;
         n
     };
@@ -300,12 +294,15 @@ fn evaluate_at(
             };
         }
 
-        if *pc >= compiled.code.len() {
+        if *pc >= agent.code.len() {
             break;
         }
-        let op = compiled.code[*pc].into();
+        let op = agent.code[*pc].into();
         *pc += 1;
         match op {
+            Op::End => {
+                break;
+            }
             Op::PushScope => {
                 // println!("PushScope");
                 let mut ctx = scope.last().unwrap().borrow_mut();
@@ -323,17 +320,17 @@ fn evaluate_at(
             Op::PushFalse => stack.push(Value::False),
             Op::NewNumber => {
                 let id = get_i32(pc) as usize;
-                let value = compiled.number_table[id];
+                let value = agent.number_table[id];
                 stack.push(Value::Number(value));
             }
             Op::NewString => {
                 let id = get_i32(pc) as usize;
-                let str = &compiled.string_table[id];
+                let str = &agent.string_table[id];
                 stack.push(Value::String(str.clone()));
             }
             Op::NewSymbol => {
                 let id = get_i32(pc) as usize;
-                let name = &compiled.string_table[id];
+                let name = &agent.string_table[id];
                 let mut wks = agent.well_known_symbols.borrow_mut();
                 match wks.get(name) {
                     Some(s) => {
@@ -348,7 +345,7 @@ fn evaluate_at(
             }
             Op::NewRegex => {
                 let id = get_i32(pc) as usize;
-                let str = &compiled.string_table[id];
+                let str = &agent.string_table[id];
                 let reg = handle!(new_regex_object(agent, str));
                 stack.push(reg);
             }
@@ -361,17 +358,17 @@ fn evaluate_at(
                     None => None,
                 });
                 // println!("NewFunction {:?}", env);
-                let value = new_compiled_function(agent, argc, index, compiled, inherits_this, env);
+                let value = new_compiled_function(agent, argc, index, inherits_this, env);
                 stack.push(value);
             }
             Op::ProcessTemplateLiteral => {
                 let len = get_i32(pc);
                 let last_id = get_i32(pc) as usize;
-                let mut end = compiled.string_table[last_id].to_string();
+                let mut end = agent.string_table[last_id].to_string();
                 for _ in 0..(len - 1) {
                     // end = quasi + part + end
                     let id = get_i32(pc) as usize;
-                    let quasi = compiled.string_table[id].to_string();
+                    let quasi = agent.string_table[id].to_string();
                     let value = handle!(get_value(stack));
                     let part = if let Value::String(part) = value {
                         part
@@ -412,7 +409,7 @@ fn evaluate_at(
             }
             Op::NewIdentifier => {
                 let id = get_i32(pc) as usize;
-                let name = &compiled.string_table[id];
+                let name = &agent.string_table[id];
                 stack.push(Value::EnvironmentReference(
                     scope.last().unwrap().borrow().environment.clone(),
                     name.to_string(),
@@ -420,7 +417,7 @@ fn evaluate_at(
             }
             Op::NewMemberReference | Op::NewMemberReferenceNoConsumeStack => {
                 let id = get_i32(pc) as usize;
-                let name = &compiled.string_table[id];
+                let name = &agent.string_table[id];
                 let base = handle!(if op == Op::NewMemberReferenceNoConsumeStack {
                     get_value_no_consume(&stack)
                 } else {
@@ -478,7 +475,7 @@ fn evaluate_at(
             Op::LexicalDeclaration => {
                 let mutable = get_bool(pc);
                 let id = get_i32(pc) as usize;
-                let name = &compiled.string_table[id];
+                let name = &agent.string_table[id];
                 // println!("LexicalDeclaration {} {}", name, mutable);
                 handle!(scope
                     .last()
@@ -490,7 +487,7 @@ fn evaluate_at(
             }
             Op::LexicalInitialization => {
                 let id = get_i32(pc) as usize;
-                let name = &compiled.string_table[id];
+                let name = &agent.string_table[id];
                 let value = handle!(get_value(stack));
                 let ctx = scope.last().unwrap().borrow();
                 let mut env = ctx.environment.borrow_mut();
@@ -521,7 +518,6 @@ fn evaluate_at(
             // 4. jump to index of function body
             // 5. jump back to previous pc
             Op::Call | Op::TailCall => {
-                // println!("Call");
                 let callee = handle!(get_value(stack));
                 let this = handle!(get_value(stack));
                 let this = if this == Value::Null {
@@ -535,55 +531,36 @@ fn evaluate_at(
                         ObjectKind::CompiledFunction {
                             params,
                             index,
-                            compiled: cc,
                             inherits_this,
                             env,
                         } => {
-                            if unsafe { &**cc } == compiled {
-                                let paramc = *params;
-                                let index = *index;
-                                let inherits_this = *inherits_this;
-                                if argc > paramc {
-                                    let diff = argc - paramc;
-                                    for _ in 0..diff {
-                                        stack.pop().unwrap();
-                                    }
-                                } else if argc < paramc {
-                                    let diff = paramc - argc;
-                                    for _ in 0..diff {
-                                        stack.push(Value::Empty);
-                                    }
+                            let paramc = *params;
+                            let index = *index;
+                            let inherits_this = *inherits_this;
+                            if argc > paramc {
+                                let diff = argc - paramc;
+                                for _ in 0..diff {
+                                    stack.pop().unwrap();
                                 }
-                                if op == Op::TailCall {
-                                    scope.pop();
-                                } else {
-                                    positions.push(*pc); // jump back to previous pc
+                            } else if argc < paramc {
+                                let diff = paramc - argc;
+                                for _ in 0..diff {
+                                    stack.push(Value::Empty);
                                 }
-                                // println!("PushContext");
-                                let ctx = ExecutionContext::new(LexicalEnvironment::new(Some(
-                                    env.clone(),
-                                )));
-                                ctx.borrow_mut().function = Some(callee);
-                                if !inherits_this {
-                                    ctx.borrow().environment.borrow_mut().this = Some(this);
-                                }
-                                scope.push(ctx);
-                                *pc = index; // jump to index of function body
-                            } else {
-                                let mut args: Vec<Value> = Vec::with_capacity(argc as usize);
-                                let p = args.as_mut_ptr();
-                                for i in (0..argc).rev() {
-                                    let value = handle!(get_value(stack));
-                                    unsafe {
-                                        std::ptr::write(p.offset(i as isize), value);
-                                    }
-                                }
-                                unsafe {
-                                    args.set_len(argc as usize);
-                                }
-                                let r = handle!(callee.call(agent, this, args));
-                                stack.push(r);
                             }
+                            if op == Op::TailCall {
+                                scope.pop();
+                            } else {
+                                positions.push(*pc); // jump back to previous pc
+                            }
+                            let ctx =
+                                ExecutionContext::new(LexicalEnvironment::new(Some(env.clone())));
+                            ctx.borrow_mut().function = Some(callee);
+                            if !inherits_this {
+                                ctx.borrow().environment.borrow_mut().this = Some(this);
+                            }
+                            scope.push(ctx);
+                            *pc = index; // jump to index of function body
                         }
                         ObjectKind::BuiltinFunction(..) => {
                             let mut args: Vec<Value> = Vec::with_capacity(argc as usize);
@@ -636,10 +613,6 @@ fn evaluate_at(
                 let constructor = handle!(get_value(stack));
                 let result = handle!(constructor.construct(agent, args));
                 stack.push(result);
-            }
-            Op::End => {
-                scope.pop();
-                *pc = positions.pop().unwrap();
             }
             Op::Return => {
                 scope.pop();

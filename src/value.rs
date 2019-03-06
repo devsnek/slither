@@ -1,5 +1,5 @@
 use crate::agent::Agent;
-use crate::vm::{Compiled, Evaluator, ExecutionContext, LexicalEnvironment};
+use crate::vm::{Evaluator, ExecutionContext, LexicalEnvironment};
 use gc::{Gc, GcCell};
 use indexmap::IndexMap;
 use regex::Regex;
@@ -63,7 +63,6 @@ pub enum ObjectKind {
     CompiledFunction {
         params: u8,
         index: usize,
-        compiled: *const Compiled,
         inherits_this: bool,
         env: Gc<GcCell<LexicalEnvironment>>,
     },
@@ -426,7 +425,6 @@ impl Value {
                 ObjectKind::CompiledFunction {
                     params,
                     index,
-                    compiled,
                     inherits_this,
                     env,
                 } => {
@@ -437,15 +435,15 @@ impl Value {
                         ctx.borrow().environment.borrow_mut().this = Some(this);
                     }
                     ctx.borrow_mut().function = Some(self.clone());
-                    let mut stack = Vec::new();
+                    let mut evaluator = Evaluator::new((index, agent.code.len()));
                     for i in (0..paramc).rev() {
-                        stack.push(args.get(i as usize).unwrap_or(&Value::Empty).clone());
+                        evaluator
+                            .stack
+                            .push(args.get(i as usize).unwrap_or(&Value::Empty).clone());
                     }
-                    let compiled = unsafe { &**compiled };
-                    let mut evaluator = Evaluator::new(compiled);
                     evaluator.scope.push(ctx);
-                    evaluator.positions.push(index);
-                    evaluator.run(compiled, agent).unwrap()
+                    evaluator.positions.push(agent.code.len());
+                    evaluator.run(agent).unwrap()
                 }
                 ObjectKind::BuiltinFunction(f, _) => {
                     let ctx = ExecutionContext::new(LexicalEnvironment::new(None));
@@ -657,7 +655,6 @@ pub fn new_compiled_function(
     agent: &Agent,
     params: u8,
     index: usize,
-    compiled: *const Compiled,
     inherits_this: bool,
     env: Gc<GcCell<LexicalEnvironment>>,
 ) -> Value {
@@ -665,7 +662,6 @@ pub fn new_compiled_function(
         kind: ObjectKind::CompiledFunction {
             params,
             index,
-            compiled,
             inherits_this,
             env,
         },

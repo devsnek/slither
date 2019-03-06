@@ -5,9 +5,10 @@ use crate::intrinsics::{
 };
 use crate::parser::{Node, Parser};
 use crate::value::{new_error, Value};
-use crate::vm::{Compiled, Compiler, Evaluator, ExecutionContext, LexicalEnvironment};
+use crate::vm::{compile, Evaluator, ExecutionContext, LexicalEnvironment};
 use gc::{Gc, GcCell};
 use num_cpus;
+use rust_decimal::Decimal;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use threadpool::ThreadPool;
@@ -26,10 +27,10 @@ pub struct ModuleX {
     filename: String,
     pub context: Gc<GcCell<ExecutionContext>>,
     imports: HashSet<String>,
-    compiled: Compiled,
     status: ModuleStatus,
     dfs_index: u32,
     dfs_ancestor_index: u32,
+    compiled: (usize, usize),
 }
 
 impl PartialEq for ModuleX {
@@ -61,17 +62,17 @@ unsafe impl gc::Trace for ModuleX {
 pub type Module = Gc<GcCell<ModuleX>>;
 
 impl ModuleX {
-    fn new(filename: &str, source: &str, agent: &Agent) -> Result<ModuleX, Value> {
+    fn new(filename: &str, source: &str, agent: &mut Agent) -> Result<ModuleX, Value> {
         let ast = Parser::parse(&source)?;
 
         let mut module = ModuleX {
             filename: filename.to_string(),
             context: ExecutionContext::new(LexicalEnvironment::new(Some(agent.root_env.clone()))),
-            compiled: Compiler::go(&ast).unwrap(),
             imports: HashSet::new(),
             status: ModuleStatus::Uninstantiated,
             dfs_index: 0,
             dfs_ancestor_index: 0,
+            compiled: compile(agent, &ast).unwrap(),
         };
 
         if let Node::BlockStatement(nodes, declarations, ..) = ast {
@@ -139,7 +140,7 @@ impl ModuleX {
 }
 
 fn inner_module_instantiation(
-    agent: &Agent,
+    agent: &mut Agent,
     module: Module,
     stack: &mut Vec<Module>,
     mut index: u32,
@@ -182,7 +183,7 @@ fn inner_module_instantiation(
 }
 
 fn inner_module_evaluation(
-    agent: &Agent,
+    agent: &mut Agent,
     module: Module,
     stack: &mut Vec<Module>,
     mut index: u32,
@@ -208,9 +209,9 @@ fn inner_module_evaluation(
             }
         }
         {
-            let mut evaluator = Evaluator::new(&module.borrow().compiled);
+            let mut evaluator = Evaluator::new(module.borrow().compiled);
             evaluator.scope.push(module.borrow_mut().context.clone());
-            evaluator.run(&module.borrow().compiled, agent).unwrap()?;
+            evaluator.run(agent).unwrap()?;
         }
         if module.borrow().dfs_ancestor_index == module.borrow().dfs_index {
             let mut done = false;
@@ -277,6 +278,9 @@ pub struct Agent {
     pub mio: mio::Poll,
     pub mio_map: RefCell<HashMap<mio::Token, MioMapType>>,
     pub pool: ThreadPool,
+    pub code: Vec<u8>,
+    pub string_table: Vec<String>,
+    pub number_table: Vec<Decimal>,
 }
 
 impl Default for Agent {
@@ -314,6 +318,9 @@ impl Agent {
             mio: mio::Poll::new().expect("create mio poll failed"),
             mio_map: RefCell::new(HashMap::new()),
             pool: ThreadPool::new(num_cpus::get()),
+            code: Vec::new(),
+            string_table: Vec::new(),
+            number_table: Vec::new(),
         };
 
         agent.intrinsics.boolean_prototype = create_boolean_prototype(&agent);
@@ -339,7 +346,7 @@ impl Agent {
         agent
     }
 
-    fn load(&self, specifier: &str, referrer: &str) -> Result<Module, Value> {
+    fn load(&mut self, specifier: &str, referrer: &str) -> Result<Module, Value> {
         let filename = std::path::Path::new(referrer)
             .parent()
             .unwrap()
@@ -359,7 +366,7 @@ impl Agent {
         }
     }
 
-    pub fn import(&self, specifier: &str, referrer: &str) -> Result<(), Value> {
+    pub fn import(&mut self, specifier: &str, referrer: &str) -> Result<(), Value> {
         let module = self.load(specifier, referrer)?;
         inner_module_instantiation(self, module.clone(), &mut Vec::new(), 0)?;
         inner_module_evaluation(self, module.clone(), &mut Vec::new(), 0)?;
@@ -419,13 +426,13 @@ macro_rules! test {
     ( $name:ident, $source:expr, $result:expr ) => {
         #[test]
         fn $name() {
-            let agent = Agent::new();
-            match ModuleX::new(stringify!(test_$name.sl), $source, &agent) {
+            let mut agent = Agent::new();
+            match ModuleX::new(stringify!(test_$name.sl), $source, &mut agent) {
                 Err(e) => assert_eq!(Err::<Value, Value>(e), $result),
                 Ok(module) => {
-                    let mut evaluator = Evaluator::new(&module.compiled);
+                    let mut evaluator = Evaluator::new(module.compiled);
                     evaluator.scope.push(module.context.clone());
-                    let result = evaluator.run(&module.compiled, &agent).unwrap();
+                    let result = evaluator.run(&agent).unwrap();
                     assert_eq!(result, $result);
                 }
             }
