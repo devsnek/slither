@@ -2,6 +2,7 @@ use crate::agent::Agent;
 use crate::vm::{Compiled, Evaluator, ExecutionContext, LexicalEnvironment};
 use gc::{Gc, GcCell};
 use indexmap::IndexMap;
+use regex::Regex;
 use rust_decimal::Decimal;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -48,19 +49,6 @@ macro_rules! custom_trace {
     }
 }
 
-pub fn new_error(message: &str) -> Value {
-    let mut m = IndexMap::new();
-    m.insert(
-        ObjectKey::from("message"),
-        Value::String(message.to_string()),
-    );
-    Value::Object(Gc::new(ObjectInfo {
-        kind: ObjectKind::Ordinary,
-        properties: GcCell::new(m),
-        prototype: Value::Null,
-    }))
-}
-
 type BuiltinFunction = fn(&Agent, &ExecutionContext, Vec<Value>) -> Result<Value, Value>;
 
 #[derive(Finalize)]
@@ -70,6 +58,7 @@ pub enum ObjectKind {
     Boolean(bool),
     String(String),
     Number(Decimal),
+    Regex(Regex),
     Custom(Gc<GcCell<HashMap<String, Value>>>), // internal slots
     CompiledFunction {
         params: u8,
@@ -88,7 +77,8 @@ impl std::fmt::Debug for ObjectKind {
             ObjectKind::Array => "Array".to_string(),
             ObjectKind::Boolean(b) => format!("Boolean({})", b),
             ObjectKind::String(s) => format!("String({})", s),
-            ObjectKind::Number(i) => format!("Number({}", i),
+            ObjectKind::Number(i) => format!("Number({})", i),
+            ObjectKind::Regex(r) => format!("Regex({})", r),
             ObjectKind::Custom(..) => "Custom".to_string(),
             ObjectKind::CompiledFunction { index, .. } => format!("CompiledFunction @ {}", index),
             ObjectKind::BuiltinFunction(f, ..) => format!("BuiltinFunction @ {:p}", f),
@@ -267,6 +257,12 @@ impl From<i32> for ObjectKey {
     }
 }
 
+impl From<usize> for ObjectKey {
+    fn from(n: usize) -> Self {
+        ObjectKey::String(n.to_string())
+    }
+}
+
 impl From<Decimal> for ObjectKey {
     fn from(n: Decimal) -> Self {
         ObjectKey::String(n.to_string())
@@ -287,38 +283,6 @@ pub enum Value {
     EnvironmentReference(Gc<GcCell<LexicalEnvironment>>, String),
     ValueReference(Box<Value>, ObjectKey),
 }
-
-/*
-impl Eq for Value {}
-impl std::hash::Hash for Value {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        match self {
-            Value::Empty => 0.hash(state),
-            Value::Null => 1.hash(state),
-            Value::True => 2.hash(state),
-            Value::False => 3.hash(state),
-            Value::String(s) => {
-                4.hash(state);
-                s.hash(state);
-            }
-            Value::Number(n) => {
-                5.hash(state);
-                n.hash(state);
-            }
-            Value::Symbol(s) => {
-                7.hash(state);
-                s.hash(state);
-            }
-            Value::Object(o) => {
-                8.hash(state);
-                // hash the memory address of the map sigh
-                (&*o.properties.borrow() as *const IndexMap<ObjectKey, Value>).hash(state);
-            }
-            _ => unreachable!(),
-        }
-    }
-}
-*/
 
 unsafe impl gc::Trace for Value {
     custom_trace!(this, {
@@ -541,6 +505,9 @@ fn inspect(
             }
         }
         Value::Object(o) => {
+            if let ObjectKind::Regex(re) = &o.kind {
+                return Ok(format!("/{}/", re));
+            }
             let hash_key = &*o.properties.borrow() as *const IndexMap<ObjectKey, Value>;
             if inspected.contains(&hash_key) {
                 Ok("[Circular]".to_string())
@@ -555,7 +522,7 @@ fn inspect(
                 let mut out = String::from(if function { "[Function] " } else { "" });
                 out += if array { "[" } else { "{" };
                 if keys.is_empty() {
-                    out += if array { "[]" } else { "{}" };
+                    out += if array { "]" } else { "}" };
                     return Ok(out);
                 }
                 for key in keys {
@@ -601,7 +568,7 @@ pub fn ref_eq<T>(thing: &T, other: &T) -> bool {
 }
 
 impl PartialEq for Value {
-    // #[inline]
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         match self {
             Value::Null => match other {
@@ -665,6 +632,19 @@ pub fn new_array(agent: &Agent) -> Value {
     }))
 }
 
+pub fn new_error(message: &str) -> Value {
+    let mut m = IndexMap::new();
+    m.insert(
+        ObjectKey::from("message"),
+        Value::String(message.to_string()),
+    );
+    Value::Object(Gc::new(ObjectInfo {
+        kind: ObjectKind::Ordinary,
+        properties: GcCell::new(m),
+        prototype: Value::Null,
+    }))
+}
+
 pub fn new_custom_object(proto: Value) -> Value {
     Value::Object(Gc::new(ObjectInfo {
         kind: ObjectKind::Custom(Gc::new(GcCell::new(HashMap::new()))),
@@ -724,4 +704,18 @@ pub fn new_number_object(agent: &Agent, v: Decimal) -> Value {
         properties: GcCell::new(IndexMap::new()),
         prototype: agent.intrinsics.number_prototype.clone(),
     }))
+}
+
+pub fn new_regex_object(agent: &Agent, r: &str) -> Result<Value, Value> {
+    let re = match Regex::new(r) {
+        Ok(r) => r,
+        Err(e) => {
+            return Err(new_error(&format!("{}", e)));
+        }
+    };
+    Ok(Value::Object(Gc::new(ObjectInfo {
+        kind: ObjectKind::Regex(re),
+        properties: GcCell::new(IndexMap::new()),
+        prototype: agent.intrinsics.regex_prototype.clone(),
+    })))
 }

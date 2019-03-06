@@ -1,7 +1,7 @@
 use crate::intrinsics::{
     create_array_prototype, create_boolean_prototype, create_function_prototype,
     create_number_prototype, create_object_prototype, create_promise, create_promise_prototype,
-    create_string_prototype, create_symbol, create_symbol_prototype,
+    create_regex_prototype, create_string_prototype, create_symbol, create_symbol_prototype,
 };
 use crate::parser::{Node, Parser};
 use crate::value::{new_error, Value};
@@ -253,6 +253,7 @@ pub struct Intrinsics {
     pub promise: Value,
     pub symbol_prototype: Value,
     pub symbol: Value,
+    pub regex_prototype: Value,
 }
 
 #[derive(Debug)]
@@ -303,6 +304,7 @@ impl Agent {
                 promise: Value::Null,
                 symbol_prototype,
                 symbol: Value::Null,
+                regex_prototype: Value::Null,
             },
             well_known_symbols: RefCell::new(HashMap::new()),
             builtins: HashMap::new(),
@@ -316,6 +318,7 @@ impl Agent {
 
         agent.intrinsics.boolean_prototype = create_boolean_prototype(&agent);
         agent.intrinsics.number_prototype = create_number_prototype(&agent);
+        agent.intrinsics.regex_prototype = create_regex_prototype(&agent);
         agent.intrinsics.promise_prototype = create_promise_prototype(&agent);
         agent.intrinsics.promise =
             create_promise(&agent, agent.intrinsics.promise_prototype.clone());
@@ -491,4 +494,15 @@ test!(
     y[:wk];
     "#,
     Ok(Value::Number(5.into()))
+);
+
+test!(
+    test_regex,
+    r#"
+    const re = /ab/;
+    const t1 = re.test('ab');
+    const t2 = re.test('ba');
+    t1 && !t2;
+    "#,
+    Ok(Value::True)
 );

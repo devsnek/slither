@@ -15,6 +15,7 @@ pub enum Op {
     NewNumber,
     NewString,
     NewSymbol,
+    NewRegex,
     ProcessTemplateLiteral,
     NewFunction,
     NewObject,
@@ -35,6 +36,7 @@ pub enum Op {
     LexicalInitialization,
     Jump,
     JumpIfFalse,
+    JumpIfFalseNoConsume,
     Call,
     TailCall,
     InitReplace,
@@ -63,6 +65,7 @@ pub enum Op {
     Eq,
     Ne,
     Typeof,
+    Not,
 }
 
 impl From<u8> for Op {
@@ -135,6 +138,13 @@ macro_rules! jump {
 macro_rules! jump_if_false {
     ($self:ident, $name:ident) => {
         $self.push_op(Op::JumpIfFalse);
+        jmp!($self, $name);
+    };
+}
+
+macro_rules! jump_if_false_no_consume {
+    ($self:ident, $name:ident) => {
+        $self.push_op(Op::JumpIfFalseNoConsume);
         jmp!($self, $name);
     };
 }
@@ -253,6 +263,12 @@ impl Compiler {
                 self.push_i32(id);
                 Ok(())
             }
+            Node::RegexLiteral(s) => {
+                self.push_op(Op::NewRegex);
+                let id = self.string_id(s);
+                self.push_i32(id);
+                Ok(())
+            }
             Node::TemplateLiteral(quasis, exprs) => self.compile_template_literal(quasis, exprs),
             Node::ObjectLiteral(inits) => self.compile_object_literal(inits),
             Node::ArrayLiteral(inits) => self.compile_array_literal(inits),
@@ -352,6 +368,7 @@ impl Compiler {
         match op {
             Operator::Typeof => self.push_op(Op::Typeof),
             Operator::Sub => self.push_op(Op::UnarySub),
+            Operator::Not => self.push_op(Op::Not),
             _ => panic!("{:?}", op),
         };
         Ok(())
@@ -363,6 +380,15 @@ impl Compiler {
         op: &Operator,
         right: &Node,
     ) -> Result<(), Error> {
+        if *op == Operator::LogicalAND {
+            label!(end);
+            self.compile(left)?;
+            jump_if_false_no_consume!(self, end);
+            self.push_op(Op::DropValue);
+            self.compile(right)?;
+            mark!(self, end);
+            return Ok(());
+        }
         self.compile(left)?;
         self.compile(right)?;
         match op {

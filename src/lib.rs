@@ -12,6 +12,7 @@ extern crate clap;
 extern crate gc;
 extern crate mio;
 extern crate num_cpus;
+extern crate regex;
 extern crate rust_decimal;
 extern crate threadpool;
 

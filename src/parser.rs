@@ -91,6 +91,7 @@ pub enum Node {
     NumberLiteral(Decimal),
     StringLiteral(String),
     SymbolLiteral(String),
+    RegexLiteral(String),
     TemplateLiteral(Vec<String>, Vec<Node>), // quasis, expressions
     Initializer(String, Box<Node>),          // name, value
     ObjectLiteral(Vec<Node>),                // initialiers
@@ -1328,6 +1329,23 @@ impl<'a> Parser<'a> {
                         fields.push(Node::ObjectInitializer(Box::new(name), Box::new(init)));
                     }
                     Ok(Node::ObjectLiteral(fields))
+                }
+                Token::Operator(Operator::Div) => {
+                    let mut pattern = String::new();
+                    loop {
+                        match self.lexer.chars.next() {
+                            Some('/') => break,
+                            Some('\\') => {
+                                pattern.push('\\');
+                                pattern.push(self.lexer.chars.next().unwrap());
+                            }
+                            Some(c) => {
+                                pattern.push(c);
+                            }
+                            None => return Err(Error::UnexpectedEOF),
+                        }
+                    }
+                    Ok(Node::RegexLiteral(pattern))
                 }
                 _ => Err(Error::UnexpectedToken),
             },

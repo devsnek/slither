@@ -1,6 +1,7 @@
 use crate::agent::{Agent, Module};
 use crate::value::{
-    new_array, new_compiled_function, new_error, new_object, ObjectKey, ObjectKind, Value,
+    new_array, new_compiled_function, new_error, new_object, new_regex_object, ObjectKey,
+    ObjectKind, Value,
 };
 use crate::vm::{Compiled, Op};
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -345,6 +346,12 @@ fn evaluate_at(
                     }
                 }
             }
+            Op::NewRegex => {
+                let id = get_i32(pc) as usize;
+                let str = &compiled.string_table[id];
+                let reg = handle!(new_regex_object(agent, str));
+                stack.push(reg);
+            }
             Op::NewFunction => {
                 let argc = get_u8(pc);
                 let inherits_this = get_bool(pc);
@@ -496,6 +503,13 @@ fn evaluate_at(
             Op::JumpIfFalse => {
                 let position = get_i32(pc) as usize;
                 let value = handle!(get_value(stack));
+                if !value.is_truthy() {
+                    *pc = position;
+                }
+            }
+            Op::JumpIfFalseNoConsume => {
+                let position = get_i32(pc) as usize;
+                let value = handle!(get_value_no_consume(stack));
                 if !value.is_truthy() {
                     *pc = position;
                 }
@@ -726,6 +740,14 @@ fn evaluate_at(
                 let value = handle!(get_value(stack));
                 let t = value.type_of();
                 stack.push(Value::String(t.to_string()));
+            }
+            Op::Not => {
+                let value = handle!(get_value(stack));
+                stack.push(if value.is_truthy() {
+                    Value::False
+                } else {
+                    Value::True
+                });
             }
         }
     }
