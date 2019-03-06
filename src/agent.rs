@@ -432,7 +432,19 @@ macro_rules! test {
                 Ok(module) => {
                     let mut evaluator = Evaluator::new(module.compiled);
                     evaluator.scope.push(module.context.clone());
-                    let result = evaluator.run(&agent).unwrap();
+                    let mut result = evaluator.run(&agent).unwrap();
+                    if let Ok(value) = &result {
+                        agent.run_jobs();
+                        if value.has_slot("promise state") {
+                            if value.get_slot("promise state")
+                                == Value::String("fulfilled".to_string())
+                            {
+                                result = Ok(value.get_slot("result"));
+                            } else {
+                                result = Err(value.get_slot("result"));
+                            }
+                        }
+                    }
                     assert_eq!(result, $result);
                 }
             }
@@ -512,4 +524,19 @@ test!(
     t1 && !t2;
     "#,
     Ok(Value::True)
+);
+
+test!(
+    test_async,
+    r#"
+    const a = async () => {
+      return 5;
+    };
+    async function b() {
+      const av = await a();
+      return av + 5;
+    }
+    b();
+    "#,
+    Ok(Value::Number(10.into()))
 );

@@ -81,6 +81,7 @@ enum Token {
     Default,
     From,
     Async,
+    Await,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -122,12 +123,13 @@ pub enum Node {
     UnaryExpression(Operator, Box<Node>), // op x
     BinaryExpression(Box<Node>, Operator, Box<Node>), // x op y
     ConditionalExpression(Box<Node>, Box<Node>, Box<Node>), // test, consequent, alternative
-    FunctionDeclaration(String, Vec<Node>, Box<Node>), // name, args, body
-    FunctionExpression(Option<String>, Vec<Node>, Box<Node>), // name, args, body
-    ArrowFunctionExpression(Vec<Node>, Box<Node>), // args, body
+    FunctionDeclaration(String, Vec<Node>, Box<Node>, bool), // name, args, body
+    FunctionExpression(Option<String>, Vec<Node>, Box<Node>, bool), // name, args, body, async
+    ArrowFunctionExpression(Vec<Node>, Box<Node>, bool), // args, body, async
     ParenthesizedExpression(Box<Node>),   // expr
+    AwaitExpression(Box<Node>),
     LexicalInitialization(String, Box<Node>), // identifier, initial value
-    ImportDeclaration(String),            // specifier
+    ImportDeclaration(String),                // specifier
     ImportNamedDeclaration(String, Vec<String>), // specifier, bindings
     ImportDefaultDeclaration(String, String), // specifier, binding
     ImportStandardDeclaration(String, Vec<String>), // namespace, bindings
@@ -246,6 +248,7 @@ impl<'a> Lexer<'a> {
                             "default" => Token::Default,
                             "from" => Token::From,
                             "async" => Token::Async,
+                            "await" => Token::Await,
                             "typeof" => Token::Operator(Operator::Typeof),
                             "void" => Token::Operator(Operator::Void),
                             _ => Token::Identifier(ident),
@@ -405,6 +408,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    #[inline]
     pub fn peek_immutable(&self) -> Option<&Token> {
         if self.peeked.is_none() {
             panic!();
@@ -417,17 +421,19 @@ impl<'a> Lexer<'a> {
     }
 }
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy)]
+#[repr(u8)]
 enum ParseScope {
-    TopLevel,
-    Block,
-    Loop,
-    Function,
+    TopLevel = 0b0000_0001,
+    Block = 0b0000_0010,
+    Loop = 0b0000_0100,
+    Function = 0b0000_1000,
+    AsyncFunction = 0b0001_1000,
 }
 
 pub struct Parser<'a> {
     lexer: Lexer<'a>,
-    scope_stack: Vec<ParseScope>,
+    scope_bits: u8,
     lex_stack: Vec<HashMap<String, bool>>,
 }
 
@@ -453,7 +459,7 @@ impl<'a> Parser<'a> {
     pub fn parse(code: &'a str) -> Result<Node, Error> {
         let mut parser = Parser {
             lexer: Lexer::new(code),
-            scope_stack: Vec::new(),
+            scope_bits: 0,
             lex_stack: Vec::new(),
         };
 
@@ -475,31 +481,7 @@ impl<'a> Parser<'a> {
     }
 
     fn scope(&self, scope: ParseScope) -> bool {
-        match scope {
-            ParseScope::TopLevel => self.scope_stack.last().unwrap() == &ParseScope::TopLevel,
-            ParseScope::Block => self.scope_stack.last().unwrap() == &ParseScope::Block,
-            ParseScope::Loop => {
-                let mut loop_pos = None;
-                let mut func_pos = None;
-                self.scope_stack
-                    .iter()
-                    .enumerate()
-                    .rev()
-                    .for_each(|(i, s)| match s {
-                        ParseScope::Loop if loop_pos.is_none() => loop_pos = Some(i),
-                        ParseScope::Function if func_pos.is_none() => func_pos = Some(i),
-                        _ => {}
-                    });
-                match loop_pos {
-                    None => false,
-                    Some(loop_pos) => match func_pos {
-                        None => true,
-                        Some(func_pos) => loop_pos > func_pos,
-                    },
-                }
-            }
-            ParseScope::Function => self.scope_stack.contains(&ParseScope::Function),
-        }
+        (self.scope_bits & scope as u8) == scope as u8
     }
 
     fn eat(&mut self, token: Token) -> bool {
@@ -549,7 +531,7 @@ impl<'a> Parser<'a> {
         Ok(identifiers)
     }
 
-    fn parse_function(&mut self, expression: bool) -> Result<Node, Error> {
+    fn parse_function(&mut self, expression: bool, asyn: bool) -> Result<Node, Error> {
         let name = if expression {
             if let Some(Token::Identifier(..)) = self.lexer.peek() {
                 Some(self.parse_identifier(false)?)
@@ -561,9 +543,13 @@ impl<'a> Parser<'a> {
         };
         self.expect(Token::LeftParen)?;
         let args = self.parse_identifier_list(Token::RightParen, true)?;
-        let body = self.parse_block_statement(ParseScope::Function)?;
+        let body = self.parse_block_statement(if asyn {
+            ParseScope::AsyncFunction
+        } else {
+            ParseScope::Function
+        })?;
         Ok(if expression {
-            Node::FunctionExpression(name, args, Box::new(body))
+            Node::FunctionExpression(name, args, Box::new(body), asyn)
         } else {
             let name = name.unwrap();
             let scope = self.lex_stack.last_mut().unwrap();
@@ -572,7 +558,7 @@ impl<'a> Parser<'a> {
             } else {
                 scope.insert(name.clone(), false);
             }
-            Node::FunctionDeclaration(name, args, Box::new(body))
+            Node::FunctionDeclaration(name, args, Box::new(body), asyn)
         })
     }
 
@@ -584,7 +570,12 @@ impl<'a> Parser<'a> {
             Some(Token::Let) | Some(Token::Const) => self.parse_lexical_declaration(),
             Some(Token::Function) => {
                 self.lexer.next();
-                self.parse_function(false)
+                self.parse_function(false, false)
+            }
+            Some(Token::Async) => {
+                self.lexer.next();
+                self.expect(Token::Function)?;
+                self.parse_function(false, true)
             }
             Some(Token::Return) if self.scope(ParseScope::Function) => {
                 self.lexer.next();
@@ -699,7 +690,7 @@ impl<'a> Parser<'a> {
                     Some(Token::Let) | Some(Token::Const) => self.parse_lexical_declaration(),
                     Some(Token::Function) => {
                         self.lexer.next();
-                        self.parse_function(false)
+                        self.parse_function(false, false)
                     }
                     _ => Err(Error::UnexpectedToken),
                 }?;
@@ -796,7 +787,8 @@ impl<'a> Parser<'a> {
         if scope != ParseScope::TopLevel {
             self.expect(Token::LeftBrace)?;
         }
-        self.scope_stack.push(scope);
+        let saved = self.scope_bits;
+        self.scope_bits |= scope as u8;
         self.lex_stack.push(HashMap::new());
         let mut nodes = Vec::new();
         while !self.eat(Token::RightBrace) {
@@ -804,13 +796,13 @@ impl<'a> Parser<'a> {
                 Ok(node) => nodes.push(node),
                 Err(Error::NormalEOF) if scope == ParseScope::TopLevel => break,
                 Err(e) => {
-                    self.scope_stack.pop();
+                    self.scope_bits = saved;
                     self.lex_stack.pop();
                     return Err(e);
                 }
             }
         }
-        self.scope_stack.pop();
+        self.scope_bits = saved;
         let declarations = self.lex_stack.pop().unwrap();
         Ok(Node::BlockStatement(
             nodes,
@@ -831,7 +823,6 @@ impl<'a> Parser<'a> {
     fn parse_identifier(&mut self, allow_keyword: bool) -> Result<String, Error> {
         match self.lexer.next() {
             Some(Token::Identifier(name)) => Ok(name),
-            Some(Token::Async) if allow_keyword => Ok("async".to_string()),
             Some(Token::Throw) if allow_keyword => Ok("throw".to_string()),
             Some(Token::Catch) if allow_keyword => Ok("catch".to_string()),
             Some(Token::True) if allow_keyword => Ok("true".to_string()),
@@ -857,6 +848,7 @@ impl<'a> Parser<'a> {
             Some(Token::Default) if allow_keyword => Ok("default".to_string()),
             Some(Token::From) if allow_keyword => Ok("from".to_string()),
             Some(Token::Async) if allow_keyword => Ok("async".to_string()),
+            Some(Token::Await) if allow_keyword => Ok("await".to_string()),
             Some(Token::Operator(Operator::Typeof)) if allow_keyword => Ok("typeof".to_string()),
             Some(Token::Operator(Operator::Void)) if allow_keyword => Ok("void".to_string()),
             _ => Err(Error::UnexpectedToken),
@@ -1122,7 +1114,8 @@ impl<'a> Parser<'a> {
     );
 
     fn parse_unary_expression(&mut self) -> Result<Node, Error> {
-        match self.lexer.peek() {
+        self.lexer.peek();
+        match self.lexer.peek_immutable() {
             Some(Token::Operator(Operator::Add)) => {
                 self.lexer.next();
                 Ok(Node::UnaryExpression(
@@ -1150,6 +1143,12 @@ impl<'a> Parser<'a> {
                     Operator::Not,
                     Box::new(self.parse_unary_expression()?),
                 ))
+            }
+            Some(Token::Await) if self.scope(ParseScope::AsyncFunction) => {
+                self.lexer.next();
+                Ok(Node::AwaitExpression(Box::new(
+                    self.parse_unary_expression()?,
+                )))
             }
             _ => self.parse_left_hand_side_expression(),
         }
@@ -1196,6 +1195,7 @@ impl<'a> Parser<'a> {
         &mut self,
         first_arg: Option<Node>,
         more_args: bool,
+        asyn: bool,
     ) -> Result<Node, Error> {
         let mut args = match first_arg {
             Some(expr) => {
@@ -1211,8 +1211,12 @@ impl<'a> Parser<'a> {
             args.append(&mut self.parse_identifier_list(Token::RightParen, true)?);
         }
         self.expect(Token::Arrow)?;
-        let body = self.parse_block_statement(ParseScope::Function)?;
-        Ok(Node::ArrowFunctionExpression(args, Box::new(body)))
+        let body = self.parse_block_statement(if asyn {
+            ParseScope::AsyncFunction
+        } else {
+            ParseScope::Function
+        })?;
+        Ok(Node::ArrowFunctionExpression(args, Box::new(body), asyn))
     }
 
     fn parse_primary_expression(&mut self) -> Result<Node, Error> {
@@ -1273,23 +1277,31 @@ impl<'a> Parser<'a> {
                     Ok(Node::TemplateLiteral(quasis, expressions))
                 }
                 Token::Identifier(v) => Ok(Node::Identifier(v)),
-                Token::Function => self.parse_function(true),
+                Token::Function => self.parse_function(true, false),
+                Token::Async => {
+                    if self.eat(Token::Function) {
+                        self.parse_function(true, true)
+                    } else {
+                        self.expect(Token::LeftParen)?;
+                        self.parse_arrow_function(None, true, true)
+                    }
+                }
                 Token::LeftParen => match self.lexer.peek() {
                     Some(Token::RightParen) => {
                         self.lexer.next();
-                        self.parse_arrow_function(None, false)
+                        self.parse_arrow_function(None, false, false)
                     }
                     _ => {
                         let expr = self.parse_expression()?;
                         match self.lexer.peek() {
                             Some(Token::Comma) => {
                                 self.lexer.next();
-                                self.parse_arrow_function(Some(expr), true)
+                                self.parse_arrow_function(Some(expr), true, false)
                             }
                             Some(Token::RightParen) => {
                                 self.lexer.next();
                                 if let Some(Token::Arrow) = self.lexer.peek() {
-                                    self.parse_arrow_function(Some(expr), false)
+                                    self.parse_arrow_function(Some(expr), false, false)
                                 } else {
                                     Ok(Node::ParenthesizedExpression(Box::new(expr)))
                                 }
@@ -1324,7 +1336,7 @@ impl<'a> Parser<'a> {
                         if self.eat(Token::Colon) {
                             init = self.parse_expression()?;
                         } else {
-                            init = self.parse_function(true)?
+                            init = self.parse_function(true, false)?
                         }
                         fields.push(Node::ObjectInitializer(Box::new(name), Box::new(init)));
                     }

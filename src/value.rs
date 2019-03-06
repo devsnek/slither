@@ -1,4 +1,5 @@
 use crate::agent::Agent;
+use crate::intrinsics::promise::{new_promise_capability, promise_resolve_i};
 use crate::vm::{Evaluator, ExecutionContext, LexicalEnvironment};
 use gc::{Gc, GcCell};
 use indexmap::IndexMap;
@@ -64,6 +65,7 @@ pub enum ObjectKind {
         params: u8,
         index: usize,
         inherits_this: bool,
+        r#async: bool,
         env: Gc<GcCell<LexicalEnvironment>>,
     },
     BuiltinFunction(BuiltinFunction, Gc<GcCell<HashMap<String, Value>>>),
@@ -281,6 +283,7 @@ pub enum Value {
     List(Gc<GcCell<VecDeque<Value>>>),
     EnvironmentReference(Gc<GcCell<LexicalEnvironment>>, String),
     ValueReference(Box<Value>, ObjectKey),
+    WrappedContext(Gc<GcCell<ExecutionContext>>, Box<Value>),
 }
 
 unsafe impl gc::Trace for Value {
@@ -297,6 +300,10 @@ unsafe impl gc::Trace for Value {
             Value::List(list) => mark(list),
             Value::EnvironmentReference(env, ..) => mark(env),
             Value::ValueReference(v, ..) => mark(v),
+            Value::WrappedContext(c, p) => {
+                mark(c);
+                mark(p);
+            }
         }
     });
 }
@@ -426,6 +433,7 @@ impl Value {
                     params,
                     index,
                     inherits_this,
+                    r#async,
                     env,
                 } => {
                     let paramc = *params;
@@ -441,9 +449,41 @@ impl Value {
                             .stack
                             .push(args.get(i as usize).unwrap_or(&Value::Empty).clone());
                     }
-                    evaluator.scope.push(ctx);
+                    evaluator.scope.push(ctx.clone());
                     evaluator.positions.push(agent.code.len());
-                    evaluator.run(agent).unwrap()
+                    if *r#async {
+                        let promise =
+                            new_promise_capability(agent, agent.intrinsics.promise.clone())?;
+                        match evaluator.run(agent) {
+                            Ok(r) => match r {
+                                Ok(v) => {
+                                    promise.get_slot("resolve").call(
+                                        agent,
+                                        Value::Null,
+                                        vec![v],
+                                    )?;
+                                }
+                                Err(e) => {
+                                    promise
+                                        .get_slot("reject")
+                                        .call(agent, Value::Null, vec![e])?;
+                                }
+                            },
+                            Err(c) => {
+                                ctx.borrow_mut().evaluator = Some(evaluator);
+                                let mut c = c;
+                                let value = std::mem::replace(&mut c.0, Value::Null);
+                                perform_await(
+                                    agent,
+                                    Value::WrappedContext(ctx, Box::new(promise.clone())),
+                                    value,
+                                )?;
+                            }
+                        }
+                        Ok(promise)
+                    } else {
+                        evaluator.run(agent).unwrap()
+                    }
                 }
                 ObjectKind::BuiltinFunction(f, _) => {
                     let ctx = ExecutionContext::new(LexicalEnvironment::new(None));
@@ -482,6 +522,84 @@ impl Value {
             _ => Err(new_error("not a function")),
         }
     }
+}
+
+fn on_fulfilled(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
+    let f = ctx.function.as_ref().unwrap();
+    if let Value::WrappedContext(context, promise) = f.get_slot("async context") {
+        let mut args = args;
+        let mut evaluator = context.borrow_mut().evaluator.take().unwrap();
+        evaluator.stack.push(args.remove(0));
+        match evaluator.run(agent) {
+            Ok(r) => match r {
+                Ok(v) => {
+                    promise
+                        .get_slot("resolve")
+                        .call(agent, Value::Null, vec![v])?;
+                }
+                Err(e) => {
+                    promise
+                        .get_slot("reject")
+                        .call(agent, Value::Null, vec![e])?;
+                }
+            },
+            Err(c) => {
+                context.borrow_mut().evaluator = Some(evaluator);
+                let mut c = c;
+                let value = std::mem::replace(&mut c.0, Value::Null);
+                perform_await(agent, Value::WrappedContext(context, promise), value)?;
+            }
+        }
+        Ok(Value::Null)
+    } else {
+        unreachable!();
+    }
+}
+fn on_rejected(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
+    let f = ctx.function.as_ref().unwrap();
+    if let Value::WrappedContext(context, promise) = f.get_slot("async context") {
+        let mut args = args;
+        let mut evaluator = context.borrow_mut().evaluator.take().unwrap();
+        evaluator.exception = Some(args.remove(0));
+        match evaluator.run(agent) {
+            Ok(r) => match r {
+                Ok(v) => {
+                    promise
+                        .get_slot("resolve")
+                        .call(agent, Value::Null, vec![v])?;
+                }
+                Err(e) => {
+                    promise
+                        .get_slot("reject")
+                        .call(agent, Value::Null, vec![e])?;
+                }
+            },
+            Err(c) => {
+                context.borrow_mut().evaluator = Some(evaluator);
+                let mut c = c;
+                let value = unsafe { std::mem::replace(&mut c.0, std::mem::uninitialized()) };
+                perform_await(agent, Value::WrappedContext(context, promise), value)?;
+            }
+        }
+        Ok(Value::Null)
+    } else {
+        unreachable!();
+    }
+}
+
+fn perform_await(agent: &Agent, ctx: Value, value: Value) -> Result<(), Value> {
+    let promise = promise_resolve_i(agent, agent.intrinsics.promise.clone(), value)?;
+
+    let on_fulfilled = new_builtin_function(agent, on_fulfilled);
+    on_fulfilled.set_slot("async context", ctx.clone());
+    let on_rejected = new_builtin_function(agent, on_rejected);
+    on_rejected.set_slot("async context", ctx);
+
+    promise
+        .get(&ObjectKey::from("then"))?
+        .call(agent, promise, vec![on_fulfilled, on_rejected])?;
+
+    Ok(())
 }
 
 fn inspect(
@@ -601,9 +719,10 @@ impl PartialEq for Value {
                 Value::Empty => true,
                 _ => false,
             },
-            Value::List(..) | Value::EnvironmentReference(..) | Value::ValueReference(..) => {
-                ref_eq(self, other)
-            }
+            Value::List(..)
+            | Value::EnvironmentReference(..)
+            | Value::ValueReference(..)
+            | Value::WrappedContext(..) => ref_eq(self, other),
         }
     }
 }
@@ -656,6 +775,7 @@ pub fn new_compiled_function(
     params: u8,
     index: usize,
     inherits_this: bool,
+    asyn: bool,
     env: Gc<GcCell<LexicalEnvironment>>,
 ) -> Value {
     Value::Object(Gc::new(ObjectInfo {
@@ -663,6 +783,7 @@ pub fn new_compiled_function(
             params,
             index,
             inherits_this,
+            r#async: asyn,
             env,
         },
         properties: GcCell::new(IndexMap::new()),

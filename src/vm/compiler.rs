@@ -52,6 +52,7 @@ pub enum Op {
     PopLoop,
     Break,
     Continue,
+    Await,
     Add,
     Sub,
     UnarySub,
@@ -307,14 +308,19 @@ fn compile(agent: &mut Agent, node: &Node) -> Result<(), Error> {
         Node::ConditionalExpression(test, consequent, alternative) => {
             compile_conditional_expression(agent, test, consequent, alternative)
         }
-        Node::FunctionDeclaration(name, body, args) => {
-            compile_function_declaration(agent, name, body, args)
+        Node::FunctionDeclaration(name, body, args, asyn) => {
+            compile_function_declaration(agent, name, body, args, *asyn)
         }
-        Node::FunctionExpression(name, body, args) => {
-            compile_function_expression(agent, name, body, args, false)
+        Node::FunctionExpression(name, body, args, asyn) => {
+            compile_function_expression(agent, name, body, args, false, *asyn)
         }
-        Node::ArrowFunctionExpression(body, args) => {
-            compile_function_expression(agent, &None, body, args, true)
+        Node::ArrowFunctionExpression(body, args, asyn) => {
+            compile_function_expression(agent, &None, body, args, true, *asyn)
+        }
+        Node::AwaitExpression(expr) => {
+            compile(agent, expr)?;
+            push_op(agent, Op::Await);
+            Ok(())
         }
         Node::ImportStandardDeclaration(..) => Ok(()),
         Node::ImportDefaultDeclaration(..) => Ok(()),
@@ -414,8 +420,9 @@ fn compile_function_declaration(
     name: &str,
     args: &[Node],
     body: &Node,
+    asyn: bool,
 ) -> Result<(), Error> {
-    compile_function(agent, Some(name), args, body, false)?;
+    compile_function(agent, Some(name), args, body, false, asyn)?;
     push_op(agent, Op::LexicalInitialization);
     let id = string_id(agent, name);
     push_i32(agent, id);
@@ -428,6 +435,7 @@ fn compile_function_expression(
     args: &[Node],
     body: &Node,
     inherits_this: bool,
+    asyn: bool,
 ) -> Result<(), Error> {
     compile_function(
         agent,
@@ -438,6 +446,7 @@ fn compile_function_expression(
         args,
         body,
         inherits_this,
+        asyn,
     )
 }
 
@@ -447,12 +456,14 @@ fn compile_function(
     args: &[Node],
     body: &Node,
     inherits_this: bool,
+    asyn: bool,
 ) -> Result<(), Error> {
     label!(end);
 
     push_op(agent, Op::NewFunction);
     push_u8(agent, args.len() as u8);
     push_u8(agent, inherits_this as u8);
+    push_u8(agent, asyn as u8); // TODO: make this a bitmap with inherits_this
     jump!(agent, end); // skip evaluating body when declaring function
 
     // pc will be set to this location, right after the jump

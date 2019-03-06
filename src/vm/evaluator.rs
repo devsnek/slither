@@ -145,6 +145,7 @@ impl LexicalEnvironment {
 pub struct ExecutionContext {
     pub function: Option<Value>,
     pub environment: Gc<GcCell<LexicalEnvironment>>,
+    pub evaluator: Option<Evaluator>,
 }
 
 impl ExecutionContext {
@@ -152,17 +153,18 @@ impl ExecutionContext {
         Gc::new(GcCell::new(ExecutionContext {
             function: None,
             environment,
+            evaluator: None,
         }))
     }
 }
 
-#[derive(Trace, Finalize)]
+#[derive(Debug, Trace, Finalize)]
 pub struct LoopPosition {
     r#break: usize,
     r#continue: usize,
 }
 
-#[derive(Trace, Finalize)]
+#[derive(Debug, Trace, Finalize)]
 pub struct Evaluator {
     pc: usize,
     pub stack: Vec<Value>,
@@ -170,10 +172,11 @@ pub struct Evaluator {
     pub positions: Vec<usize>,
     try_stack: Vec<usize>,
     loop_stack: Vec<LoopPosition>,
+    pub exception: Option<Value>,
 }
 
 #[derive(Debug, Trace, Finalize)]
-pub struct SuspendValue(Value);
+pub struct SuspendValue(pub Value);
 
 impl Evaluator {
     pub fn new(pos: (usize, usize)) -> Evaluator {
@@ -184,6 +187,7 @@ impl Evaluator {
             positions: Vec::new(),
             try_stack: vec![pos.1],
             loop_stack: Vec::new(),
+            exception: None,
         }
     }
 
@@ -196,6 +200,7 @@ impl Evaluator {
             &mut self.positions,
             &mut self.try_stack,
             &mut self.loop_stack,
+            &mut self.exception,
         )
     }
 }
@@ -208,6 +213,7 @@ fn evaluate_at(
     positions: &mut Vec<usize>,
     try_stack: &mut Vec<usize>,
     loop_stack: &mut Vec<LoopPosition>,
+    exception: &mut Option<Value>,
 ) -> Result<Result<Value, Value>, SuspendValue> {
     let get_u8 = |pc: &mut usize| {
         let v = agent.code[*pc];
@@ -277,7 +283,9 @@ fn evaluate_at(
         }};
     }
 
-    let mut exception: Option<Value> = None;
+    if exception.is_some() {
+        *pc = try_stack.pop().expect("try_stack context missing");
+    }
 
     'main: loop {
         macro_rules! handle {
@@ -287,7 +295,7 @@ fn evaluate_at(
                     Err(e) => {
                         let position = try_stack.pop().expect("try_stack context missing");
                         *pc = position;
-                        exception = Some(e);
+                        *exception = Some(e);
                         continue 'main;
                     }
                 }
@@ -352,13 +360,14 @@ fn evaluate_at(
             Op::NewFunction => {
                 let argc = get_u8(pc);
                 let inherits_this = get_bool(pc);
+                let asyn = get_bool(pc);
                 let index = *pc + 5; // jmp + i32 = 5
                 let env = LexicalEnvironment::new(match scope.last() {
                     Some(r) => Some(r.borrow().environment.clone()),
                     None => None,
                 });
                 // println!("NewFunction {:?}", env);
-                let value = new_compiled_function(agent, argc, index, inherits_this, env);
+                let value = new_compiled_function(agent, argc, index, inherits_this, asyn, env);
                 stack.push(value);
             }
             Op::ProcessTemplateLiteral => {
@@ -532,35 +541,53 @@ fn evaluate_at(
                             params,
                             index,
                             inherits_this,
+                            r#async,
                             env,
                         } => {
-                            let paramc = *params;
-                            let index = *index;
-                            let inherits_this = *inherits_this;
-                            if argc > paramc {
-                                let diff = argc - paramc;
-                                for _ in 0..diff {
-                                    stack.pop().unwrap();
+                            if *r#async {
+                                let mut args: Vec<Value> = Vec::with_capacity(argc as usize);
+                                let p = args.as_mut_ptr();
+                                for i in (0..argc).rev() {
+                                    let value = handle!(get_value(stack));
+                                    unsafe {
+                                        std::ptr::write(p.offset(i as isize), value);
+                                    }
                                 }
-                            } else if argc < paramc {
-                                let diff = paramc - argc;
-                                for _ in 0..diff {
-                                    stack.push(Value::Empty);
+                                unsafe {
+                                    args.set_len(argc as usize);
                                 }
-                            }
-                            if op == Op::TailCall {
-                                scope.pop();
+                                let r = handle!(callee.call(agent, this, args));
+                                stack.push(r);
                             } else {
-                                positions.push(*pc); // jump back to previous pc
+                                let paramc = *params;
+                                let index = *index;
+                                let inherits_this = *inherits_this;
+                                if argc > paramc {
+                                    let diff = argc - paramc;
+                                    for _ in 0..diff {
+                                        stack.pop().unwrap();
+                                    }
+                                } else if argc < paramc {
+                                    let diff = paramc - argc;
+                                    for _ in 0..diff {
+                                        stack.push(Value::Empty);
+                                    }
+                                }
+                                if op == Op::TailCall {
+                                    scope.pop();
+                                } else {
+                                    positions.push(*pc); // jump back to previous pc
+                                }
+                                let ctx = ExecutionContext::new(LexicalEnvironment::new(Some(
+                                    env.clone(),
+                                )));
+                                ctx.borrow_mut().function = Some(callee);
+                                if !inherits_this {
+                                    ctx.borrow().environment.borrow_mut().this = Some(this);
+                                }
+                                scope.push(ctx);
+                                *pc = index; // jump to index of function body
                             }
-                            let ctx =
-                                ExecutionContext::new(LexicalEnvironment::new(Some(env.clone())));
-                            ctx.borrow_mut().function = Some(callee);
-                            if !inherits_this {
-                                ctx.borrow().environment.borrow_mut().this = Some(this);
-                            }
-                            scope.push(ctx);
-                            *pc = index; // jump to index of function body
                         }
                         ObjectKind::BuiltinFunction(..) => {
                             let mut args: Vec<Value> = Vec::with_capacity(argc as usize);
@@ -620,12 +647,12 @@ fn evaluate_at(
             }
             Op::Throw => {
                 let position = try_stack.pop().unwrap();
-                exception = Some(handle!(get_value(stack)));
+                *exception = Some(handle!(get_value(stack)));
                 *pc = position;
             }
             Op::ExceptionToStack => {
-                let e = exception.unwrap();
-                exception = None;
+                let e = exception.take().unwrap();
+                *exception = None;
                 stack.push(e);
             }
             Op::PushTry => {
@@ -653,6 +680,10 @@ fn evaluate_at(
             }
             Op::Continue => {
                 *pc = loop_stack.last().unwrap().r#continue;
+            }
+            Op::Await => {
+                let value = handle!(get_value(stack));
+                return Err(SuspendValue(value));
             }
             Op::Eq => {
                 let right = handle!(get_value(stack));
@@ -725,7 +756,7 @@ fn evaluate_at(
         }
     }
 
-    Ok(match exception {
+    Ok(match exception.take() {
         Some(e) => Err(e),
         None => Ok(stack.pop().unwrap_or(Value::Null)),
     })
