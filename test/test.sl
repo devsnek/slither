@@ -1,13 +1,13 @@
 import { print } from standard:debug;
 
 gen function test() {
-  let i = 0;
-  while i < 10 {
-    yield i;
-    i += 1;
+  try {
+    yield;
+  } catch e {
+    print('e is', e);
   }
 }
 
-for i in test() {
-  print(i);
-}
+const it = test();
+it.next();
+it.throw('thrown thing');
