@@ -491,7 +491,7 @@ impl<'a> Parser<'a> {
         if let Node::BlockStatement(items, decls, top) =
             parser.parse_block_statement(ParseScope::TopLevel)?
         {
-            if let Node::ExpressionStatement(expr) = items.last().unwrap() {
+            if let Some(Node::ExpressionStatement(expr)) = items.last() {
                 // if the last item is an expression statement, replace it with the expression
                 // so that the value will be left on the stack to inspect in tests
                 let mut sliced = items[0..items.len() - 1].to_vec();
