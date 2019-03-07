@@ -429,6 +429,20 @@ impl<'a> Lexer<'a> {
             _ => unreachable!(),
         }
     }
+
+    fn skip_hashbang(&mut self) {
+        if self.chars.peek() == Some(&'#') {
+            self.chars.next();
+            if self.chars.peek() == Some(&'!') {
+                loop {
+                    match self.chars.next() {
+                        Some('\n') | None => break,
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -487,6 +501,8 @@ impl<'a> Parser<'a> {
             scope_bits: 0,
             lex_stack: Vec::new(),
         };
+
+        parser.lexer.skip_hashbang();
 
         if let Node::BlockStatement(items, decls, top) =
             parser.parse_block_statement(ParseScope::TopLevel)?
@@ -1505,6 +1521,15 @@ fn test_parser() {
         Parser::parse("while false { 1; }").unwrap(),
         Node::BlockStatement(
             vec![Node::ParenthesizedExpression(Box::new(Node::FalseLiteral))],
+            HashMap::new(),
+            true,
+        ),
+    );
+
+    assert_eq!(
+        Parser::parse("#! hashbang line\ntrue;").unwrap(),
+        Node::BlockStatement(
+            vec![Node::ParenthesizedExpression(Box::new(Node::TrueLiteral))],
             HashMap::new(),
             true,
         ),
