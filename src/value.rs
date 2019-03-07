@@ -1,5 +1,6 @@
 use crate::agent::Agent;
 use crate::intrinsics::promise::{new_promise_capability, promise_resolve_i};
+use crate::parser::FunctionKind;
 use crate::vm::{Evaluator, ExecutionContext, LexicalEnvironment};
 use gc::{Gc, GcCell};
 use indexmap::IndexMap;
@@ -65,7 +66,7 @@ pub enum ObjectKind {
         params: u8,
         index: usize,
         inherits_this: bool,
-        r#async: bool,
+        kind: FunctionKind,
         env: Gc<GcCell<LexicalEnvironment>>,
     },
     BuiltinFunction(BuiltinFunction, Gc<GcCell<HashMap<String, Value>>>),
@@ -283,7 +284,7 @@ pub enum Value {
     List(Gc<GcCell<VecDeque<Value>>>),
     EnvironmentReference(Gc<GcCell<LexicalEnvironment>>, String),
     ValueReference(Box<Value>, ObjectKey),
-    WrappedContext(Gc<GcCell<ExecutionContext>>, Box<Value>),
+    WrappedContext(Gc<GcCell<ExecutionContext>>, Option<Box<Value>>),
     Iterator(Box<Value>, Box<Value>), // iterator, next method
 }
 
@@ -303,7 +304,9 @@ unsafe impl gc::Trace for Value {
             Value::ValueReference(v, ..) => mark(v),
             Value::WrappedContext(c, p) => {
                 mark(c);
-                mark(p);
+                if p.is_some() {
+                    mark(p);
+                }
             }
             Value::Iterator(i, n) => {
                 mark(i);
@@ -438,11 +441,12 @@ impl Value {
                     params,
                     index,
                     inherits_this,
-                    r#async,
+                    kind,
                     env,
                 } => {
                     let paramc = *params;
                     let index = *index;
+                    let kind = *kind;
                     let ctx = ExecutionContext::new(LexicalEnvironment::new(Some(env.clone())));
                     if !inherits_this {
                         ctx.borrow().environment.borrow_mut().this = Some(this);
@@ -456,38 +460,47 @@ impl Value {
                     }
                     evaluator.scope.push(ctx.clone());
                     evaluator.positions.push(agent.code.len());
-                    if *r#async {
-                        let promise =
-                            new_promise_capability(agent, agent.intrinsics.promise.clone())?;
-                        match evaluator.run(agent) {
-                            Ok(r) => match r {
-                                Ok(v) => {
-                                    promise.get_slot("resolve").call(
+                    match kind {
+                        FunctionKind::Normal => evaluator.run(agent).unwrap(),
+                        FunctionKind::Async => {
+                            let promise =
+                                new_promise_capability(agent, agent.intrinsics.promise.clone())?;
+                            match evaluator.run(agent) {
+                                Ok(r) => match r {
+                                    Ok(v) => {
+                                        promise.get_slot("resolve").call(
+                                            agent,
+                                            Value::Null,
+                                            vec![v],
+                                        )?;
+                                    }
+                                    Err(e) => {
+                                        promise.get_slot("reject").call(
+                                            agent,
+                                            Value::Null,
+                                            vec![e],
+                                        )?;
+                                    }
+                                },
+                                Err(c) => {
+                                    ctx.borrow_mut().evaluator = Some(evaluator);
+                                    let mut c = c;
+                                    let value = std::mem::replace(&mut c.0, Value::Null);
+                                    perform_await(
                                         agent,
-                                        Value::Null,
-                                        vec![v],
+                                        Value::WrappedContext(ctx, Some(Box::new(promise.clone()))),
+                                        value,
                                     )?;
                                 }
-                                Err(e) => {
-                                    promise
-                                        .get_slot("reject")
-                                        .call(agent, Value::Null, vec![e])?;
-                                }
-                            },
-                            Err(c) => {
-                                ctx.borrow_mut().evaluator = Some(evaluator);
-                                let mut c = c;
-                                let value = std::mem::replace(&mut c.0, Value::Null);
-                                perform_await(
-                                    agent,
-                                    Value::WrappedContext(ctx, Box::new(promise.clone())),
-                                    value,
-                                )?;
                             }
+                            Ok(promise)
                         }
-                        Ok(promise)
-                    } else {
-                        evaluator.run(agent).unwrap()
+                        FunctionKind::Generator => {
+                            ctx.borrow_mut().evaluator = Some(evaluator);
+                            let o = new_custom_object(agent.intrinsics.generator_prototype.clone());
+                            o.set_slot("generator context", Value::WrappedContext(ctx, None));
+                            Ok(o)
+                        }
                     }
                 }
                 ObjectKind::BuiltinFunction(f, _) => {
@@ -539,11 +552,13 @@ fn on_fulfilled(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Resu
             Ok(r) => match r {
                 Ok(v) => {
                     promise
+                        .unwrap()
                         .get_slot("resolve")
                         .call(agent, Value::Null, vec![v])?;
                 }
                 Err(e) => {
                     promise
+                        .unwrap()
                         .get_slot("reject")
                         .call(agent, Value::Null, vec![e])?;
                 }
@@ -570,11 +585,13 @@ fn on_rejected(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Resul
             Ok(r) => match r {
                 Ok(v) => {
                     promise
+                        .unwrap()
                         .get_slot("resolve")
                         .call(agent, Value::Null, vec![v])?;
                 }
                 Err(e) => {
                     promise
+                        .unwrap()
                         .get_slot("reject")
                         .call(agent, Value::Null, vec![e])?;
                 }
@@ -781,7 +798,7 @@ pub fn new_compiled_function(
     params: u8,
     index: usize,
     inherits_this: bool,
-    asyn: bool,
+    kind: FunctionKind,
     env: Gc<GcCell<LexicalEnvironment>>,
 ) -> Value {
     Value::Object(Gc::new(ObjectInfo {
@@ -789,7 +806,7 @@ pub fn new_compiled_function(
             params,
             index,
             inherits_this,
-            r#async: asyn,
+            kind,
             env,
         },
         properties: GcCell::new(IndexMap::new()),

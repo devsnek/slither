@@ -1,5 +1,5 @@
 use crate::agent::Agent;
-use crate::parser::{Node, Operator};
+use crate::parser::{FunctionKind, Node, Operator};
 use byteorder::{LittleEndian, WriteBytesExt};
 use rust_decimal::Decimal;
 use std::collections::HashMap;
@@ -53,6 +53,8 @@ pub enum Op {
     Break,
     Continue,
     Await,
+    Yield,
+    YieldWithOperand,
     GetIterator,
     IteratorNext,
     Add,
@@ -313,18 +315,30 @@ fn compile(agent: &mut Agent, node: &Node) -> Result<(), Error> {
         Node::ConditionalExpression(test, consequent, alternative) => {
             compile_conditional_expression(agent, test, consequent, alternative)
         }
-        Node::FunctionDeclaration(name, body, args, asyn) => {
-            compile_function_declaration(agent, name, body, args, *asyn)
+        Node::FunctionDeclaration(name, body, args, kind) => {
+            compile_function_declaration(agent, name, body, args, *kind)
         }
-        Node::FunctionExpression(name, body, args, asyn) => {
-            compile_function_expression(agent, name, body, args, false, *asyn)
+        Node::FunctionExpression(name, body, args, kind) => {
+            compile_function_expression(agent, name, body, args, false, *kind)
         }
-        Node::ArrowFunctionExpression(body, args, asyn) => {
-            compile_function_expression(agent, &None, body, args, true, *asyn)
+        Node::ArrowFunctionExpression(body, args, kind) => {
+            compile_function_expression(agent, &None, body, args, true, *kind)
         }
         Node::AwaitExpression(expr) => {
             compile(agent, expr)?;
             push_op(agent, Op::Await);
+            Ok(())
+        }
+        Node::YieldExpression(expr) => {
+            match expr {
+                Some(expr) => {
+                    compile(agent, expr)?;
+                    push_op(agent, Op::YieldWithOperand);
+                }
+                None => {
+                    push_op(agent, Op::Yield);
+                }
+            }
             Ok(())
         }
         Node::ImportStandardDeclaration(..) => Ok(()),
@@ -425,9 +439,9 @@ fn compile_function_declaration(
     name: &str,
     args: &[Node],
     body: &Node,
-    asyn: bool,
+    kind: FunctionKind,
 ) -> Result<(), Error> {
-    compile_function(agent, Some(name), args, body, false, asyn)?;
+    compile_function(agent, Some(name), args, body, false, kind)?;
     push_op(agent, Op::LexicalInitialization);
     let id = string_id(agent, name);
     push_i32(agent, id);
@@ -440,7 +454,7 @@ fn compile_function_expression(
     args: &[Node],
     body: &Node,
     inherits_this: bool,
-    asyn: bool,
+    kind: FunctionKind,
 ) -> Result<(), Error> {
     compile_function(
         agent,
@@ -451,7 +465,7 @@ fn compile_function_expression(
         args,
         body,
         inherits_this,
-        asyn,
+        kind,
     )
 }
 
@@ -461,14 +475,14 @@ fn compile_function(
     args: &[Node],
     body: &Node,
     inherits_this: bool,
-    asyn: bool,
+    kind: FunctionKind,
 ) -> Result<(), Error> {
     label!(end);
 
     push_op(agent, Op::NewFunction);
     push_u8(agent, args.len() as u8);
     push_u8(agent, inherits_this as u8);
-    push_u8(agent, asyn as u8); // TODO: make this a bitmap with inherits_this
+    push_u8(agent, kind as u8);
     jump!(agent, end); // skip evaluating body when declaring function
 
     // pc will be set to this location, right after the jump

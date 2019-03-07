@@ -1,23 +1,13 @@
 import { print } from standard:debug;
 
-const iterable = {
-  [:iterator]: () => {
-    let i = 0;
-    return {
-      next() {
-        i += 1;
-        if i > 10 {
-          return { done: true };
-        }
-        return { done: false, value: i };
-      }
-    };
-  },
-};
-
-let i = 0;
-for item in iterable {
-  i += item;
+gen function test() {
+  let i = 0;
+  while i < 10 {
+    yield i;
+    i += 1;
+  }
 }
 
-print(i);
+for i in test() {
+  print(i);
+}

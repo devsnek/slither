@@ -1,4 +1,5 @@
 use crate::agent::{Agent, Module};
+use crate::parser::FunctionKind;
 use crate::value::{
     new_array, new_compiled_function, new_error, new_object, new_regex_object, ObjectKey,
     ObjectKind, Value,
@@ -351,14 +352,14 @@ fn evaluate_at(
             Op::NewFunction => {
                 let argc = get_u8(pc);
                 let inherits_this = get_bool(pc);
-                let asyn = get_bool(pc);
+                let kind: FunctionKind = get_u8(pc).into();
                 let index = *pc + 5; // jmp + i32 = 5
                 let env = LexicalEnvironment::new(match scope.last() {
                     Some(r) => Some(r.borrow().environment.clone()),
                     None => None,
                 });
                 // println!("NewFunction {:?}", env);
-                let value = new_compiled_function(agent, argc, index, inherits_this, asyn, env);
+                let value = new_compiled_function(agent, argc, index, inherits_this, kind, env);
                 stack.push(value);
             }
             Op::ProcessTemplateLiteral => {
@@ -532,24 +533,10 @@ fn evaluate_at(
                             params,
                             index,
                             inherits_this,
-                            r#async,
+                            kind,
                             env,
                         } => {
-                            if *r#async {
-                                let mut args: Vec<Value> = Vec::with_capacity(argc as usize);
-                                let p = args.as_mut_ptr();
-                                for i in (0..argc).rev() {
-                                    let value = handle!(get_value(stack));
-                                    unsafe {
-                                        std::ptr::write(p.offset(i as isize), value);
-                                    }
-                                }
-                                unsafe {
-                                    args.set_len(argc as usize);
-                                }
-                                let r = handle!(callee.call(agent, this, args));
-                                stack.push(r);
-                            } else {
+                            if *kind == FunctionKind::Normal {
                                 let paramc = *params;
                                 let index = *index;
                                 let inherits_this = *inherits_this;
@@ -578,6 +565,20 @@ fn evaluate_at(
                                 }
                                 scope.push(ctx);
                                 *pc = index; // jump to index of function body
+                            } else {
+                                let mut args: Vec<Value> = Vec::with_capacity(argc as usize);
+                                let p = args.as_mut_ptr();
+                                for i in (0..argc).rev() {
+                                    let value = handle!(get_value(stack));
+                                    unsafe {
+                                        std::ptr::write(p.offset(i as isize), value);
+                                    }
+                                }
+                                unsafe {
+                                    args.set_len(argc as usize);
+                                }
+                                let r = handle!(callee.call(agent, this, args));
+                                stack.push(r);
                             }
                         }
                         ObjectKind::BuiltinFunction(..) => {
@@ -673,6 +674,11 @@ fn evaluate_at(
                 *pc = loop_stack.last().unwrap().r#continue;
             }
             Op::Await => {
+                let value = handle!(get_value(stack));
+                return Err(SuspendValue(value));
+            }
+            Op::Yield => return Err(SuspendValue(Value::Null)),
+            Op::YieldWithOperand => {
                 let value = handle!(get_value(stack));
                 return Err(SuspendValue(value));
             }

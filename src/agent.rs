@@ -1,8 +1,8 @@
 use crate::intrinsics::{
     create_array_prototype, create_boolean_prototype, create_function_prototype,
-    create_iterator_prototype, create_number_prototype, create_object_prototype, create_promise,
-    create_promise_prototype, create_regex_prototype, create_string_prototype, create_symbol,
-    create_symbol_prototype,
+    create_generator_prototype, create_iterator_prototype, create_number_prototype,
+    create_object_prototype, create_promise, create_promise_prototype, create_regex_prototype,
+    create_string_prototype, create_symbol, create_symbol_prototype,
 };
 use crate::parser::{Node, Parser};
 use crate::value::{new_error, Value};
@@ -257,6 +257,7 @@ pub struct Intrinsics {
     pub symbol: Value,
     pub regex_prototype: Value,
     pub iterator_prototype: Value,
+    pub generator_prototype: Value,
 }
 
 #[derive(Debug)]
@@ -312,6 +313,7 @@ impl Agent {
                 symbol: Value::Null,
                 regex_prototype: Value::Null,
                 iterator_prototype: Value::Null,
+                generator_prototype: Value::Null,
             },
             well_known_symbols: RefCell::new(HashMap::new()),
             builtins: HashMap::new(),
@@ -331,6 +333,7 @@ impl Agent {
         agent.intrinsics.regex_prototype = create_regex_prototype(&agent);
         agent.intrinsics.symbol = create_symbol(&agent);
         agent.intrinsics.iterator_prototype = create_iterator_prototype(&agent);
+        agent.intrinsics.generator_prototype = create_generator_prototype(&agent);
 
         agent.intrinsics.promise_prototype = create_promise_prototype(&agent);
         agent.intrinsics.promise = create_promise(&agent);
@@ -559,26 +562,19 @@ test!(
 test!(
     test_for_loop,
     r#"
-    const iterable = {
-      [:iterator]: () => {
-        let i = 0;
-        return {
-          next() {
-            i += 1;
-            if i > 10 {
-              return { done: true };
-            }
-            return { done: false, value: i };
-          }
-        };
-      },
-    };
+    gen function numbers() {
+      let i = 0;
+      while i < 10 {
+        yield i;
+        i += 1;
+      }
+    }
 
     let i = 0;
-    for item in iterable {
+    for item in numbers() {
       i += item;
     }
     i;
     "#,
-    Ok(Value::Number(55.into()))
+    Ok(Value::Number(45.into()))
 );
