@@ -140,6 +140,7 @@ impl<T: Trace + ?Sized> Gc<T> {
     /// let x_ptr = Gc::into_raw(x);
     /// assert_eq!(unsafe { *x_ptr }, 22);
     /// ```
+    #[allow(clippy::wrong_self_convention)]
     pub fn into_raw(this: Self) -> *const T {
         let ptr: *const T = &*this;
         mem::forget(this);
@@ -279,11 +280,6 @@ impl<T: Trace + ?Sized + PartialEq> PartialEq for Gc<T> {
     #[inline(always)]
     fn eq(&self, other: &Self) -> bool {
         **self == **other
-    }
-
-    #[inline(always)]
-    fn ne(&self, other: &Self) -> bool {
-        **self != **other
     }
 }
 
@@ -652,11 +648,6 @@ impl<T: Trace + ?Sized + PartialEq> PartialEq for GcCell<T> {
     #[inline(always)]
     fn eq(&self, other: &Self) -> bool {
         *self.borrow() == *other.borrow()
-    }
-
-    #[inline(always)]
-    fn ne(&self, other: &Self) -> bool {
-        *self.borrow() != *other.borrow()
     }
 }
 

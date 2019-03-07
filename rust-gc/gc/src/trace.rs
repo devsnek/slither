@@ -270,7 +270,7 @@ unsafe impl<T: Trace, E: Trace> Trace for Result<T, E> {
 impl<T: Ord + Trace> Finalize for BinaryHeap<T> {}
 unsafe impl<T: Ord + Trace> Trace for BinaryHeap<T> {
     custom_trace!(this, {
-        for v in this.into_iter() {
+        for v in this.iter() {
             mark(v);
         }
     });
@@ -295,8 +295,8 @@ unsafe impl<T: Trace> Trace for BTreeSet<T> {
     });
 }
 
-impl<K: Eq + Hash + Trace, V: Trace> Finalize for HashMap<K, V> {}
-unsafe impl<K: Eq + Hash + Trace, V: Trace> Trace for HashMap<K, V> {
+impl<K: Eq + Hash + Trace, V: Trace, S: std::hash::BuildHasher> Finalize for HashMap<K, V, S> {}
+unsafe impl<K: Eq + Hash + Trace, V: Trace, S: std::hash::BuildHasher> Trace for HashMap<K, V, S> {
     custom_trace!(this, {
         for (k, v) in this.iter() {
             mark(k);
@@ -305,8 +305,8 @@ unsafe impl<K: Eq + Hash + Trace, V: Trace> Trace for HashMap<K, V> {
     });
 }
 
-impl<T: Eq + Hash + Trace> Finalize for HashSet<T> {}
-unsafe impl<T: Eq + Hash + Trace> Trace for HashSet<T> {
+impl<T: Eq + Hash + Trace, S: std::hash::BuildHasher> Finalize for HashSet<T, S> {}
+unsafe impl<T: Eq + Hash + Trace, S: std::hash::BuildHasher> Trace for HashSet<T, S> {
     custom_trace!(this, {
         for v in this.iter() {
             mark(v);
