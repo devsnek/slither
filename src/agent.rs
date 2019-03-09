@@ -1,8 +1,8 @@
 use crate::intrinsics::{
-    create_array_prototype, create_boolean_prototype, create_function_prototype,
-    create_generator_prototype, create_iterator_prototype, create_number_prototype,
-    create_object_prototype, create_promise, create_promise_prototype, create_regex_prototype,
-    create_string_prototype, create_symbol, create_symbol_prototype,
+    create_array_prototype, create_async_iterator_prototype, create_boolean_prototype,
+    create_function_prototype, create_generator_prototype, create_iterator_prototype,
+    create_number_prototype, create_object_prototype, create_promise, create_promise_prototype,
+    create_regex_prototype, create_string_prototype, create_symbol, create_symbol_prototype,
 };
 use crate::parser::{Node, Parser};
 use crate::value::{new_error, Value};
@@ -258,6 +258,7 @@ pub struct Intrinsics {
     pub regex_prototype: Value,
     pub iterator_prototype: Value,
     pub generator_prototype: Value,
+    pub async_iterator_prototype: Value,
 }
 
 #[derive(Debug)]
@@ -314,6 +315,7 @@ impl Agent {
                 regex_prototype: Value::Null,
                 iterator_prototype: Value::Null,
                 generator_prototype: Value::Null,
+                async_iterator_prototype: Value::Null,
             },
             well_known_symbols: RefCell::new(HashMap::new()),
             builtins: HashMap::new(),
@@ -333,6 +335,7 @@ impl Agent {
         agent.intrinsics.regex_prototype = create_regex_prototype(&agent);
         agent.intrinsics.symbol = create_symbol(&agent);
         agent.intrinsics.iterator_prototype = create_iterator_prototype(&agent);
+        agent.intrinsics.async_iterator_prototype = create_async_iterator_prototype(&agent);
         agent.intrinsics.generator_prototype = create_generator_prototype(&agent);
 
         agent.intrinsics.promise_prototype = create_promise_prototype(&agent);
@@ -398,23 +401,21 @@ impl Agent {
     pub fn run_jobs(&self) {
         let mut events = mio::Events::with_capacity(128);
         loop {
-            {
-                self.mio
-                    .poll(&mut events, Some(std::time::Duration::from_millis(0)))
-                    .expect("mio poll failed");
-                for event in events.iter() {
-                    let data = self
-                        .mio_map
-                        .borrow_mut()
-                        .remove(&event.token())
-                        .expect("mio_map did not have event");
-                    match data {
-                        MioMapType::Timer(_r, callback) => {
-                            self.enqueue_job(call_timer_job, vec![callback]);
-                        }
-                        MioMapType::FS(_r, promise) => {
-                            crate::builtins::fs::handle(self, event.token(), promise);
-                        }
+            self.mio
+                .poll(&mut events, Some(std::time::Duration::from_millis(0)))
+                .expect("mio poll failed");
+            for event in events.iter() {
+                let entry = self
+                    .mio_map
+                    .borrow_mut()
+                    .remove(&event.token())
+                    .expect("mio map was missing entry for event");
+                match entry {
+                    MioMapType::Timer(_, callback) => {
+                        self.enqueue_job(call_timer_job, vec![callback]);
+                    }
+                    MioMapType::FS(_, promise) => {
+                        crate::builtins::fs::handle(self, event.token(), promise);
                     }
                 }
             }

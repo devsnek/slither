@@ -109,7 +109,7 @@ pub enum Node {
     IfStatement(Box<Node>, Box<Node>), // test, consequent
     IfElseStatement(Box<Node>, Box<Node>, Box<Node>), // test, consequent, alternative
     WhileStatement(Box<Node>, Box<Node>), // test, body
-    ForStatement(String, Box<Node>, Box<Node>), // binding, target, body
+    ForStatement(bool, String, Box<Node>, Box<Node>), // async, binding, target, body
     BreakStatement,
     ContinueStatement,
     TryStatement(
@@ -722,11 +722,13 @@ impl<'a> Parser<'a> {
             }
             Some(Token::For) => {
                 self.lexer.next();
+                let asyn = self.eat(Token::Await);
                 let binding = self.parse_identifier(false)?;
                 self.expect(Token::In)?;
                 let target = self.parse_assignment_expression()?;
                 let body = self.parse_block_statement(ParseScope::Loop)?;
                 Ok(Node::ForStatement(
+                    asyn,
                     binding,
                     Box::new(target),
                     Box::new(body),

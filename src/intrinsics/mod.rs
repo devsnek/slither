@@ -1,4 +1,5 @@
 mod array_prototype;
+mod async_iterator_prototype;
 mod boolean_prototype;
 mod function_prototype;
 mod generator_prototype;
@@ -13,6 +14,7 @@ mod symbol;
 mod symbol_prototype;
 
 pub use array_prototype::create_array_prototype;
+pub use async_iterator_prototype::create_async_iterator_prototype;
 pub use boolean_prototype::create_boolean_prototype;
 pub use function_prototype::create_function_prototype;
 pub use generator_prototype::create_generator_prototype;

@@ -56,7 +56,10 @@ pub enum Op {
     Yield,
     YieldWithOperand,
     GetIterator,
+    GetAsyncIterator,
     IteratorNext,
+    AsyncIteratorNext,
+    AsyncIteratorNextContinue,
     Add,
     Sub,
     UnarySub,
@@ -276,8 +279,8 @@ fn compile(agent: &mut Agent, node: &Node) -> Result<(), Error> {
             compile_if_statement(agent, test, consequent, Some(alternative))
         }
         Node::WhileStatement(test, body) => compile_while_statement(agent, test, body),
-        Node::ForStatement(binding, target, body) => {
-            compile_for_statement(agent, binding, target, body)
+        Node::ForStatement(asyn, binding, target, body) => {
+            compile_for_statement(*asyn, agent, binding, target, body)
         }
         Node::BreakStatement => {
             push_op(agent, Op::Break);
@@ -623,6 +626,7 @@ fn compile_while_statement(agent: &mut Agent, test: &Node, body: &Node) -> Resul
 }
 
 fn compile_for_statement(
+    asyn: bool,
     agent: &mut Agent,
     binding: &str,
     target: &Node,
@@ -633,30 +637,49 @@ fn compile_for_statement(
     label!(real_end);
 
     /*
-    for BINDING in TARGET { BODY }
+    for (await) BINDING in TARGET { BODY }
     @=>
     iterator = GetIterator(TARGET)
     loop {
-      { done, value } = IteratorNext(iterator)
+      <head>
+      { done, value } = (await) IteratorNext(iterator)
       if done {
         break
       }
       BINDING = value
 
       BODY
+
+      <end>
     }
+    <real_end>
     */
 
     push_op(agent, Op::PushLoop);
     jump!(agent, real_end); // break location, not actually evaluated
 
     compile(agent, target)?; // stack is [target]
-    push_op(agent, Op::GetIterator); // stack is [iterator]
+    push_op(
+        agent,
+        if asyn {
+            Op::GetAsyncIterator
+        } else {
+            Op::GetIterator
+        },
+    );
+    // consumes target, stack is [iterator]
 
     mark!(agent, head);
-    push_op(agent, Op::IteratorNext);
-    // IteratorNext jumps if done is false
+    if asyn {
+        push_op(agent, Op::AsyncIteratorNext); // performs await
+        push_op(agent, Op::AsyncIteratorNextContinue);
+    // AsyncIteratorNextContinue jumps if done is true
     // stack is [iterator, value]
+    } else {
+        push_op(agent, Op::IteratorNext);
+        // IteratorNext jumps if done is true
+        // stack is [iterator, value]
+    }
 
     push_op(agent, Op::PushScope);
     create_lexical_declaration(agent, binding, false)?;

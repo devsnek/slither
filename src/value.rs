@@ -9,48 +9,6 @@ use rust_decimal::Decimal;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-macro_rules! custom_trace {
-    ($this:ident, $body:expr) => {
-        #[inline]
-        unsafe fn trace(&self) {
-            #[inline]
-            unsafe fn mark<T: gc::Trace>(it: &T) {
-                gc::Trace::trace(it);
-            }
-            let $this = self;
-            $body
-        }
-        #[inline]
-        unsafe fn root(&self) {
-            #[inline]
-            unsafe fn mark<T: gc::Trace>(it: &T) {
-                gc::Trace::root(it);
-            }
-            let $this = self;
-            $body
-        }
-        #[inline]
-        unsafe fn unroot(&self) {
-            #[inline]
-            unsafe fn mark<T: gc::Trace>(it: &T) {
-                gc::Trace::unroot(it);
-            }
-            let $this = self;
-            $body
-        }
-        #[inline]
-        fn finalize_glue(&self) {
-            gc::Finalize::finalize(self);
-            #[inline]
-            fn mark<T: gc::Trace>(it: &T) {
-                gc::Trace::finalize_glue(it);
-            }
-            let $this = self;
-            $body
-        }
-    }
-}
-
 type BuiltinFunction = fn(&Agent, &ExecutionContext, Vec<Value>) -> Result<Value, Value>;
 
 #[derive(Finalize)]
@@ -785,6 +743,18 @@ pub fn new_error(message: &str) -> Value {
     }))
 }
 
+impl From<std::net::AddrParseError> for Value {
+    fn from(e: std::net::AddrParseError) -> Self {
+        new_error(&format!("{}", e))
+    }
+}
+
+impl From<std::io::Error> for Value {
+    fn from(e: std::io::Error) -> Self {
+        new_error(&format!("{}", e))
+    }
+}
+
 pub fn new_custom_object(proto: Value) -> Value {
     Value::Object(Gc::new(ObjectInfo {
         kind: ObjectKind::Custom(Gc::new(GcCell::new(HashMap::new()))),
@@ -858,4 +828,14 @@ pub fn new_regex_object(agent: &Agent, r: &str) -> Result<Value, Value> {
         properties: GcCell::new(IndexMap::new()),
         prototype: agent.intrinsics.regex_prototype.clone(),
     })))
+}
+
+pub fn new_iter_result(agent: &Agent, value: Value, done: bool) -> Result<Value, Value> {
+    let o = new_object(agent.intrinsics.object_prototype.clone());
+    o.set(&ObjectKey::from("value"), value)?;
+    o.set(
+        &ObjectKey::from("done"),
+        if done { Value::True } else { Value::False },
+    )?;
+    Ok(o)
 }

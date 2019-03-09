@@ -682,10 +682,15 @@ fn evaluate_at(
                 let value = handle!(get_value(stack));
                 return Err(SuspendValue(value));
             }
-            Op::GetIterator => {
+            Op::GetIterator | Op::GetAsyncIterator => {
                 // println!("GetIterator");
                 let target = handle!(get_value(stack));
-                let sym = handle!(agent.well_known_symbol("iterator").to_object_key());
+                let sym = handle!(if op == Op::GetAsyncIterator {
+                    agent.well_known_symbol("asyncIterator")
+                } else {
+                    agent.well_known_symbol("iterator")
+                }
+                .to_object_key());
                 let iterator = handle!(target.get(&sym));
                 let iterator = handle!(iterator.call(agent, target, vec![]));
                 let next = handle!(iterator.get(&ObjectKey::from("next")));
@@ -706,6 +711,25 @@ fn evaluate_at(
                     }
                 } else {
                     unreachable!()
+                }
+            }
+            Op::AsyncIteratorNext => {
+                let iterator = handle!(get_value_no_consume(stack));
+                if let Value::Iterator(iterator, next) = iterator {
+                    let promise = handle!(next.call(agent, *iterator, vec![]));
+                    return Err(SuspendValue(promise)); // await promise
+                } else {
+                    unreachable!()
+                }
+            }
+            Op::AsyncIteratorNextContinue => {
+                let result = handle!(get_value(stack)); // result from promise above
+                let done = handle!(result.get(&ObjectKey::from("done")));
+                if done == Value::True {
+                    *pc = loop_stack.pop().unwrap().r#break;
+                } else {
+                    let value = handle!(result.get(&ObjectKey::from("value")));
+                    stack.push(value);
                 }
             }
             Op::Eq => {
