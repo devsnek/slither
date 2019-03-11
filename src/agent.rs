@@ -1,8 +1,9 @@
 use crate::intrinsics::{
     create_array_prototype, create_async_iterator_prototype, create_boolean_prototype,
     create_function_prototype, create_generator_prototype, create_iterator_prototype,
-    create_number_prototype, create_object_prototype, create_promise, create_promise_prototype,
-    create_regex_prototype, create_string_prototype, create_symbol, create_symbol_prototype,
+    create_net_client_prototype, create_number_prototype, create_object_prototype, create_promise,
+    create_promise_prototype, create_regex_prototype, create_string_prototype, create_symbol,
+    create_symbol_prototype,
 };
 use crate::parser::{Node, Parser};
 use crate::value::{new_error, Value};
@@ -259,12 +260,14 @@ pub struct Intrinsics {
     pub iterator_prototype: Value,
     pub generator_prototype: Value,
     pub async_iterator_prototype: Value,
+    pub net_client_prototype: Value,
 }
 
 #[derive(Debug)]
 pub enum MioMapType {
     Timer(mio::Registration, Value),
     FS(mio::Registration, Value),
+    Net(crate::builtins::net::Net),
 }
 
 fn call_timer_job(agent: &Agent, args: Vec<Value>) -> Result<(), Value> {
@@ -316,6 +319,7 @@ impl Agent {
                 iterator_prototype: Value::Null,
                 generator_prototype: Value::Null,
                 async_iterator_prototype: Value::Null,
+                net_client_prototype: Value::Null,
             },
             well_known_symbols: RefCell::new(HashMap::new()),
             builtins: HashMap::new(),
@@ -340,6 +344,8 @@ impl Agent {
 
         agent.intrinsics.promise_prototype = create_promise_prototype(&agent);
         agent.intrinsics.promise = create_promise(&agent);
+
+        agent.intrinsics.net_client_prototype = create_net_client_prototype(&agent);
 
         {
             let mut env = agent.root_env.borrow_mut();
@@ -416,6 +422,9 @@ impl Agent {
                     }
                     MioMapType::FS(_, promise) => {
                         crate::builtins::fs::handle(self, event.token(), promise);
+                    }
+                    MioMapType::Net(n) => {
+                        crate::builtins::net::handle(self, event.token(), n);
                     }
                 }
             }

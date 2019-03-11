@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 mod debug;
 pub mod fs;
+pub mod net;
 mod timers;
 
 pub fn create(agent: &Agent) -> HashMap<String, HashMap<String, Value>> {
@@ -12,6 +13,7 @@ pub fn create(agent: &Agent) -> HashMap<String, HashMap<String, Value>> {
     builtins.insert("debug".to_string(), debug::create(agent));
     builtins.insert("timers".to_string(), timers::create(agent));
     builtins.insert("fs".to_string(), fs::create(agent));
+    builtins.insert("net".to_string(), net::create(agent));
 
     builtins
 }
