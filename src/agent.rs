@@ -361,22 +361,45 @@ impl Agent {
         agent
     }
 
-    fn load(&mut self, specifier: &str, referrer: &str) -> Result<Module, Value> {
+    fn resolve(&self, specifier: &str, referrer: &str) -> std::io::Result<String> {
         let filename = std::path::Path::new(referrer)
             .parent()
             .unwrap()
-            .join(specifier);
-        let filename = filename.to_str().unwrap();
-        if !self.modules.borrow().contains_key(filename) {
-            let source = std::fs::read_to_string(filename).expect("no such file");
-            let module = Gc::new(GcCell::new(ModuleX::new(filename, source.as_str(), self)?));
+            .join(specifier)
+            .to_str()
+            .unwrap()
+            .to_string();
+        match std::fs::metadata(&filename) {
+            Ok(ref r) if r.is_file() => Ok(filename),
+            Ok(_) => {
+                let r = filename + "/module.sl";
+                match std::fs::metadata(&r) {
+                    Ok(_) => Ok(r),
+                    Err(e) => Err(e),
+                }
+            }
+            Err(_) => {
+                let r = filename + ".sl";
+                match std::fs::metadata(&r) {
+                    Ok(_) => Ok(r),
+                    Err(e) => Err(e),
+                }
+            }
+        }
+    }
+
+    fn load(&mut self, specifier: &str, referrer: &str) -> Result<Module, Value> {
+        let filename = self.resolve(specifier, referrer).unwrap();
+        if !self.modules.borrow().contains_key(&filename) {
+            let source = std::fs::read_to_string(&filename).expect("no such file");
+            let module = Gc::new(GcCell::new(ModuleX::new(filename.as_str(), source.as_str(), self)?));
             self.modules
                 .borrow_mut()
                 .insert(filename.to_string(), module.clone());
             Ok(module)
         } else {
             let map = self.modules.borrow();
-            let module = map.get(filename).unwrap().clone();
+            let module = map.get(&filename).unwrap().clone();
             Ok(module)
         }
     }
