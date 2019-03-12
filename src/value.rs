@@ -4,6 +4,7 @@ use crate::parser::FunctionKind;
 use crate::vm::{Evaluator, ExecutionContext, LexicalEnvironment};
 use gc::{Gc, GcCell};
 use indexmap::IndexMap;
+use num::ToPrimitive;
 use regex::Regex;
 use rust_decimal::Decimal;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -19,6 +20,7 @@ pub enum ObjectKind {
     String(String),
     Number(Decimal),
     Regex(Regex),
+    Buffer(GcCell<Vec<u8>>),
     Custom(Gc<GcCell<HashMap<String, Value>>>), // internal slots
     CompiledFunction {
         params: u8,
@@ -40,6 +42,7 @@ impl std::fmt::Debug for ObjectKind {
             ObjectKind::Number(i) => format!("Number({})", i),
             ObjectKind::Regex(r) => format!("Regex({})", r),
             ObjectKind::Custom(..) => "Custom".to_string(),
+            ObjectKind::Buffer(..) => "Buffer".to_string(),
             ObjectKind::CompiledFunction { index, .. } => format!("CompiledFunction @ {}", index),
             ObjectKind::BuiltinFunction(f, ..) => format!("BuiltinFunction @ {:p}", f),
         };
@@ -68,6 +71,22 @@ pub struct ObjectInfo {
 
 impl ObjectInfo {
     pub fn get(&self, property: ObjectKey) -> Result<Value, Value> {
+        if let ObjectKind::Buffer(b) = &self.kind {
+            // TODO: get rid of branch overhead
+            match &property {
+                ObjectKey::Number(n) => {
+                    let v = *b.borrow().get(*n).unwrap_or(&0);
+                    return Ok(Value::Number(v.into()));
+                }
+                ObjectKey::String(s) => {
+                    if let Ok(n) = s.parse::<usize>() {
+                        let v = *b.borrow().get(n).unwrap_or(&0);
+                        return Ok(Value::Number(v.into()));
+                    }
+                }
+                _ => {}
+            }
+        }
         match self.properties.borrow().get(&property) {
             Some(v) => Ok(v.clone()),
             _ => {
@@ -123,6 +142,23 @@ impl ObjectInfo {
                 }
             }
             _ => {
+                if let ObjectKind::Buffer(b) = &self.kind {
+                    if let Value::Number(v) = value {
+                        match &property {
+                            ObjectKey::Number(n) => {
+                                b.borrow_mut()[*n] = v.to_u8().unwrap();
+                                return Ok(value);
+                            }
+                            ObjectKey::String(s) => {
+                                if let Ok(n) = s.parse::<usize>() {
+                                    b.borrow_mut()[n] = v.to_u8().unwrap();
+                                    return Ok(value);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
                 let mut own = false;
                 if let ObjectKey::Symbol(Symbol(_, true, _)) = property {
                     own = true;
@@ -172,15 +208,57 @@ impl Symbol {
     }
 }
 
-#[derive(Trace, Finalize, Hash, Debug, PartialEq, Eq, Clone)]
+#[derive(Trace, Finalize, Debug, Eq, Clone)]
 pub enum ObjectKey {
+    Number(usize),
     String(String),
     Symbol(Symbol),
+}
+
+impl PartialEq for ObjectKey {
+    fn eq(&self, other: &Self) -> bool {
+        match self {
+            ObjectKey::Number(n) => match other {
+                ObjectKey::Number(nv) => n == nv,
+                ObjectKey::String(s) => &n.to_string() == s,
+                ObjectKey::Symbol(..) => false,
+            },
+            ObjectKey::String(s) => match other {
+                ObjectKey::String(sv) => s == sv,
+                ObjectKey::Number(n) => &n.to_string() == s,
+                ObjectKey::Symbol(..) => false,
+            },
+            ObjectKey::Symbol(s) => match other {
+                ObjectKey::Symbol(sv) => s == sv,
+                _ => false,
+            },
+        }
+    }
+}
+
+impl std::hash::Hash for ObjectKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            ObjectKey::Number(n) => {
+                0.hash(state);
+                n.to_string().hash(state);
+            }
+            ObjectKey::String(s) => {
+                1.hash(state);
+                s.hash(state);
+            }
+            ObjectKey::Symbol(s) => {
+                2.hash(state);
+                s.hash(state);
+            }
+        }
+    }
 }
 
 impl std::fmt::Display for ObjectKey {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
+            ObjectKey::Number(n) => write!(fmt, "{}", n),
             ObjectKey::String(s) => write!(fmt, "{}", s),
             ObjectKey::Symbol(Symbol(_, _, d)) => {
                 if let Some(s) = d {
@@ -207,25 +285,33 @@ impl From<&str> for ObjectKey {
 
 impl From<u32> for ObjectKey {
     fn from(n: u32) -> Self {
-        ObjectKey::String(n.to_string())
+        ObjectKey::Number(n as usize)
     }
 }
 
 impl From<i32> for ObjectKey {
     fn from(n: i32) -> Self {
-        ObjectKey::String(n.to_string())
+        if n >= 0 {
+            ObjectKey::Number(n as usize)
+        } else {
+            ObjectKey::String(n.to_string())
+        }
     }
 }
 
 impl From<usize> for ObjectKey {
     fn from(n: usize) -> Self {
-        ObjectKey::String(n.to_string())
+        ObjectKey::Number(n)
     }
 }
 
 impl From<Decimal> for ObjectKey {
     fn from(n: Decimal) -> Self {
-        ObjectKey::String(n.to_string())
+        if n >= 0.into() && n < std::usize::MAX.into() {
+            ObjectKey::Number(n.to_usize().unwrap())
+        } else {
+            ObjectKey::String(n.to_string())
+        }
     }
 }
 
@@ -303,8 +389,8 @@ impl Value {
     pub fn to_object_key(&self) -> Result<ObjectKey, Value> {
         match self {
             Value::Symbol(s) => Ok(ObjectKey::Symbol(s.clone())),
-            Value::String(s) => Ok(ObjectKey::String(s.clone())),
-            Value::Number(n) => Ok(ObjectKey::String(n.to_string())),
+            Value::String(s) => Ok(ObjectKey::from(s.to_string())),
+            Value::Number(n) => Ok(ObjectKey::from(*n)),
             _ => Err(Value::new_error("cannot convert to object key")),
         }
     }
@@ -830,6 +916,14 @@ impl Value {
             properties: GcCell::new(IndexMap::new()),
             prototype: agent.intrinsics.regex_prototype.clone(),
         })))
+    }
+
+    pub fn new_buffer_from_vec(agent: &Agent, vec: Vec<u8>) -> Value {
+        Value::Object(Gc::new(ObjectInfo {
+            kind: ObjectKind::Buffer(GcCell::new(vec)),
+            properties: GcCell::new(IndexMap::new()),
+            prototype: agent.intrinsics.array_prototype.clone(),
+        }))
     }
 
     pub fn new_iter_result(agent: &Agent, value: Value, done: bool) -> Result<Value, Value> {

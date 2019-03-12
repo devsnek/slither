@@ -1,6 +1,6 @@
 use crate::agent::{Agent, MioMapType};
 use crate::intrinsics::net_client_prototype::{get_or_create_reject, get_or_create_resolve};
-use crate::value::{ObjectKey, Value};
+use crate::value::Value;
 use crate::vm::ExecutionContext;
 use mio::{net::TcpStream, PollOpt, Ready, Token};
 use std::collections::HashMap;
@@ -21,49 +21,37 @@ unsafe impl gc::Trace for Net {
 
 pub fn handle(agent: &Agent, token: Token, net: Net) {
     match net {
-        Net::Client(mut stream, client) => {
-            match stream.take_error() {
-                Ok(Some(e)) | Err(e) => {
-                    let e = Value::new_error(&format!("{}", e));
-                    get_or_create_reject(agent, client, e);
-                }
-                Ok(None) => {
-                    let mut buf = Vec::new();
-                    match stream.read_to_end(&mut buf) {
-                        Ok(size) if size == 0 => {
-                            get_or_create_resolve(agent, client, Value::Null, true);
-                            return;
-                        }
-                        Ok(_) => {
-                            // TODO: buffer type of some sort
-                            let r = Value::new_array(agent);
-                            for (i, v) in buf.iter().enumerate() {
-                                r.set(&ObjectKey::from(i), Value::Number((*v).into()))
-                                    .unwrap();
-                            }
-                            get_or_create_resolve(agent, client.clone(), r, false);
-                        }
-                        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                            // TODO: buffer type of some sort
-                            let r = Value::new_array(agent);
-                            for (i, v) in buf.iter().enumerate() {
-                                r.set(&ObjectKey::from(i), Value::Number((*v).into()))
-                                    .unwrap();
-                            }
-                            get_or_create_resolve(agent, client.clone(), r, false);
-                        }
-                        Err(e) => {
-                            let e = Value::new_error(&format!("{}", e));
-                            get_or_create_reject(agent, client.clone(), e);
-                        }
-                    }
-                    agent
-                        .mio_map
-                        .borrow_mut()
-                        .insert(token, MioMapType::Net(Net::Client(stream, client)));
-                }
+        Net::Client(mut stream, client) => match stream.take_error() {
+            Ok(Some(e)) | Err(e) => {
+                let e = Value::new_error(&format!("{}", e));
+                get_or_create_reject(agent, client, e);
             }
-        }
+            Ok(None) => {
+                let mut buf = Vec::new();
+                match stream.read_to_end(&mut buf) {
+                    Ok(size) if size == 0 => {
+                        get_or_create_resolve(agent, client, Value::Null, true);
+                        return;
+                    }
+                    Ok(_) => {
+                        let r = Value::new_buffer_from_vec(agent, buf);
+                        get_or_create_resolve(agent, client.clone(), r, false);
+                    }
+                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        let r = Value::new_buffer_from_vec(agent, buf);
+                        get_or_create_resolve(agent, client.clone(), r, false);
+                    }
+                    Err(e) => {
+                        let e = Value::new_error(&format!("{}", e));
+                        get_or_create_reject(agent, client.clone(), e);
+                    }
+                }
+                agent
+                    .mio_map
+                    .borrow_mut()
+                    .insert(token, MioMapType::Net(Net::Client(stream, client)));
+            }
+        },
     }
 }
 
