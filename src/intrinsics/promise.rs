@@ -1,5 +1,5 @@
 use crate::agent::Agent;
-use crate::value::{new_builtin_function, new_custom_object, new_error, ObjectKey, Value};
+use crate::value::{ObjectKey, Value};
 use crate::vm::ExecutionContext;
 
 fn trigger_promise_reactions(
@@ -83,14 +83,14 @@ struct ResolvingFunctions {
 }
 
 fn create_resolving_functions(agent: &Agent, promise: &Value) -> ResolvingFunctions {
-    let already_resolved = new_custom_object(Value::Null);
+    let already_resolved = Value::new_custom_object(Value::Null);
     already_resolved.set_slot("resolved", Value::False);
 
-    let resolve = new_builtin_function(agent, promise_resolve_function);
+    let resolve = Value::new_builtin_function(agent, promise_resolve_function);
     resolve.set_slot("promise", promise.clone());
     resolve.set_slot("already resolved", already_resolved.clone());
 
-    let reject = new_builtin_function(agent, promise_reject_function);
+    let reject = Value::new_builtin_function(agent, promise_reject_function);
     reject.set_slot("promise", promise.clone());
     reject.set_slot("already resolved", already_resolved);
 
@@ -117,7 +117,7 @@ fn promise_resolve_function(
         reject_promise(
             agent,
             promise,
-            new_error("cannot resolve a promise with itself"),
+            Value::new_error("cannot resolve a promise with itself"),
         )
     } else if resolution.has_slot("promise state") {
         let ResolvingFunctions { resolve, reject } = create_resolving_functions(agent, &promise);
@@ -158,10 +158,10 @@ fn promise(agent: &Agent, _ctx: &ExecutionContext, args: Vec<Value>) -> Result<V
     let executor = args[0].clone();
 
     if executor.type_of() != "function" {
-        return Err(new_error("executor must be a function"));
+        return Err(Value::new_error("executor must be a function"));
     }
 
-    let promise = new_custom_object(agent.intrinsics.promise_prototype.clone());
+    let promise = Value::new_custom_object(agent.intrinsics.promise_prototype.clone());
     promise.set_slot("promise state", Value::from("pending"));
     promise.set_slot("fulfill reactions", Value::new_list());
     promise.set_slot("reject reactions", Value::new_list());
@@ -188,7 +188,7 @@ fn get_capabilities_executor(
     let reject = args.get(1).unwrap_or(&Value::Null).clone();
 
     if f.get_slot("resolve") != Value::Null || f.get_slot("reject") != Value::Null {
-        return Err(new_error("type error"));
+        return Err(Value::new_error("type error"));
     }
 
     f.set_slot("resolve", resolve);
@@ -198,7 +198,7 @@ fn get_capabilities_executor(
 }
 
 pub fn new_promise_capability(agent: &Agent, constructor: Value) -> Result<Value, Value> {
-    let executor = new_builtin_function(agent, get_capabilities_executor);
+    let executor = Value::new_builtin_function(agent, get_capabilities_executor);
     executor.set_slot("resolve", Value::Null);
     executor.set_slot("reject", Value::Null);
 
@@ -230,7 +230,7 @@ fn promise_resolve(
 ) -> Result<Value, Value> {
     let c = ctx.environment.borrow().this.clone().unwrap();
     if c.type_of() != "object" && c.type_of() != "function" {
-        return Err(new_error("this must be an object"));
+        return Err(Value::new_error("this must be an object"));
     }
     let x = args.get(0).unwrap_or(&Value::Null).clone();
     promise_resolve_i(agent, c, x)
@@ -240,7 +240,7 @@ fn promise_reject(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Re
     let x = args.get(0).unwrap_or(&Value::Null);
     let c = ctx.environment.borrow().this.clone().unwrap();
     if c.type_of() != "object" && c.type_of() != "function" {
-        return Err(new_error("this must be an object"));
+        return Err(Value::new_error("this must be an object"));
     }
     let capability = new_promise_capability(agent, c)?;
     capability
@@ -250,7 +250,7 @@ fn promise_reject(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Re
 }
 
 pub fn create_promise(agent: &Agent) -> Value {
-    let p = new_builtin_function(agent, promise);
+    let p = Value::new_builtin_function(agent, promise);
 
     p.set(
         &ObjectKey::from("prototype"),
@@ -259,12 +259,12 @@ pub fn create_promise(agent: &Agent) -> Value {
     .unwrap();
     p.set(
         &ObjectKey::from("resolve"),
-        new_builtin_function(agent, promise_resolve),
+        Value::new_builtin_function(agent, promise_resolve),
     )
     .unwrap();
     p.set(
         &ObjectKey::from("reject"),
-        new_builtin_function(agent, promise_reject),
+        Value::new_builtin_function(agent, promise_reject),
     )
     .unwrap();
     agent

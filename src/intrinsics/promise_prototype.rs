@@ -1,8 +1,6 @@
 use crate::agent::Agent;
 use crate::intrinsics::promise::{new_promise_capability, promise_reaction_job, promise_resolve_i};
-use crate::value::{
-    new_builtin_function, new_custom_object, new_error, new_object, ObjectKey, Value,
-};
+use crate::value::{ObjectKey, Value};
 use crate::vm::ExecutionContext;
 
 fn promise_proto_then(
@@ -26,12 +24,12 @@ fn promise_proto_then(
         on_rejected = Value::Null;
     }
 
-    let fulfill_reaction = new_custom_object(Value::Null);
+    let fulfill_reaction = Value::new_custom_object(Value::Null);
     fulfill_reaction.set_slot("kind", Value::from("resolve"));
     fulfill_reaction.set_slot("promise", promise.clone());
     fulfill_reaction.set_slot("handler", on_fulfilled);
 
-    let reject_reaction = new_custom_object(Value::Null);
+    let reject_reaction = Value::new_custom_object(Value::Null);
     reject_reaction.set_slot("kind", Value::from("reject"));
     reject_reaction.set_slot("promise", promise.clone());
     reject_reaction.set_slot("handler", on_rejected);
@@ -100,7 +98,7 @@ fn then_finally_function(
     let c = f.get_slot("constructor");
     let promise = promise_resolve_i(agent, c, result)?;
     let value = args.get(0).unwrap_or(&Value::Null).clone();
-    let value_thunk = new_builtin_function(agent, value_thunk);
+    let value_thunk = Value::new_builtin_function(agent, value_thunk);
     value_thunk.set_slot("value", value);
     promise
         .get(&ObjectKey::from("then"))?
@@ -118,7 +116,7 @@ fn catch_finally_function(
     let c = f.get_slot("constructor");
     let promise = promise_resolve_i(agent, c, result)?;
     let value = args.get(0).unwrap_or(&Value::Null).clone();
-    let thrower = new_builtin_function(agent, value_thrower);
+    let thrower = Value::new_builtin_function(agent, value_thrower);
     thrower.set_slot("value", value);
     promise
         .get(&ObjectKey::from("then"))?
@@ -132,21 +130,21 @@ fn promise_proto_finally(
 ) -> Result<Value, Value> {
     let promise = ctx.environment.borrow().this.clone().unwrap();
     if promise.type_of() != "object" && promise.type_of() != "function" {
-        return Err(new_error("invalid this"));
+        return Err(Value::new_error("invalid this"));
     }
 
     let c = promise.get(&ObjectKey::from("constructor"))?;
     if c.type_of() != "object" && c.type_of() != "function" {
-        return Err(new_error("this does not derive a valid constructor"));
+        return Err(Value::new_error("this does not derive a valid constructor"));
     }
 
     let on_finally = args.get(0).unwrap_or(&Value::Null).clone();
 
     let (then_finally, catch_finally) = if on_finally.type_of() == "function" {
-        let then_finally = new_builtin_function(agent, then_finally_function);
+        let then_finally = Value::new_builtin_function(agent, then_finally_function);
         then_finally.set_slot("constructor", c.clone());
         then_finally.set_slot("on finally", on_finally.clone());
-        let catch_finally = new_builtin_function(agent, catch_finally_function);
+        let catch_finally = Value::new_builtin_function(agent, catch_finally_function);
         catch_finally.set_slot("constructor", c);
         catch_finally.set_slot("on finally", on_finally);
         (then_finally, catch_finally)
@@ -160,21 +158,21 @@ fn promise_proto_finally(
 }
 
 pub fn create_promise_prototype(agent: &Agent) -> Value {
-    let p = new_object(agent.intrinsics.object_prototype.clone());
+    let p = Value::new_object(agent.intrinsics.object_prototype.clone());
 
     p.set(
         &ObjectKey::from("then"),
-        new_builtin_function(agent, promise_proto_then),
+        Value::new_builtin_function(agent, promise_proto_then),
     )
     .expect("unable to set then on promise prototype");
     p.set(
         &ObjectKey::from("catch"),
-        new_builtin_function(agent, promise_proto_catch),
+        Value::new_builtin_function(agent, promise_proto_catch),
     )
     .expect("unable to set catch on promise prototype");
     p.set(
         &ObjectKey::from("finally"),
-        new_builtin_function(agent, promise_proto_finally),
+        Value::new_builtin_function(agent, promise_proto_finally),
     )
     .expect("unable to set finally on promise prototype");
 

@@ -1,9 +1,6 @@
 use crate::agent::{Agent, Module};
 use crate::parser::FunctionKind;
-use crate::value::{
-    new_array, new_compiled_function, new_error, new_object, new_regex_object, ObjectKey,
-    ObjectKind, Value,
-};
+use crate::value::{ObjectKey, ObjectKind, Value};
 use crate::vm::Op;
 use byteorder::{LittleEndian, ReadBytesExt};
 use gc::{Gc, GcCell};
@@ -39,7 +36,7 @@ impl LexicalEnvironment {
         match self.this {
             Some(ref t) => Ok(t.clone()),
             None => match &self.parent {
-                None => Err(new_error("invalid this")),
+                None => Err(Value::new_error("invalid this")),
                 Some(p) => p.borrow().get_this(),
             },
         }
@@ -53,9 +50,10 @@ impl LexicalEnvironment {
         module: Option<Module>,
     ) -> Result<(), Value> {
         match self.bindings.get(name) {
-            Some(binding) if !binding.exported => {
-                Err(new_error(&format!("binding {} already declared", name)))
-            }
+            Some(binding) if !binding.exported => Err(Value::new_error(&format!(
+                "binding {} already declared",
+                name
+            ))),
             _ => {
                 self.bindings.insert(
                     name.to_string(),
@@ -103,11 +101,11 @@ impl LexicalEnvironment {
         match self.bindings.get_mut(name) {
             Some(b) => {
                 if b.module.is_some() {
-                    Err(new_error("cannot reassign constant binding"))
+                    Err(Value::new_error("cannot reassign constant binding"))
                 } else if b.value.is_none() {
-                    Err(new_error(&format!("reference error: {}", name)))
+                    Err(Value::new_error(&format!("reference error: {}", name)))
                 } else if !b.mutable {
-                    Err(new_error("cannot reassign constant binding"))
+                    Err(Value::new_error("cannot reassign constant binding"))
                 } else {
                     b.value = Some(value);
                     Ok(())
@@ -115,7 +113,7 @@ impl LexicalEnvironment {
             }
             _ => match &self.parent {
                 Some(p) => p.borrow_mut().set(name, value),
-                _ => Err(new_error(&format!("reference error: {}", name))),
+                _ => Err(Value::new_error(&format!("reference error: {}", name))),
             },
         }
     }
@@ -132,11 +130,11 @@ impl LexicalEnvironment {
             }
             Some(Binding { value: Some(v), .. }) => Ok((*v).clone()),
             Some(Binding { value: None, .. }) => {
-                Err(new_error(&format!("reference error: {}", name)))
+                Err(Value::new_error(&format!("reference error: {}", name)))
             }
             _ => match &self.parent {
                 Some(p) => p.borrow().get(name),
-                None => Err(new_error(&format!("reference error: {}", name))),
+                None => Err(Value::new_error(&format!("reference error: {}", name))),
             },
         }
     }
@@ -256,10 +254,10 @@ fn evaluate_at(
                 if let Value::Number(rnum) = right {
                     stack.push(Value::Number($op(lnum, rnum)));
                 } else {
-                    handle!(Err(new_error("rval must be a number")))
+                    handle!(Err(Value::new_error("rval must be a number")))
                 }
             } else {
-                handle!(Err(new_error("lval must be a umber")))
+                handle!(Err(Value::new_error("lval must be a umber")))
             }
         }};
     }
@@ -276,10 +274,10 @@ fn evaluate_at(
                         Value::False
                     });
                 } else {
-                    handle!(Err(new_error("rval must be a number")))
+                    handle!(Err(Value::new_error("rval must be a number")))
                 }
             } else {
-                handle!(Err(new_error("lval must be a umber")))
+                handle!(Err(Value::new_error("lval must be a umber")))
             }
         }};
     }
@@ -346,7 +344,7 @@ fn evaluate_at(
             Op::NewRegex => {
                 let id = get_i32(pc) as usize;
                 let str = &agent.string_table[id];
-                let reg = handle!(new_regex_object(agent, str));
+                let reg = handle!(Value::new_regex_object(agent, str));
                 stack.push(reg);
             }
             Op::NewFunction => {
@@ -359,7 +357,8 @@ fn evaluate_at(
                     None => None,
                 });
                 // println!("NewFunction {:?}", env);
-                let value = new_compiled_function(agent, argc, index, inherits_this, kind, env);
+                let value =
+                    Value::new_compiled_function(agent, argc, index, inherits_this, kind, env);
                 stack.push(value);
             }
             Op::ProcessTemplateLiteral => {
@@ -379,7 +378,9 @@ fn evaluate_at(
                         if let Value::String(part) = handle!(to_string.call(agent, value, vec![])) {
                             part
                         } else {
-                            handle!(Err(new_error("cannot convert template part to string")));
+                            handle!(Err(Value::new_error(
+                                "cannot convert template part to string"
+                            )));
                             unreachable!();
                         }
                     };
@@ -388,7 +389,7 @@ fn evaluate_at(
                 stack.push(Value::String(end));
             }
             Op::NewObject => {
-                let obj = new_object(Value::Null);
+                let obj = Value::new_object(Value::Null);
                 let inits = get_i32(pc);
                 // TODO: keys are inserted in wrong order due to stack
                 for _ in 0..inits {
@@ -401,7 +402,7 @@ fn evaluate_at(
             }
             Op::NewArray => {
                 let len = get_i32(pc);
-                let a = new_array(agent);
+                let a = Value::new_array(agent);
                 for i in 0..len {
                     let value = handle!(get_value(stack));
                     handle!(a.set(&ObjectKey::from(i), value));
@@ -450,7 +451,7 @@ fn evaluate_at(
                         handle!(env.borrow_mut().set(n.as_str(), value));
                         Ok(Value::Null)
                     }
-                    _ => Err(new_error(&format!(
+                    _ => Err(Value::new_error(&format!(
                         "invalid assignment target {:?}",
                         target
                     ))),
@@ -596,10 +597,10 @@ fn evaluate_at(
                             let r = handle!(callee.call(agent, this, args));
                             stack.push(r);
                         }
-                        _ => handle!(Err(new_error("callee is not a function"))),
+                        _ => handle!(Err(Value::new_error("callee is not a function"))),
                     }
                 } else {
-                    handle!(Err(new_error("callee is not a function")));
+                    handle!(Err(Value::new_error("callee is not a function")));
                 }
             }
             Op::InitReplace => {
@@ -759,7 +760,7 @@ fn evaluate_at(
                 let value = handle!(get_value(stack));
                 match value {
                     Value::Number(num) => stack.push(Value::Number(-num)),
-                    _ => handle!(Err(new_error("invalid number"))),
+                    _ => handle!(Err(Value::new_error("invalid number"))),
                 };
             }
             Op::LessThan => num_binop_bool!(Decimal::lt),
@@ -774,17 +775,17 @@ fn evaluate_at(
                         if let Value::Number(rnum) = right {
                             stack.push(Value::Number(rnum + lnum));
                         } else {
-                            handle!(Err(new_error("rhs must be a number")))
+                            handle!(Err(Value::new_error("rhs must be a number")))
                         }
                     }
                     Value::String(lstr) => {
                         if let Value::String(rstr) = right {
                             stack.push(Value::String(format!("{}{}", lstr, rstr)));
                         } else {
-                            handle!(Err(new_error("rhs must be a string")));
+                            handle!(Err(Value::new_error("rhs must be a string")));
                         }
                     }
-                    _ => handle!(Err(new_error("lhs must be a number or a string"))),
+                    _ => handle!(Err(Value::new_error("lhs must be a number or a string"))),
                 }
             }
             Op::Typeof => {

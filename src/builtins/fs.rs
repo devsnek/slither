@@ -1,6 +1,6 @@
 use crate::agent::{Agent, MioMapType};
 use crate::intrinsics::promise::new_promise_capability;
-use crate::value::{new_builtin_function, new_error, new_object, ObjectKey, Value};
+use crate::value::{ObjectKey, Value};
 use crate::vm::ExecutionContext;
 use mio::{PollOpt, Ready, Registration, Token};
 use std::collections::HashMap;
@@ -28,7 +28,7 @@ pub fn handle(agent: &Agent, token: Token, promise: Value) {
                 .unwrap();
         }
         FsResponse::Metadata(m) => {
-            let o = new_object(agent.intrinsics.object_prototype.clone());
+            let o = Value::new_object(agent.intrinsics.object_prototype.clone());
             macro_rules! p {
                 ($target:expr, $name:expr, $value:expr) => {
                     $target.set(&ObjectKey::from($name), $value).unwrap();
@@ -61,7 +61,7 @@ pub fn handle(agent: &Agent, token: Token, promise: Value) {
             t!("accessedAt", m.accessed());
             t!("createdAt", m.created());
 
-            let permissions = new_object(agent.intrinsics.object_prototype.clone());
+            let permissions = Value::new_object(agent.intrinsics.object_prototype.clone());
             p!(
                 permissions,
                 "read",
@@ -97,7 +97,7 @@ pub fn handle(agent: &Agent, token: Token, promise: Value) {
         FsResponse::Error(s) => {
             promise
                 .get_slot("reject")
-                .call(agent, promise, vec![new_error(s.as_str())])
+                .call(agent, promise, vec![Value::new_error(s.as_str())])
                 .unwrap();
         }
     }
@@ -138,7 +138,7 @@ fn read_file(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Result<V
 
         Ok(promise)
     } else {
-        Err(new_error("filename must be a string"))
+        Err(Value::new_error("filename must be a string"))
     }
 }
 
@@ -179,10 +179,10 @@ fn write_file(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Result<
 
             Ok(promise)
         } else {
-            Err(new_error("contents must be a string"))
+            Err(Value::new_error("contents must be a string"))
         }
     } else {
-        Err(new_error("filename must be a string"))
+        Err(Value::new_error("filename must be a string"))
     }
 }
 
@@ -221,7 +221,7 @@ fn remove_file(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Result
 
         Ok(promise)
     } else {
-        Err(new_error("filename must be a string"))
+        Err(Value::new_error("filename must be a string"))
     }
 }
 
@@ -263,7 +263,7 @@ fn get_metadata(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Resul
 
         Ok(promise)
     } else {
-        Err(new_error("filename must be a string"))
+        Err(Value::new_error("filename must be a string"))
     }
 }
 
@@ -302,10 +302,10 @@ fn copy(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Result<Value,
 
             Ok(promise)
         } else {
-            Err(new_error("to must be a string"))
+            Err(Value::new_error("to must be a string"))
         }
     } else {
-        Err(new_error("from must be a string"))
+        Err(Value::new_error("from must be a string"))
     }
 }
 
@@ -344,10 +344,10 @@ fn move_(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Result<Value
 
             Ok(promise)
         } else {
-            Err(new_error("to must be a string"))
+            Err(Value::new_error("to must be a string"))
         }
     } else {
-        Err(new_error("from must be a string"))
+        Err(Value::new_error("from must be a string"))
     }
 }
 
@@ -400,10 +400,10 @@ fn create_symlink(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Res
 
             Ok(promise)
         } else {
-            Err(new_error("to must be a string"))
+            Err(Value::new_error("to must be a string"))
         }
     } else {
-        Err(new_error("from must be a string"))
+        Err(Value::new_error("from must be a string"))
     }
 }
 
@@ -435,7 +435,7 @@ fn exists(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Result<Valu
 
         Ok(promise)
     } else {
-        Err(new_error("filename must be a string"))
+        Err(Value::new_error("filename must be a string"))
     }
 }
 
@@ -478,7 +478,7 @@ fn create_directory(
 
         Ok(promise)
     } else {
-        Err(new_error("filename must be a string"))
+        Err(Value::new_error("filename must be a string"))
     }
 }
 
@@ -521,7 +521,7 @@ fn remove_directory(
 
         Ok(promise)
     } else {
-        Err(new_error("filename must be a string"))
+        Err(Value::new_error("filename must be a string"))
     }
 }
 
@@ -530,7 +530,7 @@ pub fn create(agent: &Agent) -> HashMap<String, Value> {
 
     macro_rules! method {
         ($name:expr, $fn:ident) => {
-            module.insert($name.to_string(), new_builtin_function(agent, $fn));
+            module.insert($name.to_string(), Value::new_builtin_function(agent, $fn));
         };
     }
     method!("readFile", read_file);

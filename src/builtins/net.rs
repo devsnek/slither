@@ -1,8 +1,6 @@
 use crate::agent::{Agent, MioMapType};
 use crate::intrinsics::net_client_prototype::{get_or_create_reject, get_or_create_resolve};
-use crate::value::{
-    new_array, new_builtin_function, new_custom_object, new_error, ObjectKey, Value,
-};
+use crate::value::{ObjectKey, Value};
 use crate::vm::ExecutionContext;
 use mio::{net::TcpStream, PollOpt, Ready, Token};
 use std::collections::HashMap;
@@ -26,7 +24,7 @@ pub fn handle(agent: &Agent, token: Token, net: Net) {
         Net::Client(mut stream, client) => {
             match stream.take_error() {
                 Ok(Some(e)) | Err(e) => {
-                    let e = new_error(&format!("{}", e));
+                    let e = Value::new_error(&format!("{}", e));
                     get_or_create_reject(agent, client, e);
                 }
                 Ok(None) => {
@@ -38,7 +36,7 @@ pub fn handle(agent: &Agent, token: Token, net: Net) {
                         }
                         Ok(_) => {
                             // TODO: buffer type of some sort
-                            let r = new_array(agent);
+                            let r = Value::new_array(agent);
                             for (i, v) in buf.iter().enumerate() {
                                 r.set(&ObjectKey::from(i), Value::Number((*v).into()))
                                     .unwrap();
@@ -47,7 +45,7 @@ pub fn handle(agent: &Agent, token: Token, net: Net) {
                         }
                         Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                             // TODO: buffer type of some sort
-                            let r = new_array(agent);
+                            let r = Value::new_array(agent);
                             for (i, v) in buf.iter().enumerate() {
                                 r.set(&ObjectKey::from(i), Value::Number((*v).into()))
                                     .unwrap();
@@ -55,7 +53,7 @@ pub fn handle(agent: &Agent, token: Token, net: Net) {
                             get_or_create_resolve(agent, client.clone(), r, false);
                         }
                         Err(e) => {
-                            let e = new_error(&format!("{}", e));
+                            let e = Value::new_error(&format!("{}", e));
                             get_or_create_reject(agent, client.clone(), e);
                         }
                     }
@@ -78,7 +76,7 @@ fn connect(agent: &Agent, _: &ExecutionContext, args: Vec<Value>) -> Result<Valu
             agent
                 .mio
                 .register(&stream, token, Ready::readable(), PollOpt::edge())?;
-            let client = new_custom_object(agent.intrinsics.net_client_prototype.clone());
+            let client = Value::new_custom_object(agent.intrinsics.net_client_prototype.clone());
             client.set_slot("net client buffer", Value::new_list());
             client.set_slot("net client queue", Value::new_list());
             client.set_slot("net client token", Value::Number(token.0.into()));
@@ -88,13 +86,16 @@ fn connect(agent: &Agent, _: &ExecutionContext, args: Vec<Value>) -> Result<Valu
                 .insert(token, MioMapType::Net(Net::Client(stream, client.clone())));
             Ok(client)
         }
-        _ => Err(new_error("address must be a string")),
+        _ => Err(Value::new_error("address must be a string")),
     }
 }
 
 pub fn create(agent: &Agent) -> HashMap<String, Value> {
     let mut module = HashMap::new();
-    module.insert("connect".to_string(), new_builtin_function(agent, connect));
+    module.insert(
+        "connect".to_string(),
+        Value::new_builtin_function(agent, connect),
+    );
 
     module
 }

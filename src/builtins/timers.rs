@@ -1,5 +1,5 @@
 use crate::agent::{Agent, MioMapType};
-use crate::value::{new_builtin_function, new_error, Value};
+use crate::value::Value;
 use crate::vm::ExecutionContext;
 use mio::{PollOpt, Ready, Registration, SetReadiness, Token};
 use num::ToPrimitive;
@@ -68,7 +68,7 @@ fn create_timeout(
 ) -> Result<Value, Value> {
     let callback = args.get(0).unwrap_or(&Value::Null);
     if callback.type_of() != "function" {
-        return Err(new_error("callback must be a function"));
+        return Err(Value::new_error("callback must be a function"));
     }
     match args.get(1).unwrap_or(&Value::Null) {
         Value::Number(n) => {
@@ -89,9 +89,10 @@ fn create_timeout(
             insert(end, set_readiness);
             THREAD.thread().unpark();
 
+            // TODO: return object with cancel()
             Ok(Value::Null)
         }
-        _ => Err(new_error("duration must be a number")),
+        _ => Err(Value::new_error("duration must be a number")),
     }
 }
 
@@ -99,7 +100,7 @@ pub fn create(agent: &Agent) -> HashMap<String, Value> {
     let mut module = HashMap::new();
     module.insert(
         "createTimeout".to_string(),
-        new_builtin_function(agent, create_timeout),
+        Value::new_builtin_function(agent, create_timeout),
     );
 
     module

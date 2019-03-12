@@ -1,15 +1,13 @@
 use crate::agent::Agent;
 use crate::intrinsics::promise::{new_promise_capability, promise_resolve_i};
-use crate::value::{
-    new_builtin_function, new_error, new_iter_result, new_object, ObjectKey, Value,
-};
+use crate::value::{ObjectKey, Value};
 use crate::vm::ExecutionContext;
 use num::ToPrimitive;
 
 fn next(agent: &Agent, ctx: &ExecutionContext, _: Vec<Value>) -> Result<Value, Value> {
     let this = ctx.environment.borrow().get_this()?;
     if !this.has_slot("net client queue") {
-        return Err(new_error("invalid receiver"));
+        return Err(Value::new_error("invalid receiver"));
     }
 
     if let Value::List(buffer) = this.get_slot("net client buffer") {
@@ -30,7 +28,7 @@ fn next(agent: &Agent, ctx: &ExecutionContext, _: Vec<Value>) -> Result<Value, V
 
 pub fn get_or_create_resolve(agent: &Agent, target: Value, value: Value, done: bool) {
     if let Value::List(queue) = target.get_slot("net client queue") {
-        let value = new_iter_result(agent, value, done).unwrap();
+        let value = Value::new_iter_result(agent, value, done).unwrap();
         if let Some(promise) = queue.borrow_mut().pop_front() {
             promise
                 .get_slot("resolve")
@@ -73,7 +71,7 @@ pub fn get_or_create_reject(agent: &Agent, target: Value, value: Value) {
 fn close(agent: &Agent, ctx: &ExecutionContext, _: Vec<Value>) -> Result<Value, Value> {
     let this = ctx.environment.borrow().get_this()?;
     if !this.has_slot("net client token") {
-        return Err(new_error("invalid receiver"));
+        return Err(Value::new_error("invalid receiver"));
     }
 
     if let Value::Number(t) = this.get_slot("net client token") {
@@ -86,16 +84,19 @@ fn close(agent: &Agent, ctx: &ExecutionContext, _: Vec<Value>) -> Result<Value, 
 }
 
 pub fn create_net_client_prototype(agent: &Agent) -> Value {
-    let proto = new_object(agent.intrinsics.async_iterator_prototype.clone());
+    let proto = Value::new_object(agent.intrinsics.async_iterator_prototype.clone());
 
     proto
-        .set(&ObjectKey::from("next"), new_builtin_function(agent, next))
+        .set(
+            &ObjectKey::from("next"),
+            Value::new_builtin_function(agent, next),
+        )
         .unwrap();
 
     proto
         .set(
             &ObjectKey::from("close"),
-            new_builtin_function(agent, close),
+            Value::new_builtin_function(agent, close),
         )
         .unwrap();
 

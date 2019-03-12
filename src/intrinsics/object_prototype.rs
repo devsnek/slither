@@ -1,5 +1,5 @@
-use crate::value::{new_object, Value};
+use crate::value::Value;
 
 pub fn create_object_prototype() -> Value {
-    new_object(Value::Null)
+    Value::new_object(Value::Null)
 }

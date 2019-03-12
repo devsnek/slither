@@ -6,7 +6,7 @@ use crate::intrinsics::{
     create_symbol_prototype,
 };
 use crate::parser::{Node, Parser};
-use crate::value::{new_error, Value};
+use crate::value::Value;
 use crate::vm::{compile, Evaluator, ExecutionContext, LexicalEnvironment};
 use gc::{Gc, GcCell};
 use num_cpus;
@@ -113,11 +113,11 @@ impl ModuleX {
                                             env.create(name, false)?;
                                             env.initialize(name, v.clone());
                                         }
-                                        None => return Err(new_error("unknown export")),
+                                        None => return Err(Value::new_error("unknown export")),
                                     }
                                 }
                             }
-                            None => return Err(new_error("unknown standard module")),
+                            None => return Err(Value::new_error("unknown standard module")),
                         }
                     }
                     Node::ExportDeclaration(decl) => match *decl.clone() {
@@ -392,7 +392,11 @@ impl Agent {
         let filename = self.resolve(specifier, referrer).unwrap();
         if !self.modules.borrow().contains_key(&filename) {
             let source = std::fs::read_to_string(&filename).expect("no such file");
-            let module = Gc::new(GcCell::new(ModuleX::new(filename.as_str(), source.as_str(), self)?));
+            let module = Gc::new(GcCell::new(ModuleX::new(
+                filename.as_str(),
+                source.as_str(),
+                self,
+            )?));
             self.modules
                 .borrow_mut()
                 .insert(filename.to_string(), module.clone());

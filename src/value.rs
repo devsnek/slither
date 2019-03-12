@@ -119,7 +119,7 @@ impl ObjectInfo {
                     }
                     Ok(Value::Number(int_len))
                 } else {
-                    Err(new_error("invalid array length"))
+                    Err(Value::new_error("invalid array length"))
                 }
             }
             _ => {
@@ -275,14 +275,6 @@ unsafe impl gc::Trace for Value {
 }
 
 impl Value {
-    pub fn new_symbol(desc: Option<String>) -> Value {
-        Value::Symbol(Symbol::new(false, desc))
-    }
-
-    pub fn new_list() -> Value {
-        Value::List(Gc::new(GcCell::new(VecDeque::new())))
-    }
-
     pub fn type_of(&self) -> &str {
         match &self {
             Value::Null => "null",
@@ -313,18 +305,18 @@ impl Value {
             Value::Symbol(s) => Ok(ObjectKey::Symbol(s.clone())),
             Value::String(s) => Ok(ObjectKey::String(s.clone())),
             Value::Number(n) => Ok(ObjectKey::String(n.to_string())),
-            _ => Err(new_error("cannot convert to object key")),
+            _ => Err(Value::new_error("cannot convert to object key")),
         }
     }
 
     pub fn to_object(&self, a: &Agent) -> Result<Value, Value> {
         match self {
-            Value::Null => Err(new_error("cannot convert null to object")),
-            Value::True => Ok(new_boolean_object(a, true)),
-            Value::False => Ok(new_boolean_object(a, false)),
+            Value::Null => Err(Value::new_error("cannot convert null to object")),
+            Value::True => Ok(Value::new_boolean_object(a, true)),
+            Value::False => Ok(Value::new_boolean_object(a, false)),
             Value::Object(_) => Ok(self.clone()),
-            Value::Number(n) => Ok(new_number_object(a, *n)),
-            Value::String(s) => Ok(new_string_object(a, s.clone())),
+            Value::Number(n) => Ok(Value::new_number_object(a, *n)),
+            Value::String(s) => Ok(Value::new_string_object(a, s.clone())),
             _ => unreachable!(),
         }
     }
@@ -374,21 +366,21 @@ impl Value {
     pub fn set(&self, property: &ObjectKey, value: Value) -> Result<Value, Value> {
         match self {
             Value::Object(o) => o.set(property.clone(), value, o.clone()),
-            _ => Err(new_error("base must be an object")),
+            _ => Err(Value::new_error("base must be an object")),
         }
     }
 
     pub fn get(&self, property: &ObjectKey) -> Result<Value, Value> {
         match self {
             Value::Object(o) => o.get(property.clone()),
-            _ => Err(new_error("base must be an object")),
+            _ => Err(Value::new_error("base must be an object")),
         }
     }
 
     pub fn keys(&self) -> Result<Vec<ObjectKey>, Value> {
         match self {
             Value::Object(o) => Ok(o.keys()),
-            _ => Err(new_error("base must be an object")),
+            _ => Err(Value::new_error("base must be an object")),
         }
     }
 
@@ -455,7 +447,9 @@ impl Value {
                         }
                         FunctionKind::Generator => {
                             ctx.borrow_mut().evaluator = Some(evaluator);
-                            let o = new_custom_object(agent.intrinsics.generator_prototype.clone());
+                            let o = Value::new_custom_object(
+                                agent.intrinsics.generator_prototype.clone(),
+                            );
                             o.set_slot("generator context", Value::WrappedContext(ctx, None));
                             Ok(o)
                         }
@@ -468,11 +462,10 @@ impl Value {
                     ctx.function = Some(self.clone());
                     f(agent, &ctx, args)
                 }
-                _ => Err(new_error("not a function")),
+                _ => Err(Value::new_error("not a function")),
             },
-            _ => Err(new_error("not a function")),
+            _ => Err(Value::new_error("not a function")),
         }
-        // Err(new_error("unimplemented"))
     }
 
     pub fn construct(&self, agent: &Agent, args: Vec<Value>) -> Result<Value, Value> {
@@ -482,7 +475,7 @@ impl Value {
                 if prototype.type_of() != "object" {
                     prototype = agent.intrinsics.object_prototype.clone();
                 }
-                let this = new_object(prototype);
+                let this = Value::new_object(prototype);
                 match &o.kind {
                     ObjectKind::CompiledFunction { .. } | ObjectKind::BuiltinFunction(..) => {
                         let r = self.call(agent, this.clone(), args)?;
@@ -492,10 +485,10 @@ impl Value {
                             Ok(this)
                         }
                     }
-                    _ => Err(new_error("not a function")),
+                    _ => Err(Value::new_error("not a function")),
                 }
             }
-            _ => Err(new_error("not a function")),
+            _ => Err(Value::new_error("not a function")),
         }
     }
 }
@@ -570,9 +563,9 @@ fn on_rejected(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Resul
 fn perform_await(agent: &Agent, ctx: Value, value: Value) -> Result<(), Value> {
     let promise = promise_resolve_i(agent, agent.intrinsics.promise.clone(), value)?;
 
-    let on_fulfilled = new_builtin_function(agent, on_fulfilled);
+    let on_fulfilled = Value::new_builtin_function(agent, on_fulfilled);
     on_fulfilled.set_slot("async context", ctx.clone());
-    let on_rejected = new_builtin_function(agent, on_rejected);
+    let on_rejected = Value::new_builtin_function(agent, on_rejected);
     on_rejected.set_slot("async context", ctx);
 
     promise
@@ -710,132 +703,142 @@ impl PartialEq for Value {
 
 impl std::convert::From<crate::parser::Error> for Value {
     fn from(_e: crate::parser::Error) -> Self {
-        new_error("parsing error")
+        Value::new_error("parsing error")
     }
-}
-
-pub fn new_object(proto: Value) -> Value {
-    Value::Object(Gc::new(ObjectInfo {
-        kind: ObjectKind::Ordinary,
-        properties: GcCell::new(IndexMap::new()),
-        prototype: proto,
-    }))
-}
-
-pub fn new_array(agent: &Agent) -> Value {
-    Value::Object(Gc::new(ObjectInfo {
-        kind: ObjectKind::Array,
-        properties: GcCell::new(IndexMap::new()),
-        prototype: agent.intrinsics.array_prototype.clone(),
-    }))
-}
-
-pub fn new_error(message: &str) -> Value {
-    let mut m = IndexMap::new();
-    m.insert(
-        ObjectKey::from("message"),
-        Value::String(message.to_string()),
-    );
-    Value::Object(Gc::new(ObjectInfo {
-        kind: ObjectKind::Ordinary,
-        properties: GcCell::new(m),
-        prototype: Value::Null,
-    }))
 }
 
 impl From<std::net::AddrParseError> for Value {
     fn from(e: std::net::AddrParseError) -> Self {
-        new_error(&format!("{}", e))
+        Value::new_error(&format!("{}", e))
     }
 }
 
 impl From<std::io::Error> for Value {
     fn from(e: std::io::Error) -> Self {
-        new_error(&format!("{}", e))
+        Value::new_error(&format!("{}", e))
     }
 }
 
-pub fn new_custom_object(proto: Value) -> Value {
-    Value::Object(Gc::new(ObjectInfo {
-        kind: ObjectKind::Custom(Gc::new(GcCell::new(HashMap::new()))),
-        properties: GcCell::new(IndexMap::new()),
-        prototype: proto,
-    }))
-}
+impl Value {
+    pub fn new_symbol(desc: Option<String>) -> Value {
+        Value::Symbol(Symbol::new(false, desc))
+    }
 
-pub fn new_compiled_function(
-    agent: &Agent,
-    params: u8,
-    index: usize,
-    inherits_this: bool,
-    kind: FunctionKind,
-    env: Gc<GcCell<LexicalEnvironment>>,
-) -> Value {
-    Value::Object(Gc::new(ObjectInfo {
-        kind: ObjectKind::CompiledFunction {
-            params,
-            index,
-            inherits_this,
-            kind,
-            env,
-        },
-        properties: GcCell::new(IndexMap::new()),
-        prototype: agent.intrinsics.function_prototype.clone(),
-    }))
-}
+    pub fn new_list() -> Value {
+        Value::List(Gc::new(GcCell::new(VecDeque::new())))
+    }
 
-pub fn new_builtin_function(agent: &Agent, f: BuiltinFunction) -> Value {
-    Value::Object(Gc::new(ObjectInfo {
-        kind: ObjectKind::BuiltinFunction(f, Gc::new(GcCell::new(HashMap::new()))),
-        properties: GcCell::new(IndexMap::new()),
-        prototype: agent.intrinsics.function_prototype.clone(),
-    }))
-}
+    pub fn new_object(proto: Value) -> Value {
+        Value::Object(Gc::new(ObjectInfo {
+            kind: ObjectKind::Ordinary,
+            properties: GcCell::new(IndexMap::new()),
+            prototype: proto,
+        }))
+    }
 
-pub fn new_boolean_object(agent: &Agent, v: bool) -> Value {
-    Value::Object(Gc::new(ObjectInfo {
-        kind: ObjectKind::Boolean(v),
-        properties: GcCell::new(IndexMap::new()),
-        prototype: agent.intrinsics.boolean_prototype.clone(),
-    }))
-}
+    pub fn new_array(agent: &Agent) -> Value {
+        Value::Object(Gc::new(ObjectInfo {
+            kind: ObjectKind::Array,
+            properties: GcCell::new(IndexMap::new()),
+            prototype: agent.intrinsics.array_prototype.clone(),
+        }))
+    }
 
-pub fn new_string_object(agent: &Agent, v: String) -> Value {
-    Value::Object(Gc::new(ObjectInfo {
-        kind: ObjectKind::String(v),
-        properties: GcCell::new(IndexMap::new()),
-        prototype: agent.intrinsics.string_prototype.clone(),
-    }))
-}
+    pub fn new_error(message: &str) -> Value {
+        let mut m = IndexMap::new();
+        m.insert(
+            ObjectKey::from("message"),
+            Value::String(message.to_string()),
+        );
+        Value::Object(Gc::new(ObjectInfo {
+            kind: ObjectKind::Ordinary,
+            properties: GcCell::new(m),
+            prototype: Value::Null,
+        }))
+    }
 
-pub fn new_number_object(agent: &Agent, v: Decimal) -> Value {
-    Value::Object(Gc::new(ObjectInfo {
-        kind: ObjectKind::Number(v),
-        properties: GcCell::new(IndexMap::new()),
-        prototype: agent.intrinsics.number_prototype.clone(),
-    }))
-}
+    pub fn new_custom_object(proto: Value) -> Value {
+        Value::Object(Gc::new(ObjectInfo {
+            kind: ObjectKind::Custom(Gc::new(GcCell::new(HashMap::new()))),
+            properties: GcCell::new(IndexMap::new()),
+            prototype: proto,
+        }))
+    }
 
-pub fn new_regex_object(agent: &Agent, r: &str) -> Result<Value, Value> {
-    let re = match Regex::new(r) {
-        Ok(r) => r,
-        Err(e) => {
-            return Err(new_error(&format!("{}", e)));
-        }
-    };
-    Ok(Value::Object(Gc::new(ObjectInfo {
-        kind: ObjectKind::Regex(re),
-        properties: GcCell::new(IndexMap::new()),
-        prototype: agent.intrinsics.regex_prototype.clone(),
-    })))
-}
+    pub fn new_compiled_function(
+        agent: &Agent,
+        params: u8,
+        index: usize,
+        inherits_this: bool,
+        kind: FunctionKind,
+        env: Gc<GcCell<LexicalEnvironment>>,
+    ) -> Value {
+        Value::Object(Gc::new(ObjectInfo {
+            kind: ObjectKind::CompiledFunction {
+                params,
+                index,
+                inherits_this,
+                kind,
+                env,
+            },
+            properties: GcCell::new(IndexMap::new()),
+            prototype: agent.intrinsics.function_prototype.clone(),
+        }))
+    }
 
-pub fn new_iter_result(agent: &Agent, value: Value, done: bool) -> Result<Value, Value> {
-    let o = new_object(agent.intrinsics.object_prototype.clone());
-    o.set(&ObjectKey::from("value"), value)?;
-    o.set(
-        &ObjectKey::from("done"),
-        if done { Value::True } else { Value::False },
-    )?;
-    Ok(o)
+    pub fn new_builtin_function(agent: &Agent, f: BuiltinFunction) -> Value {
+        Value::Object(Gc::new(ObjectInfo {
+            kind: ObjectKind::BuiltinFunction(f, Gc::new(GcCell::new(HashMap::new()))),
+            properties: GcCell::new(IndexMap::new()),
+            prototype: agent.intrinsics.function_prototype.clone(),
+        }))
+    }
+
+    pub fn new_boolean_object(agent: &Agent, v: bool) -> Value {
+        Value::Object(Gc::new(ObjectInfo {
+            kind: ObjectKind::Boolean(v),
+            properties: GcCell::new(IndexMap::new()),
+            prototype: agent.intrinsics.boolean_prototype.clone(),
+        }))
+    }
+
+    pub fn new_string_object(agent: &Agent, v: String) -> Value {
+        Value::Object(Gc::new(ObjectInfo {
+            kind: ObjectKind::String(v),
+            properties: GcCell::new(IndexMap::new()),
+            prototype: agent.intrinsics.string_prototype.clone(),
+        }))
+    }
+
+    pub fn new_number_object(agent: &Agent, v: Decimal) -> Value {
+        Value::Object(Gc::new(ObjectInfo {
+            kind: ObjectKind::Number(v),
+            properties: GcCell::new(IndexMap::new()),
+            prototype: agent.intrinsics.number_prototype.clone(),
+        }))
+    }
+
+    pub fn new_regex_object(agent: &Agent, r: &str) -> Result<Value, Value> {
+        let re = match Regex::new(r) {
+            Ok(r) => r,
+            Err(e) => {
+                return Err(Value::new_error(&format!("{}", e)));
+            }
+        };
+        Ok(Value::Object(Gc::new(ObjectInfo {
+            kind: ObjectKind::Regex(re),
+            properties: GcCell::new(IndexMap::new()),
+            prototype: agent.intrinsics.regex_prototype.clone(),
+        })))
+    }
+
+    pub fn new_iter_result(agent: &Agent, value: Value, done: bool) -> Result<Value, Value> {
+        let o = Value::new_object(agent.intrinsics.object_prototype.clone());
+        o.set(&ObjectKey::from("value"), value)?;
+        o.set(
+            &ObjectKey::from("done"),
+            if done { Value::True } else { Value::False },
+        )?;
+        Ok(o)
+    }
 }

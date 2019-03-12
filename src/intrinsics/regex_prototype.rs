@@ -1,7 +1,5 @@
 use crate::agent::Agent;
-use crate::value::{
-    new_array, new_builtin_function, new_error, new_object, ObjectKey, ObjectKind, Value,
-};
+use crate::value::{ObjectKey, ObjectKind, Value};
 use crate::vm::ExecutionContext;
 
 fn match_(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
@@ -13,7 +11,7 @@ fn match_(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Result<Val
                 match args.pop().unwrap_or(Value::Null) {
                     Value::String(s) => match re.captures(s.as_str()) {
                         Some(captures) => {
-                            let o = new_array(agent);
+                            let o = Value::new_array(agent);
                             let mut i = 0;
                             for name in re.capture_names() {
                                 match name {
@@ -40,13 +38,13 @@ fn match_(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Result<Val
                         }
                         None => Ok(Value::Null),
                     },
-                    _ => Err(new_error("input must be a string")),
+                    _ => Err(Value::new_error("input must be a string")),
                 }
             } else {
-                Err(new_error("invalid receiver"))
+                Err(Value::new_error("invalid receiver"))
             }
         }
-        _ => Err(new_error("invalid receiver")),
+        _ => Err(Value::new_error("invalid receiver")),
     }
 }
 
@@ -62,28 +60,31 @@ fn test(_: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Result<Value, Va
                     } else {
                         Value::False
                     }),
-                    _ => Err(new_error("input must be a string")),
+                    _ => Err(Value::new_error("input must be a string")),
                 }
             } else {
-                Err(new_error("invalid receiver"))
+                Err(Value::new_error("invalid receiver"))
             }
         }
-        _ => Err(new_error("invalid receiver")),
+        _ => Err(Value::new_error("invalid receiver")),
     }
 }
 
 pub fn create_regex_prototype(agent: &Agent) -> Value {
-    let proto = new_object(agent.intrinsics.object_prototype.clone());
+    let proto = Value::new_object(agent.intrinsics.object_prototype.clone());
 
     proto
         .set(
             &ObjectKey::from("match"),
-            new_builtin_function(agent, match_),
+            Value::new_builtin_function(agent, match_),
         )
         .unwrap();
 
     proto
-        .set(&ObjectKey::from("test"), new_builtin_function(agent, test))
+        .set(
+            &ObjectKey::from("test"),
+            Value::new_builtin_function(agent, test),
+        )
         .unwrap();
 
     proto
