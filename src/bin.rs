@@ -1,5 +1,5 @@
 use clap::{App, Arg};
-use slither::run;
+use slither::Agent;
 
 fn main() {
     let matches = App::new("slither")
@@ -11,8 +11,12 @@ fn main() {
     let referrer = std::env::current_dir().unwrap().join("slither");
     let referrer = referrer.to_str().unwrap();
 
-    match run(filename, referrer) {
-        Ok(()) => {}
+    let mut agent = Agent::new();
+
+    match agent.import(filename, referrer) {
+        Ok(()) => {
+            agent.run_jobs();
+        }
         Err(e) => {
             eprintln!("Uncaught Exception: {}", e);
             std::process::exit(1);

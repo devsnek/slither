@@ -412,6 +412,17 @@ impl Agent {
         Ok(())
     }
 
+    pub fn run(&mut self, specifier: &str, source: &str) -> Result<Value, Value> {
+        match ModuleX::new(specifier, source, self) {
+            Err(e) => Err(e),
+            Ok(module) => {
+                let mut evaluator = Evaluator::new(module.compiled);
+                evaluator.scope.push(module.context.clone());
+                evaluator.run(self).unwrap()
+            }
+        }
+    }
+
     pub fn well_known_symbol(&self, name: &str) -> Value {
         let mut wks = self.well_known_symbols.borrow_mut();
         match wks.get(name) {
@@ -479,27 +490,18 @@ macro_rules! test {
         #[test]
         fn $name() {
             let mut agent = Agent::new();
-            match ModuleX::new(stringify!(test_$name.sl), $source, &mut agent) {
-                Err(e) => assert_eq!(Err::<Value, Value>(e), $result),
-                Ok(module) => {
-                    let mut evaluator = Evaluator::new(module.compiled);
-                    evaluator.scope.push(module.context.clone());
-                    let mut result = evaluator.run(&agent).unwrap();
-                    if let Ok(value) = &result {
-                        agent.run_jobs();
-                        if value.has_slot("promise state") {
-                            if value.get_slot("promise state")
-                                == Value::String("fulfilled".to_string())
-                            {
-                                result = Ok(value.get_slot("result"));
-                            } else {
-                                result = Err(value.get_slot("result"));
-                            }
-                        }
+            let mut result = agent.run(stringify!(test_$name.sl), $source);
+            if let Ok(value) = &result {
+                agent.run_jobs();
+                if value.has_slot("promise state") {
+                    if value.get_slot("promise state") == Value::String("fulfilled".to_string()) {
+                        result = Ok(value.get_slot("result"));
+                    } else {
+                        result = Err(value.get_slot("result"));
                     }
-                    assert_eq!(result, $result);
                 }
             }
+            assert_eq!(result, $result);
         }
     };
 }

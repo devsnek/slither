@@ -1556,7 +1556,8 @@ fn test_parser() {
              if 1 { a += 3; }
              "#
         )
-        .unwrap(),
+        .unwrap()
+        .0,
         Node::BlockStatement(
             vec![
                 Node::LexicalInitialization("a".to_string(), Box::new(Node::NumberLiteral(1f64))),
@@ -1598,7 +1599,7 @@ fn test_parser() {
     );
 
     assert_eq!(
-        Parser::parse("while false { 1; }").unwrap(),
+        Parser::parse("while false { 1; }").unwrap().0,
         Node::BlockStatement(
             vec![Node::ParenthesizedExpression(Box::new(Node::FalseLiteral))],
             HashMap::new(),
@@ -1607,7 +1608,7 @@ fn test_parser() {
     );
 
     assert_eq!(
-        Parser::parse("#! hashbang line\ntrue;").unwrap(),
+        Parser::parse("#! hashbang line\ntrue;").unwrap().0,
         Node::BlockStatement(
             vec![Node::ParenthesizedExpression(Box::new(Node::TrueLiteral))],
             HashMap::new(),

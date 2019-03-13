@@ -12,6 +12,10 @@ path = "src/lib.rs"
 name = "slither"
 path = "src/bin.rs"
 
+[[bin]]
+name = "slither_repl"
+path = "src/repl.rs"
+
 [dependencies.gc]
 path = "rust-gc/gc"
 
@@ -28,3 +32,4 @@ lazy_static = "1.2"
 threadpool = "1.7"
 num_cpus = "1.10"
 regex = "1.1"
+rustyline = "3.0.0"

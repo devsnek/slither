@@ -66,17 +66,4 @@ mod parser;
 mod value;
 mod vm;
 
-use agent::Agent;
-use value::Value;
-
-pub fn run(specifier: &str, referrer: &str) -> Result<(), Value> {
-    let mut agent = Agent::new();
-
-    match agent.import(specifier, referrer) {
-        Ok(()) => {
-            agent.run_jobs();
-            Ok(())
-        }
-        Err(e) => Err(e),
-    }
-}
+pub use agent::Agent;
