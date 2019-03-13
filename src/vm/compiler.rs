@@ -1,5 +1,5 @@
 use crate::agent::Agent;
-use crate::parser::{FunctionKind, Node, Operator};
+use crate::parser::{FunctionKind, Node, Operator, SourceSpan};
 use byteorder::{LittleEndian, WriteBytesExt};
 use std::collections::HashMap;
 
@@ -192,7 +192,11 @@ fn string_id(agent: &mut Agent, string: &str) -> i32 {
     }
 }
 
-pub fn real_compile(agent: &mut Agent, node: &Node) -> Result<(usize, usize), Error> {
+pub fn real_compile(
+    agent: &mut Agent,
+    node: &Node,
+    _positions: HashMap<*const Node, SourceSpan>,
+) -> Result<(usize, usize), Error> {
     let start = agent.code.len();
     compile(agent, node)?;
     push_op(agent, Op::End);

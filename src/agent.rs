@@ -64,7 +64,7 @@ pub type Module = Gc<GcCell<ModuleX>>;
 
 impl ModuleX {
     fn new(filename: &str, source: &str, agent: &mut Agent) -> Result<ModuleX, Value> {
-        let ast = Parser::parse(&source)?;
+        let (ast, positions) = Parser::parse(&source)?;
 
         let mut module = ModuleX {
             filename: filename.to_string(),
@@ -73,7 +73,7 @@ impl ModuleX {
             status: ModuleStatus::Uninstantiated,
             dfs_index: 0,
             dfs_ancestor_index: 0,
-            compiled: compile(agent, &ast).unwrap(),
+            compiled: compile(agent, &ast, positions).unwrap(),
         };
 
         if let Node::BlockStatement(nodes, declarations, ..) = ast {
