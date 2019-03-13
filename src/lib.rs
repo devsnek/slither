@@ -13,7 +13,6 @@ extern crate gc;
 extern crate mio;
 extern crate num_cpus;
 extern crate regex;
-extern crate rust_decimal;
 extern crate threadpool;
 
 macro_rules! custom_trace {
@@ -62,6 +61,7 @@ mod agent;
 mod builtins;
 mod intrinsics;
 mod linked_list;
+mod num_util;
 mod parser;
 mod value;
 mod vm;

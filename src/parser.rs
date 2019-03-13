@@ -1,4 +1,3 @@
-use rust_decimal::Decimal;
 use std::collections::HashMap;
 use std::iter::Peekable;
 use std::ops::{Div, Mul, Rem, Sub};
@@ -40,7 +39,7 @@ pub enum Operator {
 
 #[derive(Debug, PartialEq, Clone)]
 enum Token {
-    NumberLiteral(Decimal),
+    NumberLiteral(f64),
     StringLiteral(String),
     Identifier(String),
     Operator(Operator),
@@ -93,7 +92,7 @@ pub enum Node {
     NullLiteral,
     TrueLiteral,
     FalseLiteral,
-    NumberLiteral(Decimal),
+    NumberLiteral(f64),
     StringLiteral(String),
     SymbolLiteral(String),
     RegexLiteral(String),
@@ -189,7 +188,7 @@ impl<'a> Lexer<'a> {
                             }
                         }
                         let num = str
-                            .parse::<Decimal>()
+                            .parse::<f64>()
                             .unwrap_or_else(|_| panic!("Invalid number {}", str));
                         Some(Token::NumberLiteral(num))
                     }
@@ -1037,17 +1036,17 @@ impl<'a> Parser<'a> {
                 }
                 _ => {}
             },
-            Operator::Sub => num_binop_num!(Decimal::sub),
-            Operator::Mul => num_binop_num!(Decimal::mul),
-            Operator::Div => num_binop_num!(Decimal::div),
-            Operator::Mod => num_binop_num!(Decimal::rem),
-            // Operator::Pow => num_binop_num!(Decimal::pow),
-            // Operator::LeftShift => num_binop_num!(Decimal::shl),
-            // Operator::RightShift => num_binop_num!(Decimal::shr),
-            Operator::LessThan => num_binop_bool!(Decimal::lt),
-            Operator::GreaterThan => num_binop_bool!(Decimal::gt),
-            Operator::LessThanOrEqual => num_binop_bool!(Decimal::le),
-            Operator::GreaterThanOrEqual => num_binop_bool!(Decimal::ge),
+            Operator::Sub => num_binop_num!(f64::sub),
+            Operator::Mul => num_binop_num!(f64::mul),
+            Operator::Div => num_binop_num!(f64::div),
+            Operator::Mod => num_binop_num!(f64::rem),
+            Operator::Pow => num_binop_num!(f64::powf),
+            Operator::LeftShift => num_binop_num!(crate::num_util::f64_shl),
+            Operator::RightShift => num_binop_num!(crate::num_util::f64_shr),
+            Operator::LessThan => num_binop_bool!(f64::lt),
+            Operator::GreaterThan => num_binop_bool!(f64::gt),
+            Operator::LessThanOrEqual => num_binop_bool!(f64::le),
+            Operator::GreaterThanOrEqual => num_binop_bool!(f64::ge),
             _ => {}
         }
 
@@ -1057,7 +1056,7 @@ impl<'a> Parser<'a> {
     fn fold_conditional(&self, test: Node, consequent: Node, alternative: Node) -> Option<Node> {
         match test {
             Node::NumberLiteral(n) => {
-                if n != 0.into() {
+                if n != 0f64 {
                     Some(consequent)
                 } else {
                     Some(alternative)
@@ -1086,7 +1085,7 @@ impl<'a> Parser<'a> {
                 Some(Node::ExpressionStatement(Box::new(test)))
             }
             Node::NumberLiteral(n) => {
-                if n == 0.into() {
+                if n == 0f64 {
                     Some(Node::ExpressionStatement(Box::new(test)))
                 } else {
                     None
@@ -1478,10 +1477,7 @@ fn test_parser() {
         .unwrap(),
         Node::BlockStatement(
             vec![
-                Node::LexicalInitialization(
-                    "a".to_string(),
-                    Box::new(Node::NumberLiteral(1.into()))
-                ),
+                Node::LexicalInitialization("a".to_string(), Box::new(Node::NumberLiteral(1f64))),
                 Node::IfStatement(
                     Box::new(Node::Identifier("a".to_string())),
                     Box::new(Node::BlockStatement(
@@ -1491,7 +1487,7 @@ fn test_parser() {
                             Box::new(Node::BinaryExpression(
                                 Box::new(Node::Identifier("a".to_string())),
                                 Operator::Add,
-                                Box::new(Node::NumberLiteral(2.into())),
+                                Box::new(Node::NumberLiteral(2f64)),
                             )),
                         )))],
                         HashMap::new(),
@@ -1505,7 +1501,7 @@ fn test_parser() {
                         Box::new(Node::BinaryExpression(
                             Box::new(Node::Identifier("a".to_string())),
                             Operator::Add,
-                            Box::new(Node::NumberLiteral(3.into())),
+                            Box::new(Node::NumberLiteral(3f64)),
                         )),
                     )))],
                     HashMap::new(),

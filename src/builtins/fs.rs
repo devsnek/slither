@@ -44,7 +44,7 @@ pub fn handle(agent: &Agent, token: Token, promise: Value) {
             } else {
                 unreachable!();
             }
-            p!(o, "size", Value::Number(m.len().into()));
+            p!(o, "size", Value::Number(m.len() as f64));
             macro_rules! t {
                 ($name:expr, $value:expr) => {
                     let d = $value
@@ -54,7 +54,7 @@ pub fn handle(agent: &Agent, token: Token, promise: Value) {
                     let seconds = d.as_secs();
                     let subsec_millis = u64::from(d.subsec_millis());
                     let ms = seconds * 1000 + subsec_millis;
-                    p!(o, $name, Value::Number(ms.into()));
+                    p!(o, $name, Value::Number(ms as f64));
                 };
             }
             t!("modifiedAt", m.modified());

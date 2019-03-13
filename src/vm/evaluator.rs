@@ -4,7 +4,6 @@ use crate::value::{ObjectKey, ObjectKind, Value};
 use crate::vm::Op;
 use byteorder::{LittleEndian, ReadBytesExt};
 use gc::{Gc, GcCell};
-use rust_decimal::Decimal;
 use std::collections::HashMap;
 use std::ops::{Div, Mul, Rem, Sub};
 
@@ -228,6 +227,12 @@ fn evaluate_at(
         n
     };
 
+    let get_f64 = |pc: &mut usize| {
+        let n = (&agent.code[*pc..]).read_f64::<LittleEndian>().unwrap();
+        *pc += 8;
+        n
+    };
+
     let get_value = |stack: &mut Vec<Value>| {
         let value = stack.pop().unwrap();
         match value {
@@ -326,8 +331,7 @@ fn evaluate_at(
             Op::PushTrue => stack.push(Value::True),
             Op::PushFalse => stack.push(Value::False),
             Op::NewNumber => {
-                let id = get_i32(pc) as usize;
-                let value = agent.number_table[id];
+                let value = get_f64(pc);
                 stack.push(Value::Number(value));
             }
             Op::NewString => {
@@ -751,11 +755,11 @@ fn evaluate_at(
                     Value::True
                 });
             }
-            Op::Mul => num_binop_num!(Decimal::mul),
-            Op::Div => num_binop_num!(Decimal::div),
-            Op::Mod => num_binop_num!(Decimal::rem),
-            Op::Sub => num_binop_num!(Decimal::sub),
-            Op::Pow => panic!(), // num_binop_num!(Decimal::pow),
+            Op::Mul => num_binop_num!(f64::mul),
+            Op::Div => num_binop_num!(f64::div),
+            Op::Mod => num_binop_num!(f64::rem),
+            Op::Sub => num_binop_num!(f64::sub),
+            Op::Pow => num_binop_num!(f64::powf),
             Op::UnarySub => {
                 let value = handle!(get_value(stack));
                 match value {
@@ -763,10 +767,12 @@ fn evaluate_at(
                     _ => handle!(Err(Value::new_error("invalid number"))),
                 };
             }
-            Op::LessThan => num_binop_bool!(Decimal::lt),
-            Op::GreaterThan => num_binop_bool!(Decimal::gt),
-            Op::LessThanOrEqual => num_binop_bool!(Decimal::le),
-            Op::GreaterThanOrEqual => num_binop_bool!(Decimal::ge),
+            Op::ShiftLeft => num_binop_num!(crate::num_util::f64_shl),
+            Op::ShiftRight => num_binop_num!(crate::num_util::f64_shr),
+            Op::LessThan => num_binop_bool!(f64::lt),
+            Op::GreaterThan => num_binop_bool!(f64::gt),
+            Op::LessThanOrEqual => num_binop_bool!(f64::le),
+            Op::GreaterThanOrEqual => num_binop_bool!(f64::ge),
             Op::Add => {
                 let right = handle!(get_value(stack));
                 let left = handle!(get_value(stack));

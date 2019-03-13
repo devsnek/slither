@@ -1,7 +1,6 @@
 use crate::agent::Agent;
 use crate::parser::{FunctionKind, Node, Operator};
 use byteorder::{LittleEndian, WriteBytesExt};
-use rust_decimal::Decimal;
 use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
@@ -67,6 +66,8 @@ pub enum Op {
     Div,
     Mod,
     Pow,
+    ShiftLeft,
+    ShiftRight,
     LessThan,
     GreaterThan,
     LessThanOrEqual,
@@ -166,6 +167,11 @@ fn push_i32(agent: &mut Agent, n: i32) {
     agent.code.write_i32::<LittleEndian>(n).unwrap();
 }
 
+#[inline]
+fn push_f64(agent: &mut Agent, n: f64) {
+    agent.code.write_f64::<LittleEndian>(n).unwrap();
+}
+
 fn string_id(agent: &mut Agent, string: &str) -> i32 {
     let index = agent.string_table.iter().position(|s| s == string);
     match index {
@@ -173,18 +179,6 @@ fn string_id(agent: &mut Agent, string: &str) -> i32 {
         None => {
             let id = agent.string_table.len();
             agent.string_table.push(string.to_string());
-            id as i32
-        }
-    }
-}
-
-fn number_id(agent: &mut Agent, number: &Decimal) -> i32 {
-    let index = agent.number_table.iter().position(|n| n == number);
-    match index {
-        Some(i) => i as i32,
-        None => {
-            let id = agent.number_table.len();
-            agent.number_table.push(*number);
             id as i32
         }
     }
@@ -235,8 +229,7 @@ fn compile(agent: &mut Agent, node: &Node) -> Result<(), Error> {
         }
         Node::NumberLiteral(n) => {
             push_op(agent, Op::NewNumber);
-            let id = number_id(agent, n);
-            push_i32(agent, id);
+            push_f64(agent, *n);
             Ok(())
         }
         Node::StringLiteral(s) => {
@@ -812,6 +805,8 @@ fn compile_binary_expression(
         Operator::Pow => push_op(agent, Op::Pow),
         Operator::Add => push_op(agent, Op::Add),
         Operator::Sub => push_op(agent, Op::Sub),
+        Operator::LeftShift => push_op(agent, Op::ShiftLeft),
+        Operator::RightShift => push_op(agent, Op::ShiftRight),
         Operator::LessThan => push_op(agent, Op::LessThan),
         Operator::LessThanOrEqual => push_op(agent, Op::LessThanOrEqual),
         Operator::GreaterThan => push_op(agent, Op::GreaterThan),

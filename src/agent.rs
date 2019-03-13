@@ -10,7 +10,6 @@ use crate::value::Value;
 use crate::vm::{compile, Evaluator, ExecutionContext, LexicalEnvironment};
 use gc::{Gc, GcCell};
 use num_cpus;
-use rust_decimal::Decimal;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use threadpool::ThreadPool;
@@ -287,7 +286,6 @@ pub struct Agent {
     pub pool: ThreadPool,
     pub code: Vec<u8>,
     pub string_table: Vec<String>,
-    pub number_table: Vec<Decimal>,
 }
 
 impl Default for Agent {
@@ -331,7 +329,6 @@ impl Agent {
             pool: ThreadPool::new(num_cpus::get()),
             code: Vec::new(),
             string_table: Vec::new(),
-            number_table: Vec::new(),
         };
 
         agent.intrinsics.boolean_prototype = create_boolean_prototype(&agent);

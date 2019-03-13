@@ -6,7 +6,6 @@ use gc::{Gc, GcCell};
 use indexmap::IndexMap;
 use num::ToPrimitive;
 use regex::Regex;
-use rust_decimal::Decimal;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -18,7 +17,7 @@ pub enum ObjectKind {
     Array,
     Boolean(bool),
     String(String),
-    Number(Decimal),
+    Number(f64),
     Regex(Regex),
     Buffer(GcCell<Vec<u8>>),
     Custom(Gc<GcCell<HashMap<String, Value>>>), // internal slots
@@ -115,20 +114,24 @@ impl ObjectInfo {
                 kind: ObjectKind::Array,
                 ..
             } if property == ObjectKey::from("length") => {
-                if let Value::Number(int_len) = value {
+                if let Value::Number(given_len) = value {
+                    let int_len = given_len as usize;
+                    if int_len as f64 != given_len {
+                        return Err(Value::new_error("invalid array length"));
+                    }
                     let old_len = self.get(ObjectKey::from("length"))?;
                     let mut old_len = match old_len {
-                        Value::Number(n) => n,
-                        Value::Null => 0.into(),
+                        Value::Number(n) => n as usize,
+                        Value::Null => 0,
                         _ => unreachable!(),
                     };
                     if int_len >= old_len {
                         self.properties
                             .borrow_mut()
-                            .insert(property, Value::Number(int_len));
+                            .insert(property, Value::Number(int_len as f64));
                     } else if int_len < old_len {
                         while int_len < old_len {
-                            old_len -= 1.into();
+                            old_len -= 1;
                             self.properties
                                 .borrow_mut()
                                 .remove(&ObjectKey::from(old_len));
@@ -136,7 +139,7 @@ impl ObjectInfo {
                     } else {
                         // nothing!
                     }
-                    Ok(Value::Number(int_len))
+                    Ok(Value::Number(int_len as f64))
                 } else {
                     Err(Value::new_error("invalid array length"))
                 }
@@ -305,10 +308,10 @@ impl From<usize> for ObjectKey {
     }
 }
 
-impl From<Decimal> for ObjectKey {
-    fn from(n: Decimal) -> Self {
-        if n >= 0.into() && n < std::usize::MAX.into() {
-            ObjectKey::Number(n.to_usize().unwrap())
+impl From<f64> for ObjectKey {
+    fn from(n: f64) -> Self {
+        if n >= 0f64 {
+            ObjectKey::Number(n as usize)
         } else {
             ObjectKey::String(n.to_string())
         }
@@ -322,7 +325,7 @@ pub enum Value {
     True,
     False,
     String(String),
-    Number(Decimal),
+    Number(f64),
     Symbol(Symbol),
     Object(Gc<ObjectInfo>),
     List(Gc<GcCell<VecDeque<Value>>>),
@@ -896,7 +899,7 @@ impl Value {
         }))
     }
 
-    pub fn new_number_object(agent: &Agent, v: Decimal) -> Value {
+    pub fn new_number_object(agent: &Agent, v: f64) -> Value {
         Value::Object(Gc::new(ObjectInfo {
             kind: ObjectKind::Number(v),
             properties: GcCell::new(IndexMap::new()),
