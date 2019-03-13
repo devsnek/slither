@@ -37,6 +37,7 @@ pub enum Op {
     Jump,
     JumpIfFalse,
     JumpIfFalseNoConsume,
+    JumpIfTrueNoConsume,
     Call,
     TailCall,
     InitReplace,
@@ -148,6 +149,13 @@ macro_rules! jump_if_false {
 macro_rules! jump_if_false_no_consume {
     ($agent:ident, $name:ident) => {
         push_op($agent, Op::JumpIfFalseNoConsume);
+        jmp!($agent, $name);
+    };
+}
+
+macro_rules! jump_if_true_no_consume {
+    ($agent:ident, $name:ident) => {
+        push_op($agent, Op::JumpIfTrueNoConsume);
         jmp!($agent, $name);
     };
 }
@@ -791,6 +799,15 @@ fn compile_binary_expression(
         label!(end);
         compile(agent, left)?;
         jump_if_false_no_consume!(agent, end);
+        push_op(agent, Op::DropValue);
+        compile(agent, right)?;
+        mark!(agent, end);
+        return Ok(());
+    }
+    if *op == Operator::LogicalOR {
+        label!(end);
+        compile(agent, left)?;
+        jump_if_true_no_consume!(agent, end);
         push_op(agent, Op::DropValue);
         compile(agent, right)?;
         mark!(agent, end);

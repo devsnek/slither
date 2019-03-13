@@ -517,6 +517,13 @@ fn evaluate_at(
                     *pc = position;
                 }
             }
+            Op::JumpIfTrueNoConsume => {
+                let position = get_i32(pc) as usize;
+                let value = handle!(get_value_no_consume(stack));
+                if value.is_truthy() {
+                    *pc = position;
+                }
+            }
             // calling convention:
             // 1. push arguments onto stack
             // 2. read number of params
