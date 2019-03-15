@@ -1,8 +1,9 @@
-use crate::agent::Agent;
+use crate::agent::{Agent, MioMapType};
 use crate::intrinsics::promise::{new_promise_capability, promise_resolve_i};
-use crate::value::{ObjectKey, Value};
+use crate::value::{ObjectKey, ObjectKind, Value};
 use crate::vm::ExecutionContext;
 use num::ToPrimitive;
+use std::io::prelude::*;
 
 fn next(agent: &Agent, ctx: &ExecutionContext, _: Vec<Value>) -> Result<Value, Value> {
     let this = ctx.environment.borrow().get_this()?;
@@ -68,6 +69,41 @@ pub fn get_or_create_reject(agent: &Agent, target: Value, value: Value) {
     }
 }
 
+fn write(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
+    let this = ctx.environment.borrow().get_this()?;
+    if !this.has_slot("net client token") {
+        return Err(Value::new_error("invalid receiver"));
+    }
+    if let Value::Number(t) = this.get_slot("net client token") {
+        let token = mio::Token(t.to_usize().unwrap());
+        let map = agent.mio_map.borrow_mut();
+        if let MioMapType::Net(crate::builtins::net::Net::Client(s, ..)) =
+            map.get(&token).expect("socket missing in mio_map")
+        {
+            let mut s = s;
+            match args.get(0) {
+                Some(Value::String(str)) => {
+                    s.write_all(str.as_bytes())?;
+                    Ok(Value::Null)
+                }
+                Some(Value::Object(o)) => {
+                    if let ObjectKind::Buffer(b) = &o.kind {
+                        s.write_all(&b.borrow())?;
+                        Ok(Value::Null)
+                    } else {
+                        Err(Value::new_error("data must be a string or buffer"))
+                    }
+                }
+                _ => Err(Value::new_error("data must be a string or buffer")),
+            }
+        } else {
+            unreachable!();
+        }
+    } else {
+        unreachable!();
+    }
+}
+
 fn close(agent: &Agent, ctx: &ExecutionContext, _: Vec<Value>) -> Result<Value, Value> {
     let this = ctx.environment.borrow().get_this()?;
     if !this.has_slot("net client token") {
@@ -90,6 +126,13 @@ pub fn create_net_client_prototype(agent: &Agent) -> Value {
         .set(
             &ObjectKey::from("next"),
             Value::new_builtin_function(agent, next),
+        )
+        .unwrap();
+
+    proto
+        .set(
+            &ObjectKey::from("write"),
+            Value::new_builtin_function(agent, write),
         )
         .unwrap();
 

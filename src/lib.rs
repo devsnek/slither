@@ -67,3 +67,4 @@ mod value;
 mod vm;
 
 pub use agent::Agent;
+pub use value::Value;

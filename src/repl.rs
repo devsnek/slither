@@ -9,7 +9,6 @@ fn main() {
     let _matches = App::new("slither repl").version("0.1").get_matches();
 
     let mut agent = Agent::new();
-
     let mut rl = Editor::<()>::new();
     loop {
         let readline = rl.readline(">> ");
@@ -17,6 +16,7 @@ fn main() {
             Ok(line) => {
                 let value = agent.run("repl", line.as_str());
                 rl.add_history_entry(line.as_ref());
+                agent.run_jobs();
                 match value {
                     Ok(v) => println!("{}", v),
                     Err(e) => println!("Error: {}", e),
