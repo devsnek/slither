@@ -6,7 +6,7 @@ use std::collections::HashMap;
 fn print(agent: &Agent, _: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
     let mut inspected = Vec::with_capacity(args.len());
     for v in args {
-        inspected.push(Value::inspect(agent, &v)?);
+        inspected.push(Value::inspect(agent, &v));
     }
     println!("{}", inspected.join(" "));
     Ok(Value::Null)

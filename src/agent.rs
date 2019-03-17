@@ -468,7 +468,7 @@ impl Agent {
         match &self.uncaught_exception_handler {
             Some(f) => f(self, e),
             None => {
-                eprintln!("Uncaught Exception: {}", Value::inspect(self, &e).unwrap());
+                eprintln!("Uncaught Exception: {}", Value::inspect(self, &e));
                 std::process::exit(1);
             }
         }

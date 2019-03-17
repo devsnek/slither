@@ -11,7 +11,7 @@ fn main() {
     let mut agent = Agent::new();
 
     agent.set_uncaught_exception_handler(|agent: &Agent, v: Value| {
-        println!("Uncaught Exception: {}", Value::inspect(agent, &v).unwrap());
+        println!("Uncaught Exception: {}", Value::inspect(agent, &v));
     });
 
     let mut rl = Editor::<()>::new();
@@ -23,11 +23,8 @@ fn main() {
                 rl.add_history_entry(line.as_ref());
                 agent.run_jobs();
                 match value {
-                    Ok(v) => println!("{}", Value::inspect(&agent, &v).unwrap()),
-                    Err(e) => println!(
-                        "Uncaught Exception: {}",
-                        Value::inspect(&agent, &e).unwrap()
-                    ),
+                    Ok(v) => println!("{}", Value::inspect(&agent, &v)),
+                    Err(e) => println!("Uncaught Exception: {}", Value::inspect(&agent, &e),),
                 }
             }
             Err(ReadlineError::Interrupted) => {

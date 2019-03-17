@@ -673,38 +673,39 @@ fn inspect(
     value: &Value,
     indent: usize,
     inspected: &mut HashSet<*const IndexMap<ObjectKey, Value>>,
-) -> Result<String, Value> {
+) -> String {
     match value {
-        Value::Null => Ok("null".to_string()),
-        Value::True => Ok("true".to_string()),
-        Value::False => Ok("false".to_string()),
-        Value::Number(n) => Ok(format!("{}", n)),
-        Value::String(s) => Ok(format!("'{}'", s)),
+        Value::Null => "null".to_string(),
+        Value::True => "true".to_string(),
+        Value::False => "false".to_string(),
+        Value::Number(n) => format!("{}", n),
+        Value::String(s) => format!("'{}'", s),
         Value::Symbol(Symbol(_, _, d)) => {
             if let Some(s) = d {
-                Ok(format!("Symbol({})", s))
+                format!("Symbol({})", s)
             } else {
-                Ok("Symbol()".to_string())
+                "Symbol()".to_string()
             }
         }
         Value::Object(o) => {
             if let ObjectKind::Regex(re) = &o.kind {
-                return Ok(format!("/{}/", re));
+                return format!("/{}/", re);
             }
             if o.prototype == agent.intrinsics.error_prototype {
-                if let Value::String(s) =
-                    o.get(ObjectKey::from("toString"))?
-                        .call(agent, value.clone(), vec![])?
+                if let Ok(Value::String(s)) =
+                    o.get(ObjectKey::from("toString"))
+                        .unwrap()
+                        .call(agent, value.clone(), vec![])
                 {
-                    return Ok(s);
+                    return s;
                 }
             }
             let hash_key = &*o.properties.borrow() as *const IndexMap<ObjectKey, Value>;
             if inspected.contains(&hash_key) {
-                Ok("[Circular]".to_string())
+                "[Circular]".to_string()
             } else {
                 inspected.insert(hash_key);
-                let keys = value.keys(agent)?;
+                let keys = value.keys(agent).unwrap();
                 let array = match o.kind {
                     ObjectKind::Array => true,
                     _ => false,
@@ -714,18 +715,23 @@ fn inspect(
                 out += if array { "[" } else { "{" };
                 if keys.is_empty() {
                     out += if array { "]" } else { "}" };
-                    return Ok(out);
+                    return out;
                 }
                 for key in keys {
                     out += &format!(
                         "\n{}{}: {},",
                         "  ".repeat(indent + 1),
                         key,
-                        inspect(agent, &value.get(agent, &key)?, indent + 1, inspected)?
+                        inspect(
+                            agent,
+                            &value.get(agent, &key).unwrap(),
+                            indent + 1,
+                            inspected
+                        )
                     )
                 }
                 out += &format!("\n{}{}", "  ".repeat(indent), if array { "]" } else { "}" });
-                Ok(out)
+                out
             }
         }
         _ => unreachable!(),
@@ -927,7 +933,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn inspect(agent: &Agent, value: &Value) -> Result<String, Value> {
+    pub fn inspect(agent: &Agent, value: &Value) -> String {
         inspect(agent, value, 0, &mut HashSet::new())
     }
 }
