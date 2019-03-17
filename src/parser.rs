@@ -1,3 +1,5 @@
+use crate::IntoValue;
+use crate::{Agent, Value};
 use std::collections::HashMap;
 use std::iter::Peekable;
 use std::ops::{Div, Mul, Rem, Sub};
@@ -147,6 +149,12 @@ pub enum Error {
     UnexpectedEOF,
     UnexpectedToken,
     DuplicateBinding,
+}
+
+impl IntoValue for Error {
+    fn into_value(&self, agent: &Agent) -> Value {
+        Value::new_error(agent, "parsing error")
+    }
 }
 
 #[derive(Debug)]

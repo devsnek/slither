@@ -13,7 +13,7 @@ name = "slither"
 path = "src/bin.rs"
 
 [[bin]]
-name = "slither_repl"
+name = "repl"
 path = "src/repl.rs"
 
 [dependencies.gc]

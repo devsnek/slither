@@ -1,13 +1,15 @@
 use crate::intrinsics::{
     create_array_prototype, create_async_iterator_prototype, create_boolean_prototype,
-    create_function_prototype, create_generator_prototype, create_iterator_prototype,
-    create_net_client_prototype, create_number_prototype, create_object_prototype, create_promise,
-    create_promise_prototype, create_regex_prototype, create_string_prototype, create_symbol,
-    create_symbol_prototype,
+    create_error_prototype, create_function_prototype, create_generator_prototype,
+    create_iterator_prototype, create_net_client_prototype, create_number_prototype,
+    create_object_prototype, create_promise, create_promise_prototype, create_regex_prototype,
+    create_string_prototype, create_symbol, create_symbol_prototype,
+    promise::new_promise_capability,
 };
 use crate::parser::{Node, Parser};
 use crate::value::Value;
 use crate::vm::{compile, Evaluator, ExecutionContext, LexicalEnvironment};
+use crate::IntoValue;
 use gc::{Gc, GcCell};
 use num_cpus;
 use std::cell::RefCell;
@@ -64,7 +66,10 @@ pub type Module = Gc<GcCell<ModuleX>>;
 
 impl ModuleX {
     fn new(filename: &str, source: &str, agent: &mut Agent) -> Result<ModuleX, Value> {
-        let (ast, positions) = Parser::parse(&source)?;
+        let (ast, positions) = match Parser::parse(&source) {
+            Ok(v) => v,
+            Err(e) => return Err(e.into_value(agent)),
+        };
 
         let mut module = ModuleX {
             filename: filename.to_string(),
@@ -86,7 +91,7 @@ impl ModuleX {
                             .borrow()
                             .environment
                             .borrow_mut()
-                            .create_import(name, mr)?;
+                            .create_import(agent, name, mr)?;
                         module.imports.insert(specifier.to_string());
                     }
                     Node::ImportNamedDeclaration(specifier, names) => {
@@ -97,7 +102,7 @@ impl ModuleX {
                                 .borrow()
                                 .environment
                                 .borrow_mut()
-                                .create_import(name, mr.clone())?;
+                                .create_import(agent, name, mr.clone())?;
                             module.imports.insert(specifier.to_string());
                         }
                     }
@@ -109,14 +114,16 @@ impl ModuleX {
                                         Some(v) => {
                                             let ctx = module.context.borrow();
                                             let mut env = ctx.environment.borrow_mut();
-                                            env.create(name, false)?;
+                                            env.create(agent, name, false)?;
                                             env.initialize(name, v.clone());
                                         }
-                                        None => return Err(Value::new_error("unknown export")),
+                                        None => {
+                                            return Err(Value::new_error(agent, "unknown export"));
+                                        }
                                     }
                                 }
                             }
-                            None => return Err(Value::new_error("unknown standard module")),
+                            None => return Err(Value::new_error(agent, "unknown standard module")),
                         }
                     }
                     Node::ExportDeclaration(decl) => match *decl.clone() {
@@ -127,7 +134,7 @@ impl ModuleX {
                                 .borrow()
                                 .environment
                                 .borrow_mut()
-                                .create_export(name.as_str(), declarations[&name])?;
+                                .create_export(agent, name.as_str(), declarations[&name])?;
                         }
                         _ => {}
                     },
@@ -260,6 +267,7 @@ pub struct Intrinsics {
     pub generator_prototype: Value,
     pub async_iterator_prototype: Value,
     pub net_client_prototype: Value,
+    pub error_prototype: Value,
 }
 
 #[derive(Debug)]
@@ -286,6 +294,7 @@ pub struct Agent {
     pub pool: ThreadPool,
     pub code: Vec<u8>,
     pub string_table: Vec<String>,
+    uncaught_exception_handler: Option<Box<Fn(&Agent, Value) -> ()>>,
 }
 
 impl Default for Agent {
@@ -318,6 +327,7 @@ impl Agent {
                 generator_prototype: Value::Null,
                 async_iterator_prototype: Value::Null,
                 net_client_prototype: Value::Null,
+                error_prototype: Value::Null,
             },
             well_known_symbols: RefCell::new(HashMap::new()),
             builtins: HashMap::new(),
@@ -329,12 +339,14 @@ impl Agent {
             pool: ThreadPool::new(num_cpus::get()),
             code: Vec::new(),
             string_table: Vec::new(),
+            uncaught_exception_handler: None,
         };
 
         agent.intrinsics.boolean_prototype = create_boolean_prototype(&agent);
         agent.intrinsics.number_prototype = create_number_prototype(&agent);
         agent.intrinsics.regex_prototype = create_regex_prototype(&agent);
         agent.intrinsics.symbol = create_symbol(&agent);
+        agent.intrinsics.error_prototype = create_error_prototype(&agent);
         agent.intrinsics.iterator_prototype = create_iterator_prototype(&agent);
         agent.intrinsics.async_iterator_prototype = create_async_iterator_prototype(&agent);
         agent.intrinsics.generator_prototype = create_generator_prototype(&agent);
@@ -346,10 +358,10 @@ impl Agent {
 
         {
             let mut env = agent.root_env.borrow_mut();
-            env.create("Promise", true).unwrap();
+            env.create(&agent, "Promise", true).unwrap();
             env.initialize("Promise", agent.intrinsics.promise.clone());
 
-            env.create("Symbol", true).unwrap();
+            env.create(&agent, "Symbol", true).unwrap();
             env.initialize("Symbol", agent.intrinsics.symbol.clone());
         }
 
@@ -405,11 +417,20 @@ impl Agent {
         }
     }
 
-    pub fn import(&mut self, specifier: &str, referrer: &str) -> Result<(), Value> {
-        let module = self.load(specifier, referrer)?;
-        inner_module_instantiation(self, module.clone(), &mut Vec::new(), 0)?;
-        inner_module_evaluation(self, module.clone(), &mut Vec::new(), 0)?;
-        Ok(())
+    pub fn import(&mut self, specifier: &str, referrer: &str) -> Result<Value, Value> {
+        let promise = new_promise_capability(self, self.intrinsics.promise.clone())?;
+        let module = reject_if_err!(self, promise, self.load(specifier, referrer));
+        reject_if_err!(
+            self,
+            promise,
+            inner_module_instantiation(self, module.clone(), &mut Vec::new(), 0)
+        );
+        reject_if_err!(
+            self,
+            promise,
+            inner_module_evaluation(self, module.clone(), &mut Vec::new(), 0)
+        );
+        Ok(promise)
     }
 
     pub fn run(&mut self, specifier: &str, source: &str) -> Result<Value, Value> {
@@ -431,6 +452,24 @@ impl Agent {
                 let v = Value::new_symbol(Some(name.to_string()));
                 wks.insert(name.to_string(), v.clone());
                 v
+            }
+        }
+    }
+
+    pub fn set_uncaught_exception_handler<F: 'static>(&mut self, f: F)
+    where
+        F: Fn(&Agent, Value) -> (),
+    {
+        self.uncaught_exception_handler = Some(Box::new(f));
+    }
+
+    fn uncaught_exception(&self, e: Value) {
+        // TODO: add way to handle this from sl
+        match &self.uncaught_exception_handler {
+            Some(f) => f(self, e),
+            None => {
+                eprintln!("Uncaught Exception: {}", Value::inspect(self, &e).unwrap());
+                std::process::exit(1);
             }
         }
     }
@@ -469,8 +508,7 @@ impl Agent {
                 match job {
                     Some(Job(f, args)) => {
                         f(self, args).unwrap_or_else(|e: Value| {
-                            eprintln!("Uncaught Exception: {}", e);
-                            std::process::exit(1);
+                            self.uncaught_exception(e);
                         });
                     }
                     None => break,

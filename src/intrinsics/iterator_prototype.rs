@@ -2,8 +2,8 @@ use crate::agent::Agent;
 use crate::value::Value;
 use crate::vm::ExecutionContext;
 
-fn iterator(_: &Agent, ctx: &ExecutionContext, _: Vec<Value>) -> Result<Value, Value> {
-    ctx.environment.borrow().get_this()
+fn iterator(agent: &Agent, ctx: &ExecutionContext, _: Vec<Value>) -> Result<Value, Value> {
+    ctx.environment.borrow().get_this(agent)
 }
 
 pub fn create_iterator_prototype(agent: &Agent) -> Value {
@@ -11,7 +11,11 @@ pub fn create_iterator_prototype(agent: &Agent) -> Value {
 
     proto
         .set(
-            &agent.well_known_symbol("iterator").to_object_key().unwrap(),
+            agent,
+            &agent
+                .well_known_symbol("iterator")
+                .to_object_key(agent)
+                .unwrap(),
             Value::new_builtin_function(agent, iterator),
         )
         .unwrap();

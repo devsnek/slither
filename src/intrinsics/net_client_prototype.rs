@@ -2,13 +2,14 @@ use crate::agent::{Agent, MioMapType};
 use crate::intrinsics::promise::{new_promise_capability, promise_resolve_i};
 use crate::value::{ObjectKey, ObjectKind, Value};
 use crate::vm::ExecutionContext;
+use crate::IntoValue;
 use num::ToPrimitive;
 use std::io::prelude::*;
 
 fn next(agent: &Agent, ctx: &ExecutionContext, _: Vec<Value>) -> Result<Value, Value> {
-    let this = ctx.environment.borrow().get_this()?;
+    let this = ctx.environment.borrow().get_this(agent)?;
     if !this.has_slot("net client queue") {
-        return Err(Value::new_error("invalid receiver"));
+        return Err(Value::new_error(agent, "invalid receiver"));
     }
 
     if let Value::List(buffer) = this.get_slot("net client buffer") {
@@ -70,9 +71,9 @@ pub fn get_or_create_reject(agent: &Agent, target: Value, value: Value) {
 }
 
 fn write(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
-    let this = ctx.environment.borrow().get_this()?;
+    let this = ctx.environment.borrow().get_this(agent)?;
     if !this.has_slot("net client token") {
-        return Err(Value::new_error("invalid receiver"));
+        return Err(Value::new_error(agent, "invalid receiver"));
     }
     if let Value::Number(t) = this.get_slot("net client token") {
         let token = mio::Token(t.to_usize().unwrap());
@@ -83,18 +84,26 @@ fn write(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Result<Valu
             let mut s = s;
             match args.get(0) {
                 Some(Value::String(str)) => {
-                    s.write_all(str.as_bytes())?;
-                    Ok(Value::Null)
+                    match s.write_all(str.as_bytes()) {
+                        Ok(_) => Ok(Value::Null),
+                        Err(e) => Err(e.into_value(agent)),
+                    }
+                    // s.write_all(str.as_bytes())?;
+                    // Ok(Value::Null)
                 }
                 Some(Value::Object(o)) => {
                     if let ObjectKind::Buffer(b) = &o.kind {
-                        s.write_all(&b.borrow())?;
-                        Ok(Value::Null)
+                        match s.write_all(&b.borrow()) {
+                            Ok(_) => Ok(Value::Null),
+                            Err(e) => Err(e.into_value(agent)),
+                        }
+                    // s.write_all(&b.borrow())?;
+                    // Ok(Value::Null)
                     } else {
-                        Err(Value::new_error("data must be a string or buffer"))
+                        Err(Value::new_error(agent, "data must be a string or buffer"))
                     }
                 }
-                _ => Err(Value::new_error("data must be a string or buffer")),
+                _ => Err(Value::new_error(agent, "data must be a string or buffer")),
             }
         } else {
             unreachable!();
@@ -105,9 +114,9 @@ fn write(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Result<Valu
 }
 
 fn close(agent: &Agent, ctx: &ExecutionContext, _: Vec<Value>) -> Result<Value, Value> {
-    let this = ctx.environment.borrow().get_this()?;
+    let this = ctx.environment.borrow().get_this(agent)?;
     if !this.has_slot("net client token") {
-        return Err(Value::new_error("invalid receiver"));
+        return Err(Value::new_error(agent, "invalid receiver"));
     }
 
     if let Value::Number(t) = this.get_slot("net client token") {
@@ -124,6 +133,7 @@ pub fn create_net_client_prototype(agent: &Agent) -> Value {
 
     proto
         .set(
+            agent,
             &ObjectKey::from("next"),
             Value::new_builtin_function(agent, next),
         )
@@ -131,6 +141,7 @@ pub fn create_net_client_prototype(agent: &Agent) -> Value {
 
     proto
         .set(
+            agent,
             &ObjectKey::from("write"),
             Value::new_builtin_function(agent, write),
         )
@@ -138,6 +149,7 @@ pub fn create_net_client_prototype(agent: &Agent) -> Value {
 
     proto
         .set(
+            agent,
             &ObjectKey::from("close"),
             Value::new_builtin_function(agent, close),
         )

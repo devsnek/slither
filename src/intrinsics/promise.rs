@@ -117,11 +117,11 @@ fn promise_resolve_function(
         reject_promise(
             agent,
             promise,
-            Value::new_error("cannot resolve a promise with itself"),
+            Value::new_error(agent, "cannot resolve a promise with itself"),
         )
     } else if resolution.has_slot("promise state") {
         let ResolvingFunctions { resolve, reject } = create_resolving_functions(agent, &promise);
-        let then_call_result = resolution.get(&ObjectKey::from("then"))?.call(
+        let then_call_result = resolution.get(agent, &ObjectKey::from("then"))?.call(
             agent,
             resolution,
             vec![resolve, reject.clone()],
@@ -158,7 +158,7 @@ fn promise(agent: &Agent, _ctx: &ExecutionContext, args: Vec<Value>) -> Result<V
     let executor = args[0].clone();
 
     if executor.type_of() != "function" {
-        return Err(Value::new_error("executor must be a function"));
+        return Err(Value::new_error(agent, "executor must be a function"));
     }
 
     let promise = Value::new_custom_object(agent.intrinsics.promise_prototype.clone());
@@ -178,7 +178,7 @@ fn promise(agent: &Agent, _ctx: &ExecutionContext, args: Vec<Value>) -> Result<V
 }
 
 fn get_capabilities_executor(
-    _agent: &Agent,
+    agent: &Agent,
     ctx: &ExecutionContext,
     args: Vec<Value>,
 ) -> Result<Value, Value> {
@@ -188,7 +188,7 @@ fn get_capabilities_executor(
     let reject = args.get(1).unwrap_or(&Value::Null).clone();
 
     if f.get_slot("resolve") != Value::Null || f.get_slot("reject") != Value::Null {
-        return Err(Value::new_error("type error"));
+        return Err(Value::new_error(agent, "type error"));
     }
 
     f.set_slot("resolve", resolve);
@@ -211,7 +211,7 @@ pub fn new_promise_capability(agent: &Agent, constructor: Value) -> Result<Value
 
 pub fn promise_resolve_i(agent: &Agent, c: Value, x: Value) -> Result<Value, Value> {
     if x.has_slot("promise state") {
-        let x_constructor = x.get(&ObjectKey::from("constructor"))?;
+        let x_constructor = x.get(agent, &ObjectKey::from("constructor"))?;
         if x_constructor == c {
             return Ok(x.clone());
         }
@@ -230,7 +230,7 @@ fn promise_resolve(
 ) -> Result<Value, Value> {
     let c = ctx.environment.borrow().this.clone().unwrap();
     if c.type_of() != "object" && c.type_of() != "function" {
-        return Err(Value::new_error("this must be an object"));
+        return Err(Value::new_error(agent, "this must be an object"));
     }
     let x = args.get(0).unwrap_or(&Value::Null).clone();
     promise_resolve_i(agent, c, x)
@@ -240,7 +240,7 @@ fn promise_reject(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Re
     let x = args.get(0).unwrap_or(&Value::Null);
     let c = ctx.environment.borrow().this.clone().unwrap();
     if c.type_of() != "object" && c.type_of() != "function" {
-        return Err(Value::new_error("this must be an object"));
+        return Err(Value::new_error(agent, "this must be an object"));
     }
     let capability = new_promise_capability(agent, c)?;
     capability
@@ -253,16 +253,19 @@ pub fn create_promise(agent: &Agent) -> Value {
     let p = Value::new_builtin_function(agent, promise);
 
     p.set(
+        agent,
         &ObjectKey::from("prototype"),
         agent.intrinsics.promise_prototype.clone(),
     )
     .unwrap();
     p.set(
+        agent,
         &ObjectKey::from("resolve"),
         Value::new_builtin_function(agent, promise_resolve),
     )
     .unwrap();
     p.set(
+        agent,
         &ObjectKey::from("reject"),
         Value::new_builtin_function(agent, promise_reject),
     )
@@ -270,7 +273,7 @@ pub fn create_promise(agent: &Agent) -> Value {
     agent
         .intrinsics
         .promise_prototype
-        .set(&ObjectKey::from("constructor"), p.clone())
+        .set(agent, &ObjectKey::from("constructor"), p.clone())
         .unwrap();
 
     p

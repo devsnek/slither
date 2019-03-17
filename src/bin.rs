@@ -12,14 +12,5 @@ fn main() {
     let referrer = referrer.to_str().unwrap();
 
     let mut agent = Agent::new();
-
-    match agent.import(filename, referrer) {
-        Ok(()) => {
-            agent.run_jobs();
-        }
-        Err(e) => {
-            eprintln!("Uncaught Exception: {}", e);
-            std::process::exit(1);
-        }
-    }
+    agent.import(filename, referrer).unwrap();
 }

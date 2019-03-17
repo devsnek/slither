@@ -2,6 +2,7 @@ use crate::agent::Agent;
 use crate::intrinsics::promise::{new_promise_capability, promise_resolve_i};
 use crate::parser::FunctionKind;
 use crate::vm::{Evaluator, ExecutionContext, LexicalEnvironment};
+use crate::IntoValue;
 use gc::{Gc, GcCell};
 use indexmap::IndexMap;
 use num::ToPrimitive;
@@ -105,6 +106,7 @@ impl ObjectInfo {
 
     pub fn set(
         &self,
+        agent: &Agent,
         property: ObjectKey,
         value: Value,
         receiver: Gc<ObjectInfo>,
@@ -117,7 +119,7 @@ impl ObjectInfo {
                 if let Value::Number(given_len) = value {
                     let int_len = given_len as usize;
                     if int_len as f64 != given_len {
-                        return Err(Value::new_error("invalid array length"));
+                        return Err(Value::new_error(agent, "invalid array length"));
                     }
                     let old_len = self.get(ObjectKey::from("length"))?;
                     let mut old_len = match old_len {
@@ -141,7 +143,7 @@ impl ObjectInfo {
                     }
                     Ok(Value::Number(int_len as f64))
                 } else {
-                    Err(Value::new_error("invalid array length"))
+                    Err(Value::new_error(agent, "invalid array length"))
                 }
             }
             _ => {
@@ -174,7 +176,7 @@ impl ObjectInfo {
                     Ok(value)
                 } else {
                     match &self.prototype {
-                        Value::Object(oo) => oo.set(property, value, receiver),
+                        Value::Object(oo) => oo.set(agent, property, value, receiver),
                         Value::Null => {
                             receiver
                                 .properties
@@ -389,18 +391,18 @@ impl Value {
         }
     }
 
-    pub fn to_object_key(&self) -> Result<ObjectKey, Value> {
+    pub fn to_object_key(&self, agent: &Agent) -> Result<ObjectKey, Value> {
         match self {
             Value::Symbol(s) => Ok(ObjectKey::Symbol(s.clone())),
             Value::String(s) => Ok(ObjectKey::from(s.to_string())),
             Value::Number(n) => Ok(ObjectKey::from(*n)),
-            _ => Err(Value::new_error("cannot convert to object key")),
+            _ => Err(Value::new_error(agent, "cannot convert to object key")),
         }
     }
 
     pub fn to_object(&self, a: &Agent) -> Result<Value, Value> {
         match self {
-            Value::Null => Err(Value::new_error("cannot convert null to object")),
+            Value::Null => Err(Value::new_error(a, "cannot convert null to object")),
             Value::True => Ok(Value::new_boolean_object(a, true)),
             Value::False => Ok(Value::new_boolean_object(a, false)),
             Value::Object(_) => Ok(self.clone()),
@@ -452,24 +454,24 @@ impl Value {
         }
     }
 
-    pub fn set(&self, property: &ObjectKey, value: Value) -> Result<Value, Value> {
+    pub fn set(&self, agent: &Agent, property: &ObjectKey, value: Value) -> Result<Value, Value> {
         match self {
-            Value::Object(o) => o.set(property.clone(), value, o.clone()),
-            _ => Err(Value::new_error("base must be an object")),
+            Value::Object(o) => o.set(agent, property.clone(), value, o.clone()),
+            _ => Err(Value::new_error(agent, "base must be an object")),
         }
     }
 
-    pub fn get(&self, property: &ObjectKey) -> Result<Value, Value> {
+    pub fn get(&self, agent: &Agent, property: &ObjectKey) -> Result<Value, Value> {
         match self {
             Value::Object(o) => o.get(property.clone()),
-            _ => Err(Value::new_error("base must be an object")),
+            _ => Err(Value::new_error(agent, "base must be an object")),
         }
     }
 
-    pub fn keys(&self) -> Result<Vec<ObjectKey>, Value> {
+    pub fn keys(&self, agent: &Agent) -> Result<Vec<ObjectKey>, Value> {
         match self {
             Value::Object(o) => Ok(o.keys()),
-            _ => Err(Value::new_error("base must be an object")),
+            _ => Err(Value::new_error(agent, "base must be an object")),
         }
     }
 
@@ -551,9 +553,9 @@ impl Value {
                     ctx.function = Some(self.clone());
                     f(agent, &ctx, args)
                 }
-                _ => Err(Value::new_error("not a function")),
+                _ => Err(Value::new_error(agent, "not a function")),
             },
-            _ => Err(Value::new_error("not a function")),
+            _ => Err(Value::new_error(agent, "not a function")),
         }
     }
 
@@ -574,10 +576,10 @@ impl Value {
                             Ok(this)
                         }
                     }
-                    _ => Err(Value::new_error("not a function")),
+                    _ => Err(Value::new_error(agent, "not a function")),
                 }
             }
-            _ => Err(Value::new_error("not a function")),
+            _ => Err(Value::new_error(agent, "not a function")),
         }
     }
 }
@@ -657,14 +659,17 @@ fn perform_await(agent: &Agent, ctx: Value, value: Value) -> Result<(), Value> {
     let on_rejected = Value::new_builtin_function(agent, on_rejected);
     on_rejected.set_slot("async context", ctx);
 
-    promise
-        .get(&ObjectKey::from("then"))?
-        .call(agent, promise, vec![on_fulfilled, on_rejected])?;
+    promise.get(agent, &ObjectKey::from("then"))?.call(
+        agent,
+        promise,
+        vec![on_fulfilled, on_rejected],
+    )?;
 
     Ok(())
 }
 
 fn inspect(
+    agent: &Agent,
     value: &Value,
     indent: usize,
     inspected: &mut HashSet<*const IndexMap<ObjectKey, Value>>,
@@ -686,12 +691,20 @@ fn inspect(
             if let ObjectKind::Regex(re) = &o.kind {
                 return Ok(format!("/{}/", re));
             }
+            if o.prototype == agent.intrinsics.error_prototype {
+                if let Value::String(s) =
+                    o.get(ObjectKey::from("toString"))?
+                        .call(agent, value.clone(), vec![])?
+                {
+                    return Ok(s);
+                }
+            }
             let hash_key = &*o.properties.borrow() as *const IndexMap<ObjectKey, Value>;
             if inspected.contains(&hash_key) {
                 Ok("[Circular]".to_string())
             } else {
                 inspected.insert(hash_key);
-                let keys = value.keys()?;
+                let keys = value.keys(agent)?;
                 let array = match o.kind {
                     ObjectKind::Array => true,
                     _ => false,
@@ -708,7 +721,7 @@ fn inspect(
                         "\n{}{}: {},",
                         "  ".repeat(indent + 1),
                         key,
-                        inspect(&value.get(&key)?, indent + 1, inspected)?
+                        inspect(agent, &value.get(agent, &key)?, indent + 1, inspected)?
                     )
                 }
                 out += &format!("\n{}{}", "  ".repeat(indent), if array { "]" } else { "}" });
@@ -716,15 +729,6 @@ fn inspect(
             }
         }
         _ => unreachable!(),
-    }
-}
-
-impl std::fmt::Display for Value {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match inspect(self, 0, &mut HashSet::new()) {
-            Ok(s) => write!(fmt, "{}", s),
-            Err(_e) => Err(std::fmt::Error),
-        }
     }
 }
 
@@ -790,24 +794,6 @@ impl PartialEq for Value {
     }
 }
 
-impl std::convert::From<crate::parser::Error> for Value {
-    fn from(_e: crate::parser::Error) -> Self {
-        Value::new_error("parsing error")
-    }
-}
-
-impl From<std::net::AddrParseError> for Value {
-    fn from(e: std::net::AddrParseError) -> Self {
-        Value::new_error(&format!("{}", e))
-    }
-}
-
-impl From<std::io::Error> for Value {
-    fn from(e: std::io::Error) -> Self {
-        Value::new_error(&format!("{}", e))
-    }
-}
-
 impl Value {
     pub fn new_symbol(desc: Option<String>) -> Value {
         Value::Symbol(Symbol::new(false, desc))
@@ -833,7 +819,7 @@ impl Value {
         }))
     }
 
-    pub fn new_error(message: &str) -> Value {
+    pub fn new_error(agent: &Agent, message: &str) -> Value {
         let mut m = IndexMap::new();
         m.insert(
             ObjectKey::from("message"),
@@ -842,7 +828,7 @@ impl Value {
         Value::Object(Gc::new(ObjectInfo {
             kind: ObjectKind::Ordinary,
             properties: GcCell::new(m),
-            prototype: Value::Null,
+            prototype: agent.intrinsics.error_prototype.clone(),
         }))
     }
 
@@ -911,7 +897,7 @@ impl Value {
         let re = match Regex::new(r) {
             Ok(r) => r,
             Err(e) => {
-                return Err(Value::new_error(&format!("{}", e)));
+                return Err(Value::new_error(agent, &format!("{}", e)));
             }
         };
         Ok(Value::Object(Gc::new(ObjectInfo {
@@ -931,11 +917,29 @@ impl Value {
 
     pub fn new_iter_result(agent: &Agent, value: Value, done: bool) -> Result<Value, Value> {
         let o = Value::new_object(agent.intrinsics.object_prototype.clone());
-        o.set(&ObjectKey::from("value"), value)?;
+        o.set(agent, &ObjectKey::from("value"), value)?;
         o.set(
+            agent,
             &ObjectKey::from("done"),
             if done { Value::True } else { Value::False },
         )?;
         Ok(o)
+    }
+
+    #[inline]
+    pub fn inspect(agent: &Agent, value: &Value) -> Result<String, Value> {
+        inspect(agent, value, 0, &mut HashSet::new())
+    }
+}
+
+impl IntoValue for std::net::AddrParseError {
+    fn into_value(&self, agent: &Agent) -> Value {
+        Value::new_error(agent, &format!("{}", self))
+    }
+}
+
+impl IntoValue for std::io::Error {
+    fn into_value(&self, agent: &Agent) -> Value {
+        Value::new_error(agent, &format!("{}", self))
     }
 }

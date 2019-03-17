@@ -3,7 +3,7 @@ use crate::value::{ObjectKey, ObjectKind, Value};
 use crate::vm::ExecutionContext;
 
 fn match_(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
-    let this = ctx.environment.borrow().get_this()?;
+    let this = ctx.environment.borrow().get_this(agent)?;
     match this {
         Value::Object(o) => {
             if let ObjectKind::Regex(re) = &o.kind {
@@ -17,6 +17,7 @@ fn match_(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Result<Val
                                 match name {
                                     Some(s) => {
                                         o.set(
+                                            agent,
                                             &ObjectKey::from(s),
                                             Value::String(
                                                 captures.name(s).unwrap().as_str().to_string(),
@@ -25,6 +26,7 @@ fn match_(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Result<Val
                                     }
                                     None => {
                                         o.set(
+                                            agent,
                                             &ObjectKey::from(i),
                                             Value::String(
                                                 captures.get(i).unwrap().as_str().to_string(),
@@ -38,18 +40,18 @@ fn match_(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Result<Val
                         }
                         None => Ok(Value::Null),
                     },
-                    _ => Err(Value::new_error("input must be a string")),
+                    _ => Err(Value::new_error(agent, "input must be a string")),
                 }
             } else {
-                Err(Value::new_error("invalid receiver"))
+                Err(Value::new_error(agent, "invalid receiver"))
             }
         }
-        _ => Err(Value::new_error("invalid receiver")),
+        _ => Err(Value::new_error(agent, "invalid receiver")),
     }
 }
 
-fn test(_: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
-    let this = ctx.environment.borrow().get_this()?;
+fn test(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
+    let this = ctx.environment.borrow().get_this(agent)?;
     match this {
         Value::Object(o) => {
             if let ObjectKind::Regex(re) = &o.kind {
@@ -60,13 +62,13 @@ fn test(_: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Result<Value, Va
                     } else {
                         Value::False
                     }),
-                    _ => Err(Value::new_error("input must be a string")),
+                    _ => Err(Value::new_error(agent, "input must be a string")),
                 }
             } else {
-                Err(Value::new_error("invalid receiver"))
+                Err(Value::new_error(agent, "invalid receiver"))
             }
         }
-        _ => Err(Value::new_error("invalid receiver")),
+        _ => Err(Value::new_error(agent, "invalid receiver")),
     }
 }
 
@@ -75,6 +77,7 @@ pub fn create_regex_prototype(agent: &Agent) -> Value {
 
     proto
         .set(
+            agent,
             &ObjectKey::from("match"),
             Value::new_builtin_function(agent, match_),
         )
@@ -82,6 +85,7 @@ pub fn create_regex_prototype(agent: &Agent) -> Value {
 
     proto
         .set(
+            agent,
             &ObjectKey::from("test"),
             Value::new_builtin_function(agent, test),
         )

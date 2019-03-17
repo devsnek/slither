@@ -31,7 +31,7 @@ pub fn handle(agent: &Agent, token: Token, promise: Value) {
             let o = Value::new_object(agent.intrinsics.object_prototype.clone());
             macro_rules! p {
                 ($target:expr, $name:expr, $value:expr) => {
-                    $target.set(&ObjectKey::from($name), $value).unwrap();
+                    $target.set(agent, &ObjectKey::from($name), $value).unwrap();
                 };
             }
             let ft = m.file_type();
@@ -97,7 +97,7 @@ pub fn handle(agent: &Agent, token: Token, promise: Value) {
         FsResponse::Error(s) => {
             promise
                 .get_slot("reject")
-                .call(agent, promise, vec![Value::new_error(s.as_str())])
+                .call(agent, promise, vec![Value::new_error(agent, s.as_str())])
                 .unwrap();
         }
     }
@@ -138,7 +138,7 @@ fn read_file(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Result<V
 
         Ok(promise)
     } else {
-        Err(Value::new_error("filename must be a string"))
+        Err(Value::new_error(agent, "filename must be a string"))
     }
 }
 
@@ -179,10 +179,10 @@ fn write_file(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Result<
 
             Ok(promise)
         } else {
-            Err(Value::new_error("contents must be a string"))
+            Err(Value::new_error(agent, "contents must be a string"))
         }
     } else {
-        Err(Value::new_error("filename must be a string"))
+        Err(Value::new_error(agent, "filename must be a string"))
     }
 }
 
@@ -221,7 +221,7 @@ fn remove_file(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Result
 
         Ok(promise)
     } else {
-        Err(Value::new_error("filename must be a string"))
+        Err(Value::new_error(agent, "filename must be a string"))
     }
 }
 
@@ -263,7 +263,7 @@ fn get_metadata(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Resul
 
         Ok(promise)
     } else {
-        Err(Value::new_error("filename must be a string"))
+        Err(Value::new_error(agent, "filename must be a string"))
     }
 }
 
@@ -302,10 +302,10 @@ fn copy(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Result<Value,
 
             Ok(promise)
         } else {
-            Err(Value::new_error("to must be a string"))
+            Err(Value::new_error(agent, "to must be a string"))
         }
     } else {
-        Err(Value::new_error("from must be a string"))
+        Err(Value::new_error(agent, "from must be a string"))
     }
 }
 
@@ -344,10 +344,10 @@ fn move_(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Result<Value
 
             Ok(promise)
         } else {
-            Err(Value::new_error("to must be a string"))
+            Err(Value::new_error(agent, "to must be a string"))
         }
     } else {
-        Err(Value::new_error("from must be a string"))
+        Err(Value::new_error(agent, "from must be a string"))
     }
 }
 
@@ -400,10 +400,10 @@ fn create_symlink(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Res
 
             Ok(promise)
         } else {
-            Err(Value::new_error("to must be a string"))
+            Err(Value::new_error(agent, "to must be a string"))
         }
     } else {
-        Err(Value::new_error("from must be a string"))
+        Err(Value::new_error(agent, "from must be a string"))
     }
 }
 
@@ -435,7 +435,7 @@ fn exists(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Result<Valu
 
         Ok(promise)
     } else {
-        Err(Value::new_error("filename must be a string"))
+        Err(Value::new_error(agent, "filename must be a string"))
     }
 }
 
@@ -478,7 +478,7 @@ fn create_directory(
 
         Ok(promise)
     } else {
-        Err(Value::new_error("filename must be a string"))
+        Err(Value::new_error(agent, "filename must be a string"))
     }
 }
 
@@ -521,7 +521,7 @@ fn remove_directory(
 
         Ok(promise)
     } else {
-        Err(Value::new_error("filename must be a string"))
+        Err(Value::new_error(agent, "filename must be a string"))
     }
 }
 

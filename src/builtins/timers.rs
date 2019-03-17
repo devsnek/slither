@@ -68,7 +68,7 @@ fn create_timeout(
 ) -> Result<Value, Value> {
     let callback = args.get(0).unwrap_or(&Value::Null);
     if callback.type_of() != "function" {
-        return Err(Value::new_error("callback must be a function"));
+        return Err(Value::new_error(agent, "callback must be a function"));
     }
     match args.get(1).unwrap_or(&Value::Null) {
         Value::Number(n) => {
@@ -92,7 +92,7 @@ fn create_timeout(
             // TODO: return object with cancel()
             Ok(Value::Null)
         }
-        _ => Err(Value::new_error("duration must be a number")),
+        _ => Err(Value::new_error(agent, "duration must be a number")),
     }
 }
 

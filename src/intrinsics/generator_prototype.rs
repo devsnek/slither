@@ -3,7 +3,7 @@ use crate::value::{ObjectKey, Value};
 use crate::vm::ExecutionContext;
 
 fn next(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
-    let this = ctx.environment.borrow().get_this()?;
+    let this = ctx.environment.borrow().get_this(agent)?;
     if let Value::WrappedContext(context, _) = this.get_slot("generator context") {
         let mut args = args;
         if context.borrow_mut().evaluator.is_none() {
@@ -30,7 +30,7 @@ fn next(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Result<Value
 }
 
 fn throw(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
-    let this = ctx.environment.borrow().get_this()?;
+    let this = ctx.environment.borrow().get_this(agent)?;
     if let Value::WrappedContext(context, _) = this.get_slot("generator context") {
         let mut args = args;
         if context.borrow_mut().evaluator.is_none() {
@@ -61,6 +61,7 @@ pub fn create_generator_prototype(agent: &Agent) -> Value {
 
     proto
         .set(
+            agent,
             &ObjectKey::from("next"),
             Value::new_builtin_function(agent, next),
         )
@@ -68,6 +69,7 @@ pub fn create_generator_prototype(agent: &Agent) -> Value {
 
     proto
         .set(
+            agent,
             &ObjectKey::from("throw"),
             Value::new_builtin_function(agent, throw),
         )

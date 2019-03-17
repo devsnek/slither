@@ -13,7 +13,7 @@ fn promise_proto_then(
 
     let this = ctx.environment.borrow().this.clone().unwrap();
 
-    let constructor = this.get(&ObjectKey::from("constructor"))?;
+    let constructor = this.get(agent, &ObjectKey::from("constructor"))?;
 
     let promise = new_promise_capability(agent, constructor)?;
 
@@ -73,7 +73,7 @@ fn promise_proto_catch(
 ) -> Result<Value, Value> {
     let on_rejected = args.get(0).unwrap_or(&Value::Null).clone();
     let this = ctx.environment.borrow().this.clone().unwrap();
-    let then = this.get(&ObjectKey::from("then"))?;
+    let then = this.get(agent, &ObjectKey::from("then"))?;
     then.call(agent, this.clone(), vec![Value::Null, on_rejected])
 }
 
@@ -101,7 +101,7 @@ fn then_finally_function(
     let value_thunk = Value::new_builtin_function(agent, value_thunk);
     value_thunk.set_slot("value", value);
     promise
-        .get(&ObjectKey::from("then"))?
+        .get(agent, &ObjectKey::from("then"))?
         .call(agent, promise, vec![value_thunk])
 }
 
@@ -119,7 +119,7 @@ fn catch_finally_function(
     let thrower = Value::new_builtin_function(agent, value_thrower);
     thrower.set_slot("value", value);
     promise
-        .get(&ObjectKey::from("then"))?
+        .get(agent, &ObjectKey::from("then"))?
         .call(agent, promise, vec![thrower])
 }
 
@@ -130,12 +130,15 @@ fn promise_proto_finally(
 ) -> Result<Value, Value> {
     let promise = ctx.environment.borrow().this.clone().unwrap();
     if promise.type_of() != "object" && promise.type_of() != "function" {
-        return Err(Value::new_error("invalid this"));
+        return Err(Value::new_error(agent, "invalid this"));
     }
 
-    let c = promise.get(&ObjectKey::from("constructor"))?;
+    let c = promise.get(agent, &ObjectKey::from("constructor"))?;
     if c.type_of() != "object" && c.type_of() != "function" {
-        return Err(Value::new_error("this does not derive a valid constructor"));
+        return Err(Value::new_error(
+            agent,
+            "this does not derive a valid constructor",
+        ));
     }
 
     let on_finally = args.get(0).unwrap_or(&Value::Null).clone();
@@ -152,25 +155,30 @@ fn promise_proto_finally(
         (on_finally.clone(), on_finally)
     };
 
-    promise
-        .get(&ObjectKey::from("then"))?
-        .call(agent, promise, vec![then_finally, catch_finally])
+    promise.get(agent, &ObjectKey::from("then"))?.call(
+        agent,
+        promise,
+        vec![then_finally, catch_finally],
+    )
 }
 
 pub fn create_promise_prototype(agent: &Agent) -> Value {
     let p = Value::new_object(agent.intrinsics.object_prototype.clone());
 
     p.set(
+        agent,
         &ObjectKey::from("then"),
         Value::new_builtin_function(agent, promise_proto_then),
     )
     .expect("unable to set then on promise prototype");
     p.set(
+        agent,
         &ObjectKey::from("catch"),
         Value::new_builtin_function(agent, promise_proto_catch),
     )
     .expect("unable to set catch on promise prototype");
     p.set(
+        agent,
         &ObjectKey::from("finally"),
         Value::new_builtin_function(agent, promise_proto_finally),
     )
