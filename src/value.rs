@@ -322,6 +322,7 @@ impl From<f64> for ObjectKey {
 
 #[derive(Debug, Clone, Finalize)]
 pub enum Value {
+    // language types
     Empty, // used to replace default params
     Null,
     True,
@@ -330,6 +331,9 @@ pub enum Value {
     Number(f64),
     Symbol(Symbol),
     Object(Gc<ObjectInfo>),
+    Tuple(VecDeque<Value>),
+
+    // internal types
     List(Gc<GcCell<VecDeque<Value>>>),
     EnvironmentReference(Gc<GcCell<LexicalEnvironment>>, String),
     ValueReference(Box<Value>, ObjectKey),
@@ -348,6 +352,7 @@ unsafe impl gc::Trace for Value {
             | Value::Number(_)
             | Value::Symbol(_) => {}
             Value::Object(o) => mark(o),
+            Value::Tuple(items) => mark(items),
             Value::List(list) => mark(list),
             Value::EnvironmentReference(env, ..) => mark(env),
             Value::ValueReference(v, ..) => mark(v),
@@ -400,7 +405,7 @@ impl Value {
         }
     }
 
-    pub fn to_object(&self, a: &Agent) -> Result<Value, Value> {
+    pub fn to_property_target(&self, a: &Agent) -> Result<Value, Value> {
         match self {
             Value::Null => Err(Value::new_error(a, "cannot convert null to object")),
             Value::True => Ok(Value::new_boolean_object(a, true)),
@@ -408,6 +413,7 @@ impl Value {
             Value::Object(_) => Ok(self.clone()),
             Value::Number(n) => Ok(Value::new_number_object(a, *n)),
             Value::String(s) => Ok(Value::new_string_object(a, s.clone())),
+            Value::Tuple(_) => Ok(self.clone()),
             _ => unreachable!(),
         }
     }
@@ -464,7 +470,11 @@ impl Value {
     pub fn get(&self, agent: &Agent, property: &ObjectKey) -> Result<Value, Value> {
         match self {
             Value::Object(o) => o.get(property.clone()),
-            _ => Err(Value::new_error(agent, "base must be an object")),
+            Value::Tuple(t) => match property {
+                ObjectKey::Number(n) => Ok(t.get(*n).unwrap_or(&Value::Null).clone()),
+                _ => Ok(Value::Null),
+            },
+            _ => Err(Value::new_error(agent, "base must be an object or tuple")),
         }
     }
 
@@ -687,6 +697,13 @@ fn inspect(
                 "Symbol()".to_string()
             }
         }
+        Value::Tuple(items) => {
+            let mut ins = Vec::new();
+            for item in items {
+                ins.push(inspect(agent, item, indent, inspected));
+            }
+            format!("({})", ins.join(", "))
+        }
         Value::Object(o) => {
             if let ObjectKind::Regex(re) = &o.kind {
                 return format!("/{}/", re);
@@ -805,6 +822,16 @@ impl PartialEq for Value {
                 Value::Object(vo) => ref_eq(&*o.properties.borrow(), &*vo.properties.borrow()),
                 _ => false,
             },
+            Value::Tuple(i) => match &other {
+                Value::Tuple(vi) => {
+                    if i.len() != vi.len() {
+                        false
+                    } else {
+                        i.iter().enumerate().all(|(i, v)| &vi[i] == v)
+                    }
+                }
+                _ => false,
+            },
             Value::Empty => match other {
                 Value::Empty => true,
                 _ => false,
@@ -841,6 +868,10 @@ impl Value {
             properties: GcCell::new(IndexMap::new()),
             prototype: agent.intrinsics.array_prototype.clone(),
         }))
+    }
+
+    pub fn new_tuple(items: VecDeque<Value>) -> Value {
+        Value::Tuple(items)
     }
 
     pub fn new_error(agent: &Agent, message: &str) -> Value {

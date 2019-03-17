@@ -4,7 +4,7 @@ use crate::value::{ObjectKey, ObjectKind, Value};
 use crate::vm::Op;
 use byteorder::{LittleEndian, ReadBytesExt};
 use gc::{Gc, GcCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::ops::{Div, Mul, Rem, Sub};
 
 #[derive(Debug, Trace, Finalize, PartialEq)]
@@ -409,7 +409,7 @@ fn evaluate_at(
                     let part = if let Value::String(part) = value {
                         part
                     } else {
-                        let value = handle!(value.to_object(agent));
+                        let value = handle!(value.to_property_target(agent));
                         let to_string = handle!(value.get(agent, &ObjectKey::from("toString")));
                         if let Value::String(part) = handle!(to_string.call(agent, value, vec![])) {
                             part
@@ -446,6 +446,16 @@ fn evaluate_at(
                 }
                 stack.push(a);
             }
+            Op::NewTuple => {
+                let len = get_i32(pc);
+                let mut items = VecDeque::new();
+                for _i in 0..len {
+                    let value = handle!(get_value(stack));
+                    items.push_front(value);
+                }
+                let tuple = Value::new_tuple(items);
+                stack.push(tuple);
+            }
             Op::NewIdentifier => {
                 let id = get_i32(pc) as usize;
                 let name = &agent.string_table[id];
@@ -462,7 +472,7 @@ fn evaluate_at(
                 } else {
                     get_value(stack)
                 });
-                let base = handle!(base.to_object(agent));
+                let base = handle!(base.to_property_target(agent));
                 stack.push(Value::ValueReference(
                     Box::new(base),
                     ObjectKey::from(name.to_string()),
@@ -475,7 +485,7 @@ fn evaluate_at(
                 } else {
                     get_value(stack)
                 });
-                let base = handle!(base.to_object(agent));
+                let base = handle!(base.to_property_target(agent));
                 let key = handle!(key.to_object_key(agent));
                 stack.push(Value::ValueReference(Box::new(base), key));
             }
@@ -569,7 +579,7 @@ fn evaluate_at(
                 let this = if this == Value::Null {
                     this
                 } else {
-                    handle!(this.to_object(agent))
+                    handle!(this.to_property_target(agent))
                 };
                 let argc = get_u8(pc);
                 if let Value::Object(o) = callee.clone() {

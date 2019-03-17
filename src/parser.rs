@@ -103,6 +103,7 @@ pub enum Node {
     ObjectLiteral(Vec<Node>),                // initialiers
     ObjectInitializer(Box<Node>, Box<Node>), // name, value
     ArrayLiteral(Vec<Node>),
+    TupleLiteral(Vec<Node>), // items
     Identifier(String),
     BlockStatement(Vec<Node>, HashMap<String, bool>, bool), // nodes, declarations, top
     ReturnStatement(Box<Node>),
@@ -410,7 +411,13 @@ impl<'a> Lexer<'a> {
                         }
                         _ => Token::Operator(Operator::LessThan),
                     }),
-                    '!' => Some(Token::Operator(Operator::Not)),
+                    '!' => Some(match self.chars.peek() {
+                        Some('=') => {
+                            self.next_char();
+                            Token::Operator(Operator::NotEqual)
+                        }
+                        _ => Token::Operator(Operator::Not),
+                    }),
                     '>' => Some(match self.chars.peek() {
                         Some('>') => {
                             self.next_char();
@@ -531,7 +538,7 @@ macro_rules! binop_production {
                 Some(Token::Operator(op)) if $( op == &$op )||* => {
                     let op = op.clone();
                     self.lexer.next();
-                    let rhs = self.$lower()?;
+                    let rhs = self.$name()?;
                     lhs = self.build_binary_expression(lhs, op, rhs)?;
                 }
                 _ => {},
@@ -1479,7 +1486,7 @@ impl<'a> Parser<'a> {
                         Ok(Node::ParenthesizedExpression(Box::new(list.pop().unwrap())))
                     } else {
                         // ( expr, expr )
-                        Err(Error::UnexpectedToken)
+                        Ok(Node::TupleLiteral(list))
                     }
                 }
                 Token::LeftBracket => {

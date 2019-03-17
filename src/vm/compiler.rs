@@ -21,6 +21,7 @@ pub enum Op {
     NewFunctionWithName,
     NewObject,
     NewArray,
+    NewTuple,
     NewIdentifier,
     NewMemberReference,
     NewComputedMemberReference,
@@ -266,6 +267,7 @@ fn compile(agent: &mut Agent, node: &Node) -> Result<(), Error> {
         Node::TemplateLiteral(quasis, exprs) => compile_template_literal(agent, quasis, exprs),
         Node::ObjectLiteral(inits) => compile_object_literal(agent, inits),
         Node::ArrayLiteral(inits) => compile_array_literal(agent, inits),
+        Node::TupleLiteral(items) => compile_tuple_literal(agent, items),
         Node::CallExpression(callee, args) => compile_call_expression(agent, callee, args, false),
         Node::TailCallExpression(callee, args) => {
             compile_call_expression(agent, callee, args, true)
@@ -440,6 +442,15 @@ fn compile_array_literal(agent: &mut Agent, inits: &[Node]) -> Result<(), Error>
     }
     push_op(agent, Op::NewArray);
     push_i32(agent, inits.len() as i32);
+    Ok(())
+}
+
+fn compile_tuple_literal(agent: &mut Agent, items: &[Node]) -> Result<(), Error> {
+    for item in items {
+        compile(agent, item)?;
+    }
+    push_op(agent, Op::NewTuple);
+    push_i32(agent, items.len() as i32);
     Ok(())
 }
 

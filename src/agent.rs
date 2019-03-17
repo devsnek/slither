@@ -652,3 +652,14 @@ test!(
     "#,
     Ok(Value::Number(45.into()))
 );
+
+test!(
+    test_tuple,
+    r#"
+    const a = (1, 2, 3);
+    const b = (1, 2);
+
+    a == a && a != b && a[0] == b[0];
+    "#,
+    Ok(Value::True)
+);
