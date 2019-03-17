@@ -1356,24 +1356,24 @@ impl<'a> Parser<'a> {
 
     fn parse_arrow_function(
         &mut self,
-        first_arg: Option<Node>,
-        more_args: bool,
         kind: FunctionKind,
+        mut args: Vec<Node>,
     ) -> Result<Node, Error> {
-        let mut args = match first_arg {
-            Some(expr) => {
-                if let Node::Identifier(..) = expr {
-                    Ok(vec![expr])
-                } else {
-                    Err(Error::UnexpectedToken)
+        for item in &mut args {
+            match item {
+                Node::Identifier(..) | Node::Initializer(..) => {}
+                Node::BinaryExpression(left, op, right) if *op == Operator::Assign => {
+                    if let Node::Identifier(ident) = &**left {
+                        let init =
+                            Node::Initializer(ident.to_string(), Box::new((**right).clone()));
+                        std::mem::replace(item, init);
+                    } else {
+                        return Err(Error::UnexpectedToken);
+                    }
                 }
+                _ => return Err(Error::UnexpectedToken),
             }
-            None => Ok(Vec::new()),
-        }?;
-        if more_args {
-            args.append(&mut self.parse_identifier_list(Token::RightParen, true)?);
         }
-        self.expect(Token::Arrow)?;
         let body = self.parse_block_statement(match kind {
             FunctionKind::Normal => ParseScope::Function,
             FunctionKind::Async => ParseScope::AsyncFunction,
@@ -1451,40 +1451,37 @@ impl<'a> Parser<'a> {
                         self.parse_function(true, FunctionKind::Async)
                     } else {
                         self.expect(Token::LeftParen)?;
-                        self.parse_arrow_function(None, true, FunctionKind::Async)
+                        let list = self.parse_identifier_list(Token::RightParen, true)?;
+                        self.expect(Token::Arrow)?;
+                        self.parse_arrow_function(FunctionKind::Async, list)
                     }
                 }
-                Token::LeftParen => match self.lexer.peek() {
-                    Some(Token::RightParen) => {
-                        self.lexer.next();
-                        self.parse_arrow_function(None, false, FunctionKind::Normal)
+                Token::Gen => {
+                    if self.eat(Token::Function) {
+                        self.parse_function(true, FunctionKind::Generator)
+                    } else {
+                        self.expect(Token::LeftParen)?;
+                        let list = self.parse_identifier_list(Token::RightParen, true)?;
+                        self.expect(Token::Arrow)?;
+                        self.parse_arrow_function(FunctionKind::Generator, list)
                     }
-                    _ => {
-                        let expr = self.parse_expression()?;
-                        match self.lexer.peek() {
-                            Some(Token::Comma) => {
-                                self.lexer.next();
-                                self.parse_arrow_function(Some(expr), true, FunctionKind::Normal)
-                            }
-                            Some(Token::RightParen) => {
-                                self.lexer.next();
-                                if let Some(Token::Arrow) = self.lexer.peek() {
-                                    self.parse_arrow_function(
-                                        Some(expr),
-                                        false,
-                                        FunctionKind::Normal,
-                                    )
-                                } else {
-                                    Ok(self.reg_pos(
-                                        start,
-                                        Node::ParenthesizedExpression(Box::new(expr)),
-                                    ))
-                                }
-                            }
-                            _ => Err(Error::UnexpectedToken),
-                        }
+                }
+                Token::LeftParen => {
+                    let mut list = self.parse_expression_list(Token::RightParen)?;
+                    if self.eat(Token::Arrow) {
+                        // ( ... ) =>
+                        self.parse_arrow_function(FunctionKind::Normal, list)
+                    } else if list.is_empty() {
+                        // ( )
+                        Err(Error::UnexpectedToken)
+                    } else if list.len() == 1 {
+                        // ( expr )
+                        Ok(Node::ParenthesizedExpression(Box::new(list.pop().unwrap())))
+                    } else {
+                        // ( expr, expr )
+                        Err(Error::UnexpectedToken)
                     }
-                },
+                }
                 Token::LeftBracket => {
                     let list = self.parse_expression_list(Token::RightBracket)?;
                     Ok(self.reg_pos(start, Node::ArrayLiteral(list)))
