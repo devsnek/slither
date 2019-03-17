@@ -18,6 +18,7 @@ pub enum Op {
     NewRegex,
     ProcessTemplateLiteral,
     NewFunction,
+    NewFunctionWithName,
     NewObject,
     NewArray,
     NewIdentifier,
@@ -479,7 +480,7 @@ fn compile_function_expression(
 
 fn compile_function(
     agent: &mut Agent,
-    _name: Option<&str>,
+    name: Option<&str>,
     args: &[Node],
     body: &Node,
     inherits_this: bool,
@@ -487,7 +488,13 @@ fn compile_function(
 ) -> Result<(), Error> {
     label!(end);
 
-    push_op(agent, Op::NewFunction);
+    if let Some(name) = name {
+        push_op(agent, Op::NewFunctionWithName);
+        let id = string_id(agent, name);
+        push_i32(agent, id);
+    } else {
+        push_op(agent, Op::NewFunction);
+    }
     push_u8(agent, args.len() as u8);
     push_u8(agent, inherits_this as u8);
     push_u8(agent, kind as u8);

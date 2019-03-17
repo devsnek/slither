@@ -367,7 +367,17 @@ fn evaluate_at(
                 let reg = handle!(Value::new_regex_object(agent, str));
                 stack.push(reg);
             }
-            Op::NewFunction => {
+            Op::NewFunction | Op::NewFunctionWithName => {
+                let name;
+                if op == Op::NewFunctionWithName {
+                    let id = get_i32(pc) as usize;
+                    name = &agent.string_table[id];
+                } else {
+                    #[allow(clippy::invalid_ref)]
+                    unsafe {
+                        name = std::mem::uninitialized();
+                    }
+                }
                 let argc = get_u8(pc);
                 let inherits_this = get_bool(pc);
                 let kind: FunctionKind = get_u8(pc).into();
@@ -376,9 +386,15 @@ fn evaluate_at(
                     Some(r) => Some(r.borrow().environment.clone()),
                     None => None,
                 });
-                // println!("NewFunction {:?}", env);
                 let value =
                     Value::new_compiled_function(agent, argc, index, inherits_this, kind, env);
+                if op == Op::NewFunctionWithName {
+                    handle!(value.set(
+                        agent,
+                        &ObjectKey::from("name"),
+                        Value::String(name.to_string())
+                    ));
+                }
                 stack.push(value);
             }
             Op::ProcessTemplateLiteral => {

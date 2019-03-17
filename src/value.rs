@@ -705,19 +705,37 @@ fn inspect(
                 "[Circular]".to_string()
             } else {
                 inspected.insert(hash_key);
-                let keys = value.keys(agent).unwrap();
                 let array = match o.kind {
                     ObjectKind::Array => true,
                     _ => false,
                 };
                 let function = value.type_of() == "function";
-                let mut out = String::from(if function { "[Function] " } else { "" });
+                let keys = value.keys(agent).unwrap();
+                let mut out = String::new();
+                if function {
+                    out += "[Function";
+                    if let Ok(Value::String(name)) = o.get(ObjectKey::from("name")) {
+                        out += " ";
+                        out += name.as_str();
+                        if keys.len() == 1 {
+                            out += "]";
+                            return out;
+                        }
+                    }
+                    out += "]";
+                    if keys.is_empty() {
+                        return out;
+                    }
+                }
                 out += if array { "[" } else { "{" };
                 if keys.is_empty() {
                     out += if array { "]" } else { "}" };
                     return out;
                 }
                 for key in keys {
+                    if function && key == ObjectKey::from("name") {
+                        continue;
+                    }
                     out += &format!(
                         "\n{}{}: {},",
                         "  ".repeat(indent + 1),
