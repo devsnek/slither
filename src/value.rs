@@ -545,10 +545,15 @@ impl Value {
         }
     }
 
-    pub fn construct(&self, agent: &Agent, args: Vec<Value>) -> Result<Value, Value> {
+    pub fn construct(
+        &self,
+        agent: &Agent,
+        args: Vec<Value>,
+        new_target: Value,
+    ) -> Result<Value, Value> {
         match self {
             Value::Object(o) => {
-                let mut prototype = o.get(ObjectKey::from("prototype"))?;
+                let mut prototype = new_target.get(agent, &ObjectKey::from("prototype"))?;
                 if prototype.type_of() != "object" {
                     prototype = agent.intrinsics.object_prototype.clone();
                 }

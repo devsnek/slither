@@ -202,7 +202,7 @@ pub fn new_promise_capability(agent: &Agent, constructor: Value) -> Result<Value
     executor.set_slot("resolve", Value::Null);
     executor.set_slot("reject", Value::Null);
 
-    let promise = constructor.construct(agent, vec![executor.clone()])?;
+    let promise = constructor.construct(agent, vec![executor.clone()], constructor.clone())?;
     promise.set_slot("resolve", executor.get_slot("resolve"));
     promise.set_slot("reject", executor.get_slot("reject"));
 

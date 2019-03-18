@@ -714,7 +714,7 @@ fn evaluate_at(
             }
             Op::New => {
                 let constructor = handle!(get_value(stack));
-                let result = handle!(constructor.construct(agent, vec![]));
+                let result = handle!(constructor.construct(agent, vec![], constructor.clone()));
                 stack.push(result);
             }
             Op::NewWithArgs => {
@@ -730,7 +730,7 @@ fn evaluate_at(
                     args.set_len(argc as usize);
                 }
                 let constructor = handle!(get_value(stack));
-                let result = handle!(constructor.construct(agent, args));
+                let result = handle!(constructor.construct(agent, args, constructor.clone()));
                 stack.push(result);
             }
             Op::Return => {
