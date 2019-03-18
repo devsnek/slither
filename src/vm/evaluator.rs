@@ -332,13 +332,11 @@ fn evaluate_at(
                 break;
             }
             Op::PushScope => {
-                // println!("PushScope");
                 let mut ctx = scope.last().unwrap().borrow_mut();
                 let new = LexicalEnvironment::new(Some(ctx.environment.clone()));
                 std::mem::replace(&mut ctx.environment, new);
             }
             Op::PopScope => {
-                // println!("PopScope");
                 let mut ctx = scope.last().unwrap().borrow_mut();
                 let old = ctx.environment.borrow().parent.clone().unwrap();
                 std::mem::replace(&mut ctx.environment, old);
@@ -497,6 +495,26 @@ fn evaluate_at(
                 let key = handle!(key.to_object_key(agent));
                 stack.push(Value::ValueReference(Box::new(base), key));
             }
+            Op::BuildClass => {
+                let fieldc = get_i32(pc);
+                let name_id = get_i32(pc) as usize;
+                let cons = handle!(get_value(stack));
+                let prototype = Value::new_object(agent.intrinsics.object_prototype.clone());
+                for _ in 0..fieldc {
+                    let name = handle!(get_value(stack));
+                    let name = handle!(name.to_object_key(agent));
+                    let method = handle!(get_value(stack));
+                    handle!(prototype.set(agent, &name, method));
+                }
+                handle!(cons.set(agent, &ObjectKey::from("prototype"), prototype));
+                let name = &agent.string_table[name_id];
+                handle!(cons.set(
+                    agent,
+                    &ObjectKey::from("name"),
+                    Value::String(name.to_string())
+                ));
+                stack.push(cons);
+            }
             Op::SetValue => {
                 let value = handle!(get_value(stack));
                 let target = stack.pop().unwrap();
@@ -533,7 +551,6 @@ fn evaluate_at(
                 let mutable = get_bool(pc);
                 let id = get_i32(pc) as usize;
                 let name = &agent.string_table[id];
-                // println!("LexicalDeclaration {} {}", name, mutable);
                 handle!(scope
                     .last()
                     .unwrap()
@@ -766,7 +783,6 @@ fn evaluate_at(
                 return Err(SuspendValue(value));
             }
             Op::GetIterator | Op::GetAsyncIterator => {
-                // println!("GetIterator");
                 let target = handle!(get_value(stack));
                 let sym = handle!(if op == Op::GetAsyncIterator {
                     agent.well_known_symbol("asyncIterator")
@@ -781,7 +797,6 @@ fn evaluate_at(
                 stack.push(iterator);
             }
             Op::IteratorNext => {
-                // println!("IteratorNext");
                 let iterator = handle!(get_value_no_consume(stack));
                 if let Value::Iterator(iterator, next) = iterator {
                     let result = handle!(next.call(agent, *iterator, vec![]));

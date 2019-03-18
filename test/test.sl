@@ -1,7 +1,15 @@
 import { print } from standard:debug;
 
-async function var(a, ...args) {
-  print(a, args);
+class X {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+  }
+
+  z() {
+    return this.x + this.y;
+  }
 }
 
-var(1, 2);
+const x = new X(1, 2);
+print(x.z());

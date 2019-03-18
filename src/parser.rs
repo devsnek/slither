@@ -133,10 +133,11 @@ pub enum Node {
     BinaryExpression(Box<Node>, Operator, Box<Node>), // x op y
     ConditionalExpression(Box<Node>, Box<Node>, Box<Node>), // test, consequent, alternative
     RestParameter(String),
+    ClassDeclaration(String, Vec<Node>), // name, fields
     FunctionDeclaration(String, Vec<Node>, Box<Node>, FunctionKind), // name, args, body
     FunctionExpression(Option<String>, Vec<Node>, Box<Node>, FunctionKind), // name, args, body
-    ArrowFunctionExpression(Vec<Node>, Box<Node>, FunctionKind),     // args, body
-    ParenthesizedExpression(Box<Node>),                              // expr
+    ArrowFunctionExpression(Vec<Node>, Box<Node>, FunctionKind), // args, body
+    ParenthesizedExpression(Box<Node>),  // expr
     AwaitExpression(Box<Node>),
     YieldExpression(Option<Box<Node>>),
     LexicalInitialization(String, Box<Node>), // identifier, initial value
@@ -780,6 +781,27 @@ impl<'a> Parser<'a> {
                 self.lexer.next();
                 self.expect(Token::Function)?;
                 self.parse_function(false, FunctionKind::Generator)
+            }
+            Some(Token::Class) => {
+                self.lexer.next();
+                let name = self.parse_identifier(false)?;
+                let scope = self.lex_stack.last_mut().unwrap();
+                if scope.contains_key(&name) {
+                    return Err(Error::DuplicateBinding);
+                } else {
+                    scope.insert(name.clone(), false);
+                }
+                self.expect(Token::LeftBrace)?;
+                let mut fields = Vec::new();
+                while !self.eat(Token::RightBrace) {
+                    let name = self.parse_identifier(false)?;
+                    let f = self.parse_function(true, FunctionKind::Normal)?;
+                    fields.push(Node::ObjectInitializer(
+                        Box::new(Node::StringLiteral(name)),
+                        Box::new(f),
+                    ));
+                }
+                Ok(Node::ClassDeclaration(name, fields))
             }
             Some(Token::Return) if self.scope(ParseScope::Function) => {
                 self.lexer.next();

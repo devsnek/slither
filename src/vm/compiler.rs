@@ -27,6 +27,7 @@ pub enum Op {
     NewComputedMemberReference,
     NewMemberReferenceNoConsumeStack,
     NewComputedMemberReferenceNoConsumeStack,
+    BuildClass,
     PushNull,
     PushTrue,
     PushFalse,
@@ -326,6 +327,7 @@ fn compile(agent: &mut Agent, node: &Node) -> Result<(), Error> {
         Node::ConditionalExpression(test, consequent, alternative) => {
             compile_conditional_expression(agent, test, consequent, alternative)
         }
+        Node::ClassDeclaration(name, fields) => compile_class_declaration(agent, name, fields),
         Node::FunctionDeclaration(name, body, args, kind) => {
             compile_function_declaration(agent, name, body, args, *kind)
         }
@@ -451,6 +453,37 @@ fn compile_tuple_literal(agent: &mut Agent, items: &[Node]) -> Result<(), Error>
     }
     push_op(agent, Op::NewTuple);
     push_i32(agent, items.len() as i32);
+    Ok(())
+}
+
+fn compile_class_declaration(agent: &mut Agent, name: &str, fields: &[Node]) -> Result<(), Error> {
+    let mut constructor = &Node::FunctionExpression(
+        Some(name.to_string()),
+        vec![],
+        Box::new(Node::BlockStatement(vec![], HashMap::new(), false)),
+        FunctionKind::Normal,
+    );
+    let mut fieldc = 0;
+    for field in fields {
+        if let Node::ObjectInitializer(name, method) = field {
+            if **name == Node::StringLiteral("constructor".to_string()) {
+                constructor = method;
+            } else {
+                compile(agent, method)?;
+                compile(agent, name)?;
+                fieldc += 1;
+            }
+        } else {
+            unreachable!();
+        }
+    }
+    compile(agent, constructor)?;
+    push_op(agent, Op::BuildClass);
+    push_i32(agent, fieldc);
+    let id = string_id(agent, name);
+    push_i32(agent, id);
+    push_op(agent, Op::LexicalInitialization);
+    push_i32(agent, id);
     Ok(())
 }
 

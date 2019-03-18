@@ -711,3 +711,23 @@ test!(
     "#,
     Ok(Value::True)
 );
+
+test!(
+    test_class,
+    r#"
+    class X {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+      }
+
+      z() {
+        return this.x + this.y;
+      }
+    }
+
+    const x = new X(1, 2);
+    x.z() == 3 && X.name == 'X';
+    "#,
+    Ok(Value::True)
+);
