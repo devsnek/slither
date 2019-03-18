@@ -1,6 +1,6 @@
 use crate::IntoValue;
 use crate::{Agent, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::iter::Peekable;
 use std::ops::{Div, Mul, Rem, Sub};
 use std::str::Chars;
@@ -66,6 +66,7 @@ enum Token {
     Question,
     Dot,
     BackQuote,
+    At,
     Comma,
     Throw,
     Break,
@@ -456,6 +457,7 @@ impl<'a> Lexer<'a> {
                         }
                         _ => Token::Operator(Operator::Assign),
                     }),
+                    '@' => Some(Token::At),
                     _ => {
                         panic!("unexpected token {}", char);
                     }
@@ -597,7 +599,19 @@ impl<'a> Parser<'a> {
         (self.scope_bits & scope as u8) == scope as u8
     }
 
+    fn peek(&mut self, token: Token) -> bool {
+        self.lexer.peek() == Some(&token)
+    }
+
+    #[inline]
     fn eat(&mut self, token: Token) -> bool {
+        if self.peek(token) {
+            self.lexer.next();
+            true
+        } else {
+            false
+        }
+        /*
         match self.lexer.peek() {
             Some(t) if t == &token => {
                 self.lexer.next();
@@ -605,6 +619,7 @@ impl<'a> Parser<'a> {
             }
             _ => false,
         }
+        */
     }
 
     fn expect(&mut self, token: Token) -> Result<Token, Error> {
@@ -693,6 +708,35 @@ impl<'a> Parser<'a> {
             Some(Token::Function) => {
                 self.lexer.next();
                 self.parse_function(false, FunctionKind::Normal)
+            }
+            Some(Token::At) => {
+                let mut decorators = VecDeque::new();
+                while self.eat(Token::At) {
+                    let d = self.parse_left_hand_side_expression()?;
+                    decorators.push_front(d);
+                }
+                let kind = if self.eat(Token::Async) {
+                    self.expect(Token::Function)?;
+                    FunctionKind::Async
+                } else if self.eat(Token::Gen) {
+                    self.expect(Token::Function)?;
+                    FunctionKind::Generator
+                } else if self.eat(Token::Function) {
+                    FunctionKind::Normal
+                } else {
+                    return Err(Error::UnexpectedToken);
+                };
+                if let Node::FunctionDeclaration(name, body, args, kind) =
+                    self.parse_function(false, kind)?
+                {
+                    let mut top = Node::FunctionExpression(Some(name.clone()), body, args, kind);
+                    for d in decorators {
+                        top = Node::CallExpression(Box::new(d), vec![top]);
+                    }
+                    Ok(Node::LexicalInitialization(name, Box::new(top)))
+                } else {
+                    unreachable!();
+                }
             }
             Some(Token::Async) => {
                 self.lexer.next();
@@ -1381,11 +1425,20 @@ impl<'a> Parser<'a> {
                 _ => return Err(Error::UnexpectedToken),
             }
         }
-        let body = self.parse_block_statement(match kind {
-            FunctionKind::Normal => ParseScope::Function,
-            FunctionKind::Async => ParseScope::AsyncFunction,
-            FunctionKind::Generator => ParseScope::GeneratorFunction,
-        })?;
+        let body = if self.peek(Token::LeftBrace) {
+            self.parse_block_statement(match kind {
+                FunctionKind::Normal => ParseScope::Function,
+                FunctionKind::Async => ParseScope::AsyncFunction,
+                FunctionKind::Generator => ParseScope::GeneratorFunction,
+            })?
+        } else {
+            let expr = self.parse_assignment_expression()?;
+            Node::BlockStatement(
+                vec![Node::ReturnStatement(Box::new(expr))],
+                HashMap::new(),
+                false,
+            )
+        };
         Ok(Node::ArrowFunctionExpression(args, Box::new(body), kind))
     }
 

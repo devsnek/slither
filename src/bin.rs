@@ -13,4 +13,5 @@ fn main() {
 
     let mut agent = Agent::new();
     agent.import(filename, referrer).unwrap();
+    agent.run_jobs();
 }

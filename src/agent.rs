@@ -7,7 +7,7 @@ use crate::intrinsics::{
     promise::new_promise_capability,
 };
 use crate::parser::{Node, Parser};
-use crate::value::Value;
+use crate::value::{ObjectKey, Value};
 use crate::vm::{compile, Evaluator, ExecutionContext, LexicalEnvironment};
 use crate::IntoValue;
 use gc::{Gc, GcCell};
@@ -126,7 +126,7 @@ impl ModuleX {
                             None => return Err(Value::new_error(agent, "unknown standard module")),
                         }
                     }
-                    Node::ExportDeclaration(decl) => match *decl.clone() {
+                    Node::ExportDeclaration(decl) => match &**decl {
                         Node::LexicalInitialization(name, ..)
                         | Node::FunctionDeclaration(name, ..) => {
                             module
@@ -134,7 +134,7 @@ impl ModuleX {
                                 .borrow()
                                 .environment
                                 .borrow_mut()
-                                .create_export(agent, name.as_str(), declarations[&name])?;
+                                .create_export(agent, name.as_str(), declarations[name])?;
                         }
                         _ => {}
                     },
@@ -419,6 +419,20 @@ impl Agent {
 
     pub fn import(&mut self, specifier: &str, referrer: &str) -> Result<Value, Value> {
         let promise = new_promise_capability(self, self.intrinsics.promise.clone())?;
+        fn on_catch(agent: &Agent, _: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
+            let mut args = args;
+            agent.uncaught_exception(args.remove(0));
+            Ok(Value::Null)
+        }
+        promise
+            .get(self, &ObjectKey::from("catch"))
+            .unwrap()
+            .call(
+                self,
+                promise.clone(),
+                vec![Value::new_builtin_function(self, on_catch)],
+            )
+            .unwrap();
         let module = reject_if_err!(self, promise, self.load(specifier, referrer));
         reject_if_err!(
             self,
@@ -662,4 +676,23 @@ test!(
     a == a && a != b && a[0] == b[0];
     "#,
     Ok(Value::True)
+);
+
+test!(
+    test_decorator,
+    r#"
+    function x(v) {
+      return (func) =>
+        () => v + func();
+    }
+
+    @x('1')
+    @x('2')
+    function owo() {
+      return '3';
+    }
+
+    owo();
+    "#,
+    Ok(Value::String("123".to_string()))
 );

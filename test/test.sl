@@ -1,11 +1,17 @@
 import { print } from standard:debug;
-import { connect } from standard:net;
 
-const s = connect('127.0.0.1:8080');
+function x(v) {
+  return (func) => {
+    return () => {
+      return v + func();
+    };
+  };
+}
 
-(async () => {
-  for await data in s {
-    print('data', data);
-    s.write(data);
-  }
-})().catch(print);
+@x('1')
+@x('2')
+async function owo() {
+  return 'owo';
+}
+
+print(owo());
