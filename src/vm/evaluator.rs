@@ -381,13 +381,21 @@ fn evaluate_at(
                 let argc = get_u8(pc);
                 let inherits_this = get_bool(pc);
                 let kind: FunctionKind = get_u8(pc).into();
+                let has_rest = get_bool(pc);
                 let index = *pc + 5; // jmp + i32 = 5
                 let env = LexicalEnvironment::new(match scope.last() {
                     Some(r) => Some(r.borrow().environment.clone()),
                     None => None,
                 });
-                let value =
-                    Value::new_compiled_function(agent, argc, index, inherits_this, kind, env);
+                let value = Value::new_compiled_function(
+                    agent,
+                    argc,
+                    index,
+                    inherits_this,
+                    kind,
+                    has_rest,
+                    env,
+                );
                 if op == Op::NewFunctionWithName {
                     handle!(value.set(
                         agent,
@@ -589,22 +597,42 @@ fn evaluate_at(
                             index,
                             inherits_this,
                             kind,
+                            has_rest,
                             env,
                         } => {
                             if *kind == FunctionKind::Normal {
                                 let paramc = *params;
                                 let index = *index;
                                 let inherits_this = *inherits_this;
+                                let has_rest = *has_rest;
                                 if argc > paramc {
                                     let diff = argc - paramc;
-                                    for _ in 0..diff {
-                                        stack.pop().unwrap();
+                                    if has_rest {
+                                        let a = Value::new_array(agent);
+                                        for i in (0..diff).rev() {
+                                            let value = handle!(get_value(stack));
+                                            handle!(a.set(
+                                                agent,
+                                                &ObjectKey::from(i32::from(i)),
+                                                value
+                                            ));
+                                        }
+                                        stack.push(a);
+                                    } else {
+                                        for _ in 0..diff {
+                                            handle!(get_value(stack));
+                                        }
                                     }
                                 } else if argc < paramc {
                                     let diff = paramc - argc;
                                     for _ in 0..diff {
                                         stack.push(Value::Empty);
                                     }
+                                    if has_rest {
+                                        stack.push(Value::new_array(agent));
+                                    }
+                                } else if has_rest {
+                                    stack.push(Value::new_array(agent));
                                 }
                                 if op == Op::TailCall {
                                     scope.pop();

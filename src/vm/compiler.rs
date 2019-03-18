@@ -357,7 +357,7 @@ fn compile(agent: &mut Agent, node: &Node) -> Result<(), Error> {
         Node::ImportNamedDeclaration(..) => Ok(()),
         Node::ImportDeclaration(..) => Ok(()),
         Node::ExportDeclaration(decl) => compile(agent, decl),
-        Node::Initializer(..) | Node::ObjectInitializer(..) => panic!(),
+        Node::Initializer(..) | Node::ObjectInitializer(..) | Node::RestParameter(..) => panic!(),
     }
 }
 
@@ -506,9 +506,18 @@ fn compile_function(
     } else {
         push_op(agent, Op::NewFunction);
     }
-    push_u8(agent, args.len() as u8);
+    let has_rest = if let Some(Node::RestParameter(..)) = args.last() {
+        true
+    } else {
+        false
+    };
+    push_u8(
+        agent,
+        if has_rest { args.len() - 1 } else { args.len() } as u8,
+    );
     push_u8(agent, inherits_this as u8);
     push_u8(agent, kind as u8);
+    push_u8(agent, has_rest as u8);
     jump!(agent, end); // skip evaluating body when declaring function
 
     // pc will be set to this location, right after the jump
@@ -535,6 +544,12 @@ fn compile_function(
                 jump!(agent, set);
                 compile(agent, init)?;
                 mark!(agent, set);
+                push_op(agent, Op::LexicalInitialization);
+                let id = string_id(agent, name);
+                push_i32(agent, id);
+            }
+            Node::RestParameter(name) => {
+                create_lexical_declaration(agent, name, false)?;
                 push_op(agent, Op::LexicalInitialization);
                 let id = string_id(agent, name);
                 push_i32(agent, id);

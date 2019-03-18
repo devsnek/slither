@@ -27,6 +27,7 @@ pub enum ObjectKind {
         index: usize,
         inherits_this: bool,
         kind: FunctionKind,
+        has_rest: bool,
         env: Gc<GcCell<LexicalEnvironment>>,
     },
     BuiltinFunction(BuiltinFunction, Gc<GcCell<HashMap<String, Value>>>),
@@ -197,6 +198,7 @@ impl ObjectInfo {
         for key in entries.keys() {
             keys.push(key.clone());
         }
+        keys.sort();
         keys
     }
 }
@@ -238,6 +240,33 @@ impl PartialEq for ObjectKey {
                 _ => false,
             },
         }
+    }
+}
+
+impl PartialOrd for ObjectKey {
+    fn partial_cmp(&self, other: &ObjectKey) -> Option<std::cmp::Ordering> {
+        match self {
+            ObjectKey::Number(n) => match other {
+                ObjectKey::Number(nv) => n.partial_cmp(nv),
+                ObjectKey::String(s) => n.to_string().partial_cmp(s),
+                ObjectKey::Symbol(..) => Some(std::cmp::Ordering::Less),
+            },
+            ObjectKey::String(s) => match other {
+                ObjectKey::String(sv) => s.partial_cmp(sv),
+                ObjectKey::Number(n) => n.to_string().partial_cmp(s),
+                ObjectKey::Symbol(..) => Some(std::cmp::Ordering::Less),
+            },
+            ObjectKey::Symbol(..) => match other {
+                ObjectKey::Symbol(..) => Some(std::cmp::Ordering::Equal),
+                _ => Some(std::cmp::Ordering::Greater),
+            },
+        }
+    }
+}
+
+impl Ord for ObjectKey {
+    fn cmp(&self, other: &ObjectKey) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap()
     }
 }
 
@@ -493,11 +522,13 @@ impl Value {
                     index,
                     inherits_this,
                     kind,
+                    has_rest,
                     env,
                 } => {
                     let paramc = *params;
                     let index = *index;
                     let kind = *kind;
+                    let has_rest = *has_rest;
                     let ctx = ExecutionContext::new(LexicalEnvironment::new(Some(env.clone())));
                     if !inherits_this {
                         ctx.borrow().environment.borrow_mut().this = Some(this);
@@ -508,6 +539,21 @@ impl Value {
                         evaluator
                             .stack
                             .push(args.get(i as usize).unwrap_or(&Value::Empty).clone());
+                    }
+                    if has_rest {
+                        let paramc = paramc as usize;
+                        let a = Value::new_array(agent);
+                        if args.len() > paramc {
+                            let diff = args.len() - paramc;
+                            if diff > 0 {
+                                for i in 0..diff {
+                                    let value =
+                                        args.get(i + paramc).unwrap_or(&Value::Null).clone();
+                                    a.set(agent, &ObjectKey::from(i as i32), value)?;
+                                }
+                            }
+                        }
+                        evaluator.stack.push(a);
                     }
                     evaluator.scope.push(ctx.clone());
                     evaluator.positions.push(agent.code.len());
@@ -901,6 +947,7 @@ impl Value {
         index: usize,
         inherits_this: bool,
         kind: FunctionKind,
+        has_rest: bool,
         env: Gc<GcCell<LexicalEnvironment>>,
     ) -> Value {
         Value::Object(Gc::new(ObjectInfo {
@@ -909,6 +956,7 @@ impl Value {
                 index,
                 inherits_this,
                 kind,
+                has_rest,
                 env,
             },
             properties: GcCell::new(IndexMap::new()),

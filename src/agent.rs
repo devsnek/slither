@@ -696,3 +696,18 @@ test!(
     "#,
     Ok(Value::String("123".to_string()))
 );
+
+test!(
+    test_rest,
+    r#"
+    function x(a, ...args) {
+      return a + (args[0] || '8') + (args[1] || '9');
+    }
+
+    const a = x('1', '2', '3');
+    const b = x('1');
+
+    a == '123' && b == '189';
+    "#,
+    Ok(Value::True)
+);

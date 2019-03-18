@@ -65,6 +65,7 @@ enum Token {
     Colon,
     Question,
     Dot,
+    Ellipsis,
     BackQuote,
     At,
     Comma,
@@ -131,10 +132,11 @@ pub enum Node {
     UnaryExpression(Operator, Box<Node>), // op x
     BinaryExpression(Box<Node>, Operator, Box<Node>), // x op y
     ConditionalExpression(Box<Node>, Box<Node>, Box<Node>), // test, consequent, alternative
+    RestParameter(String),
     FunctionDeclaration(String, Vec<Node>, Box<Node>, FunctionKind), // name, args, body
     FunctionExpression(Option<String>, Vec<Node>, Box<Node>, FunctionKind), // name, args, body
-    ArrowFunctionExpression(Vec<Node>, Box<Node>, FunctionKind), // args, body
-    ParenthesizedExpression(Box<Node>),   // expr
+    ArrowFunctionExpression(Vec<Node>, Box<Node>, FunctionKind),     // args, body
+    ParenthesizedExpression(Box<Node>),                              // expr
     AwaitExpression(Box<Node>),
     YieldExpression(Option<Box<Node>>),
     LexicalInitialization(String, Box<Node>), // identifier, initial value
@@ -327,7 +329,18 @@ impl<'a> Lexer<'a> {
                     ':' => Some(Token::Colon),
                     ';' => Some(Token::Semicolon),
                     '?' => Some(Token::Question),
-                    '.' => Some(Token::Dot),
+                    '.' => Some(match self.chars.peek() {
+                        Some('.') => {
+                            self.next_char();
+                            if let Some('.') = self.chars.peek() {
+                                self.next_char();
+                                Token::Ellipsis
+                            } else {
+                                panic!();
+                            }
+                        }
+                        _ => Token::Dot,
+                    }),
                     ',' => Some(Token::Comma),
                     '`' => Some(Token::BackQuote),
                     '+' => Some(match self.chars.peek() {
@@ -631,11 +644,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_identifier_list(
-        &mut self,
-        close: Token,
-        initializers: bool,
-    ) -> Result<Vec<Node>, Error> {
+    fn parse_identifier_list(&mut self, close: Token) -> Result<Vec<String>, Error> {
         let mut identifiers = Vec::new();
         let mut first = true;
         while !self.eat(close.clone()) {
@@ -647,17 +656,41 @@ impl<'a> Parser<'a> {
                     break;
                 }
             }
-            let start = self.lexer.position();
-            let ident = self.parse_identifier(false)?;
-            if self.lexer.peek() == Some(&Token::Operator(Operator::Assign)) && initializers {
-                self.lexer.next();
-                let init = self.parse_expression()?;
-                identifiers.push(self.reg_pos(start, Node::Initializer(ident, Box::new(init))));
-            } else {
-                identifiers.push(self.reg_pos(start, Node::Identifier(ident)));
-            }
+            identifiers.push(self.parse_identifier(false)?);
         }
         Ok(identifiers)
+    }
+
+    fn parse_parameters(&mut self, close: Token) -> Result<Vec<Node>, Error> {
+        let mut parameters = Vec::new();
+        let mut first = true;
+        while !self.eat(close.clone()) {
+            if first {
+                first = false;
+            } else {
+                self.expect(Token::Comma)?;
+                if self.eat(close.clone()) {
+                    break;
+                }
+            }
+            let start = self.lexer.position();
+            if self.eat(Token::Ellipsis) {
+                let ident = self.parse_identifier(false)?;
+                parameters.push(self.reg_pos(start, Node::RestParameter(ident)));
+                self.expect(close)?;
+                break;
+            } else {
+                let ident = self.parse_identifier(false)?;
+                if self.lexer.peek() == Some(&Token::Operator(Operator::Assign)) {
+                    self.lexer.next();
+                    let init = self.parse_expression()?;
+                    parameters.push(self.reg_pos(start, Node::Initializer(ident, Box::new(init))));
+                } else {
+                    parameters.push(self.reg_pos(start, Node::Identifier(ident)));
+                }
+            }
+        }
+        Ok(parameters)
     }
 
     fn parse_function(&mut self, expression: bool, kind: FunctionKind) -> Result<Node, Error> {
@@ -672,7 +705,7 @@ impl<'a> Parser<'a> {
             Some(self.parse_identifier(false)?)
         };
         self.expect(Token::LeftParen)?;
-        let args = self.parse_identifier_list(Token::RightParen, true)?;
+        let args = self.parse_parameters(Token::RightParen)?;
         let body = self.parse_block_statement(match kind {
             FunctionKind::Normal => ParseScope::Function,
             FunctionKind::Async => ParseScope::AsyncFunction,
@@ -899,14 +932,7 @@ impl<'a> Parser<'a> {
                     // import { bindings } from "specifier";
                     Some(Token::LeftBrace) => {
                         self.lexer.next();
-                        let bindings = self
-                            .parse_identifier_list(Token::RightBrace, false)?
-                            .iter()
-                            .map(|n| match n {
-                                Node::Identifier(n) => n.to_string(),
-                                _ => unreachable!(),
-                            })
-                            .collect();
+                        let bindings = self.parse_identifier_list(Token::RightBrace)?;
                         self.expect(Token::From)?;
                         match self.lexer.next() {
                             Some(Token::StringLiteral(s)) => {
@@ -1511,7 +1537,7 @@ impl<'a> Parser<'a> {
                         self.parse_function(true, FunctionKind::Async)
                     } else {
                         self.expect(Token::LeftParen)?;
-                        let list = self.parse_identifier_list(Token::RightParen, true)?;
+                        let list = self.parse_parameters(Token::RightParen)?;
                         self.expect(Token::Arrow)?;
                         self.parse_arrow_function(FunctionKind::Async, list)
                     }
@@ -1521,7 +1547,7 @@ impl<'a> Parser<'a> {
                         self.parse_function(true, FunctionKind::Generator)
                     } else {
                         self.expect(Token::LeftParen)?;
-                        let list = self.parse_identifier_list(Token::RightParen, true)?;
+                        let list = self.parse_parameters(Token::RightParen)?;
                         self.expect(Token::Arrow)?;
                         self.parse_arrow_function(FunctionKind::Generator, list)
                     }
