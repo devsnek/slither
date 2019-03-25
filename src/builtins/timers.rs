@@ -1,6 +1,6 @@
 use crate::agent::{Agent, MioMapType};
+use crate::interpreter::Context;
 use crate::value::Value;
-use crate::vm::ExecutionContext;
 use mio::{PollOpt, Ready, Registration, SetReadiness, Token};
 use num::ToPrimitive;
 use std::collections::HashMap;
@@ -61,11 +61,7 @@ fn insert(instant: Instant, timer: SetReadiness) {
     timers.push_back(TimerList::new(instant, timer));
 }
 
-fn create_timeout(
-    agent: &Agent,
-    _ctx: &ExecutionContext,
-    args: Vec<Value>,
-) -> Result<Value, Value> {
+fn create_timeout(agent: &Agent, args: Vec<Value>, _ctx: &Context) -> Result<Value, Value> {
     let callback = args.get(0).unwrap_or(&Value::Null);
     if callback.type_of() != "function" {
         return Err(Value::new_error(agent, "callback must be a function"));

@@ -1,7 +1,7 @@
 use crate::agent::{Agent, MioMapType};
+use crate::interpreter::Context;
 use crate::intrinsics::promise::new_promise_capability;
 use crate::value::{ObjectKey, Value};
-use crate::vm::ExecutionContext;
 use mio::{PollOpt, Ready, Registration, Token};
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -31,7 +31,7 @@ pub fn handle(agent: &Agent, token: Token, promise: Value) {
             let o = Value::new_object(agent.intrinsics.object_prototype.clone());
             macro_rules! p {
                 ($target:expr, $name:expr, $value:expr) => {
-                    $target.set(agent, &ObjectKey::from($name), $value).unwrap();
+                    $target.set(agent, ObjectKey::from($name), $value).unwrap();
                 };
             }
             let ft = m.file_type();
@@ -103,7 +103,7 @@ pub fn handle(agent: &Agent, token: Token, promise: Value) {
     }
 }
 
-fn read_file(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
+fn read_file(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
     if let Some(Value::String(filename)) = args.get(0) {
         let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
 
@@ -142,7 +142,7 @@ fn read_file(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Result<V
     }
 }
 
-fn write_file(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
+fn write_file(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
     if let Some(Value::String(filename)) = args.get(0) {
         if let Some(Value::String(contents)) = args.get(1) {
             let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
@@ -186,7 +186,7 @@ fn write_file(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Result<
     }
 }
 
-fn remove_file(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
+fn remove_file(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
     if let Some(Value::String(filename)) = args.get(0) {
         let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
 
@@ -225,7 +225,7 @@ fn remove_file(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Result
     }
 }
 
-fn get_metadata(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
+fn get_metadata(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
     if let Some(Value::String(filename)) = args.get(0) {
         let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
 
@@ -267,7 +267,7 @@ fn get_metadata(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Resul
     }
 }
 
-fn copy(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
+fn copy(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
     if let Some(Value::String(from)) = args.get(0) {
         if let Some(Value::String(to)) = args.get(1) {
             let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
@@ -309,7 +309,7 @@ fn copy(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Result<Value,
     }
 }
 
-fn move_(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
+fn move_(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
     if let Some(Value::String(from)) = args.get(0) {
         if let Some(Value::String(to)) = args.get(1) {
             let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
@@ -365,7 +365,7 @@ fn symlink(from: String, to: String) -> std::io::Result<()> {
     std::os::unix::fs::symlink(from, to)
 }
 
-fn create_symlink(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
+fn create_symlink(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
     if let Some(Value::String(from)) = args.get(0) {
         if let Some(Value::String(to)) = args.get(1) {
             let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
@@ -407,7 +407,7 @@ fn create_symlink(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Res
     }
 }
 
-fn exists(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
+fn exists(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
     if let Some(Value::String(filename)) = args.get(0) {
         let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
 
@@ -439,11 +439,7 @@ fn exists(agent: &Agent, _c: &ExecutionContext, args: Vec<Value>) -> Result<Valu
     }
 }
 
-fn create_directory(
-    agent: &Agent,
-    _c: &ExecutionContext,
-    args: Vec<Value>,
-) -> Result<Value, Value> {
+fn create_directory(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
     if let Some(Value::String(filename)) = args.get(0) {
         let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
 
@@ -482,11 +478,7 @@ fn create_directory(
     }
 }
 
-fn remove_directory(
-    agent: &Agent,
-    _c: &ExecutionContext,
-    args: Vec<Value>,
-) -> Result<Value, Value> {
+fn remove_directory(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
     if let Some(Value::String(filename)) = args.get(0) {
         let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
 

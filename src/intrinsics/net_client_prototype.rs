@@ -1,13 +1,13 @@
 use crate::agent::{Agent, MioMapType};
+use crate::interpreter::Context;
 use crate::intrinsics::promise::{new_promise_capability, promise_resolve_i};
 use crate::value::{ObjectKey, ObjectKind, Value};
-use crate::vm::ExecutionContext;
 use crate::IntoValue;
 use num::ToPrimitive;
 use std::io::prelude::*;
 
-fn next(agent: &Agent, ctx: &ExecutionContext, _: Vec<Value>) -> Result<Value, Value> {
-    let this = ctx.environment.borrow().get_this(agent)?;
+fn next(agent: &Agent, _: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
+    let this = ctx.get_this(agent)?;
     if !this.has_slot("net client queue") {
         return Err(Value::new_error(agent, "invalid receiver"));
     }
@@ -70,8 +70,8 @@ pub fn get_or_create_reject(agent: &Agent, target: Value, value: Value) {
     }
 }
 
-fn write(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
-    let this = ctx.environment.borrow().get_this(agent)?;
+fn write(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
+    let this = ctx.get_this(agent)?;
     if !this.has_slot("net client token") {
         return Err(Value::new_error(agent, "invalid receiver"));
     }
@@ -113,8 +113,8 @@ fn write(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Result<Valu
     }
 }
 
-fn close(agent: &Agent, ctx: &ExecutionContext, _: Vec<Value>) -> Result<Value, Value> {
-    let this = ctx.environment.borrow().get_this(agent)?;
+fn close(agent: &Agent, _: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
+    let this = ctx.get_this(agent)?;
     if !this.has_slot("net client token") {
         return Err(Value::new_error(agent, "invalid receiver"));
     }
@@ -134,7 +134,7 @@ pub fn create_net_client_prototype(agent: &Agent) -> Value {
     proto
         .set(
             agent,
-            &ObjectKey::from("next"),
+            ObjectKey::from("next"),
             Value::new_builtin_function(agent, next),
         )
         .unwrap();
@@ -142,7 +142,7 @@ pub fn create_net_client_prototype(agent: &Agent) -> Value {
     proto
         .set(
             agent,
-            &ObjectKey::from("write"),
+            ObjectKey::from("write"),
             Value::new_builtin_function(agent, write),
         )
         .unwrap();
@@ -150,7 +150,7 @@ pub fn create_net_client_prototype(agent: &Agent) -> Value {
     proto
         .set(
             agent,
-            &ObjectKey::from("close"),
+            ObjectKey::from("close"),
             Value::new_builtin_function(agent, close),
         )
         .unwrap();

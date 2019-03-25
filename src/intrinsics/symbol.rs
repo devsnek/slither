@@ -1,8 +1,8 @@
 use crate::agent::Agent;
+use crate::interpreter::Context;
 use crate::value::{ObjectKey, Value};
-use crate::vm::ExecutionContext;
 
-fn symbol(agent: &Agent, _ctx: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
+fn symbol(agent: &Agent, args: Vec<Value>, _ctx: &Context) -> Result<Value, Value> {
     let desc = match args.get(0) {
         Some(Value::String(s)) => Ok(Some(s.clone())),
         Some(_) => Err(Value::new_error(agent, "invalid description")),
@@ -16,15 +16,15 @@ pub fn create_symbol(agent: &Agent) -> Value {
 
     s.set(
         agent,
-        &ObjectKey::from("prototype"),
+        ObjectKey::from("prototype"),
         agent.intrinsics.symbol_prototype.clone(),
     )
-    .expect("failed to set prototype on promise constructor");
+    .expect("failed to set prototype on symbol constructor");
     agent
         .intrinsics
         .symbol_prototype
-        .set(agent, &ObjectKey::from("constructor"), s.clone())
-        .expect("failed to set constructor on promise prototype");
+        .set(agent, ObjectKey::from("constructor"), s.clone())
+        .expect("failed to set constructor on symbol prototype");
 
     s
 }

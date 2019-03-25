@@ -1,9 +1,9 @@
 use crate::agent::Agent;
+use crate::interpreter::Context;
 use crate::value::Value;
-use crate::vm::ExecutionContext;
 
-fn iterator(agent: &Agent, ctx: &ExecutionContext, _: Vec<Value>) -> Result<Value, Value> {
-    ctx.environment.borrow().get_this(agent)
+fn iterator(agent: &Agent, _: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
+    ctx.get_this(agent)
 }
 
 pub fn create_async_iterator_prototype(agent: &Agent) -> Value {
@@ -12,7 +12,7 @@ pub fn create_async_iterator_prototype(agent: &Agent) -> Value {
     proto
         .set(
             agent,
-            &agent
+            agent
                 .well_known_symbol("asyncIterator")
                 .to_object_key(agent)
                 .unwrap(),

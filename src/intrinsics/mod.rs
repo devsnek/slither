@@ -8,12 +8,15 @@ mod iterator_prototype;
 pub mod net_client_prototype;
 mod number_prototype;
 mod object_prototype;
+pub mod perform_await;
 pub mod promise;
 mod promise_prototype;
 mod regex_prototype;
 mod string_prototype;
 mod symbol;
 mod symbol_prototype;
+
+pub use perform_await::perform_await;
 
 pub use array_prototype::create_array_prototype;
 pub use async_iterator_prototype::create_async_iterator_prototype;

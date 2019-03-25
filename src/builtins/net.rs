@@ -1,7 +1,7 @@
 use crate::agent::{Agent, MioMapType};
+use crate::interpreter::Context;
 use crate::intrinsics::net_client_prototype::{get_or_create_reject, get_or_create_resolve};
 use crate::value::Value;
-use crate::vm::ExecutionContext;
 use crate::IntoValue;
 use mio::{net::TcpStream, PollOpt, Ready, Token};
 use std::collections::HashMap;
@@ -56,7 +56,7 @@ pub fn handle(agent: &Agent, token: Token, net: Net) {
     }
 }
 
-fn connect(agent: &Agent, _: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
+fn connect(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
     match args.get(0).unwrap_or(&Value::Null) {
         Value::String(addr) => {
             let addr: std::net::SocketAddr = match addr.parse() {

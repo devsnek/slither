@@ -1,9 +1,9 @@
 use crate::agent::Agent;
+use crate::interpreter::Context;
 use crate::value::Value;
-use crate::vm::ExecutionContext;
 use std::collections::HashMap;
 
-fn print(agent: &Agent, _: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
+fn print(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
     let mut inspected = Vec::with_capacity(args.len());
     for v in args {
         inspected.push(Value::inspect(agent, &v));

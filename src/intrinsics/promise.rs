@@ -1,6 +1,6 @@
 use crate::agent::Agent;
+use crate::interpreter::Context;
 use crate::value::{ObjectKey, Value};
-use crate::vm::ExecutionContext;
 
 fn trigger_promise_reactions(
     agent: &Agent,
@@ -99,8 +99,8 @@ fn create_resolving_functions(agent: &Agent, promise: &Value) -> ResolvingFuncti
 
 fn promise_resolve_function(
     agent: &Agent,
-    ctx: &ExecutionContext,
     args: Vec<Value>,
+    ctx: &Context,
 ) -> Result<Value, Value> {
     let f = ctx.function.clone().unwrap();
 
@@ -121,7 +121,7 @@ fn promise_resolve_function(
         )
     } else if resolution.has_slot("promise state") {
         let ResolvingFunctions { resolve, reject } = create_resolving_functions(agent, &promise);
-        let then_call_result = resolution.get(agent, &ObjectKey::from("then"))?.call(
+        let then_call_result = resolution.get(agent, ObjectKey::from("then"))?.call(
             agent,
             resolution,
             vec![resolve, reject.clone()],
@@ -135,11 +135,7 @@ fn promise_resolve_function(
     }
 }
 
-fn promise_reject_function(
-    agent: &Agent,
-    ctx: &ExecutionContext,
-    args: Vec<Value>,
-) -> Result<Value, Value> {
+fn promise_reject_function(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
     let f = ctx.function.clone().unwrap();
 
     let already_resolved = f.get_slot("already resolved");
@@ -154,7 +150,7 @@ fn promise_reject_function(
     reject_promise(agent, promise, resolution)
 }
 
-fn promise(agent: &Agent, _ctx: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
+fn promise(agent: &Agent, args: Vec<Value>, _ctx: &Context) -> Result<Value, Value> {
     let executor = args[0].clone();
 
     if executor.type_of() != "function" {
@@ -179,8 +175,8 @@ fn promise(agent: &Agent, _ctx: &ExecutionContext, args: Vec<Value>) -> Result<V
 
 fn get_capabilities_executor(
     agent: &Agent,
-    ctx: &ExecutionContext,
     args: Vec<Value>,
+    ctx: &Context,
 ) -> Result<Value, Value> {
     let f = ctx.function.clone().unwrap();
 
@@ -211,7 +207,7 @@ pub fn new_promise_capability(agent: &Agent, constructor: Value) -> Result<Value
 
 pub fn promise_resolve_i(agent: &Agent, c: Value, x: Value) -> Result<Value, Value> {
     if x.has_slot("promise state") {
-        let x_constructor = x.get(agent, &ObjectKey::from("constructor"))?;
+        let x_constructor = x.get(agent, ObjectKey::from("constructor"))?;
         if x_constructor == c {
             return Ok(x.clone());
         }
@@ -223,12 +219,8 @@ pub fn promise_resolve_i(agent: &Agent, c: Value, x: Value) -> Result<Value, Val
     Ok(capability)
 }
 
-fn promise_resolve(
-    agent: &Agent,
-    ctx: &ExecutionContext,
-    args: Vec<Value>,
-) -> Result<Value, Value> {
-    let c = ctx.environment.borrow().this.clone().unwrap();
+fn promise_resolve(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
+    let c = ctx.get_this(agent)?;
     if c.type_of() != "object" && c.type_of() != "function" {
         return Err(Value::new_error(agent, "this must be an object"));
     }
@@ -236,9 +228,9 @@ fn promise_resolve(
     promise_resolve_i(agent, c, x)
 }
 
-fn promise_reject(agent: &Agent, ctx: &ExecutionContext, args: Vec<Value>) -> Result<Value, Value> {
+fn promise_reject(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
     let x = args.get(0).unwrap_or(&Value::Null);
-    let c = ctx.environment.borrow().this.clone().unwrap();
+    let c = ctx.get_this(agent)?;
     if c.type_of() != "object" && c.type_of() != "function" {
         return Err(Value::new_error(agent, "this must be an object"));
     }
@@ -254,26 +246,26 @@ pub fn create_promise(agent: &Agent) -> Value {
 
     p.set(
         agent,
-        &ObjectKey::from("prototype"),
+        ObjectKey::from("prototype"),
         agent.intrinsics.promise_prototype.clone(),
     )
     .unwrap();
     p.set(
         agent,
-        &ObjectKey::from("resolve"),
+        ObjectKey::from("resolve"),
         Value::new_builtin_function(agent, promise_resolve),
     )
     .unwrap();
     p.set(
         agent,
-        &ObjectKey::from("reject"),
+        ObjectKey::from("reject"),
         Value::new_builtin_function(agent, promise_reject),
     )
     .unwrap();
     agent
         .intrinsics
         .promise_prototype
-        .set(agent, &ObjectKey::from("constructor"), p.clone())
+        .set(agent, ObjectKey::from("constructor"), p.clone())
         .unwrap();
 
     p

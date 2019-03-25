@@ -57,33 +57,32 @@ macro_rules! custom_trace {
     }
 }
 
-macro_rules! reject_if_err {
-    ( $agent:expr, $promise:expr, $value:expr ) => {
-        match $value {
-            Ok(v) => v,
-            Err(e) => {
-                $promise
-                    .get_slot("reject")
-                    .call($agent, Value::Null, vec![e])
-                    .unwrap();
-                return Ok($promise);
-            }
-        }
-    };
-}
-
 mod agent;
 mod builtins;
+mod interpreter;
 mod intrinsics;
 mod linked_list;
+mod module;
 mod num_util;
 mod parser;
 mod value;
-mod vm;
 
 pub trait IntoValue: Sized {
     fn into_value(&self, _: &agent::Agent) -> value::Value;
 }
 
 pub use agent::Agent;
+use parser::Parser;
 pub use value::Value;
+
+pub fn disassemble(code: &str) {
+    let mut agent = Agent::new();
+
+    let ast = match Parser::parse(code) {
+        Ok(ast) => ast,
+        Err(e) => panic!(format!("{:?}", e)),
+    };
+    let _idx = agent.assembler.assemble(&ast);
+
+    interpreter::disassemble(&agent.assembler, 0, std::usize::MAX);
+}
