@@ -1,7 +1,7 @@
 import { print } from standard:debug;
 
-const f = async () => {
-  // return 5;
-};
+function add(a, b) {
+  return a + b;
+}
 
-print(f());
+add(1, 2);

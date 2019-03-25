@@ -239,8 +239,10 @@ pub struct Context {
     pub interpreter: Option<Interpreter>,
     pub function: Option<Value>,
     pub this: Option<Value>,
-    registers: [Value; REGISTER_COUNT],
 }
+
+/*
+ */
 
 impl Context {
     pub fn new(scope: Gc<GcCell<Scope>>) -> Gc<GcCell<Context>> {
@@ -249,6 +251,30 @@ impl Context {
             interpreter: None,
             function: None,
             this: None,
+        }))
+    }
+
+    pub fn get_this(&self, agent: &Agent) -> Result<Value, Value> {
+        match self.this {
+            Some(ref v) => Ok(v.clone()),
+            None => Err(Value::new_error(agent, "invalid this")),
+        }
+    }
+}
+
+#[derive(Debug, Trace, Finalize)]
+pub struct SuspendValue(pub Value);
+
+#[derive(Debug, Trace, Finalize)]
+struct Registers {
+    last: Option<Box<Registers>>,
+    registers: [Value; REGISTER_COUNT],
+}
+
+impl Registers {
+    fn new(last: Option<Box<Registers>>) -> Registers {
+        Registers {
+            last,
             registers: [
                 Value::Empty,
                 Value::Empty,
@@ -267,19 +293,25 @@ impl Context {
                 Value::Empty,
                 Value::Empty,
             ],
-        }))
-    }
-
-    pub fn get_this(&self, agent: &Agent) -> Result<Value, Value> {
-        match self.this {
-            Some(ref v) => Ok(v.clone()),
-            None => Err(Value::new_error(agent, "invalid this")),
         }
     }
 }
 
-#[derive(Debug, Trace, Finalize)]
-pub struct SuspendValue(pub Value);
+impl std::ops::Index<usize> for Registers {
+    type Output = Value;
+
+    #[inline]
+    fn index(&self, index: usize) -> &Value {
+        &self.registers[index]
+    }
+}
+
+impl std::ops::IndexMut<usize> for Registers {
+    #[inline]
+    fn index_mut(&mut self, index: usize) -> &mut Value {
+        &mut self.registers[index]
+    }
+}
 
 #[derive(Debug, Trace, Finalize)]
 pub struct Interpreter {
@@ -289,6 +321,7 @@ pub struct Interpreter {
     try_stack: Vec<usize>,
     context: Vec<Gc<GcCell<Context>>>,
     positions: Vec<usize>,
+    registers: Registers,
 }
 
 impl Interpreter {
@@ -300,10 +333,30 @@ impl Interpreter {
             try_stack: Vec::new(),
             context: vec![ctx],
             positions: Vec::new(),
+            registers: Registers::new(None),
         }
     }
 
     pub fn run(&mut self, agent: &Agent) -> Result<Result<Value, Value>, SuspendValue> {
+        macro_rules! push_context {
+            ($ctx:expr) => {
+                self.context.push($ctx);
+                unsafe {
+                    std::ptr::write(
+                        &mut self.registers,
+                        Registers::new(Some(Box::new(std::ptr::read(&self.registers)))),
+                    );
+                }
+            };
+        }
+
+        macro_rules! pop_context {
+            () => {
+                self.context.pop().unwrap();
+                self.registers = *self.registers.last.take().unwrap();
+            };
+        }
+
         macro_rules! read_u8 {
             () => {{
                 let n = agent.assembler.code[self.pc];
@@ -335,7 +388,7 @@ impl Interpreter {
         macro_rules! num_binop_num {
             ($fn:expr) => {{
                 let lhsid = read_u32!() as usize;
-                match self.context.last().unwrap().borrow().registers[lhsid] {
+                match self.registers[lhsid] {
                     Value::Number(ln) => match self.accumulator {
                         Value::Number(rn) => {
                             self.accumulator = Value::Number($fn(ln, rn));
@@ -350,7 +403,7 @@ impl Interpreter {
         macro_rules! num_binop_bool {
             ($fn:expr) => {{
                 let lhsid = read_u32!() as usize;
-                match self.context.last().unwrap().borrow().registers[lhsid] {
+                match self.registers[lhsid] {
                     Value::Number(ln) => match self.accumulator {
                         Value::Number(rn) => {
                             self.accumulator = if $fn(&ln, &rn) {
@@ -444,18 +497,15 @@ impl Interpreter {
                 Op::LoadComputedProperty => {
                     let objid = read_u32!() as usize;
                     let prop = handle!(self.accumulator.to_object_key(agent));
-                    self.accumulator = handle!(self.context.last().unwrap().borrow().registers
-                        [objid]
-                        .get(agent, prop));
+                    self.accumulator = handle!(self.registers[objid].get(agent, prop));
                 }
                 Op::LoadAccumulatorFromRegister => {
                     let rid = read_u32!() as usize;
-                    self.accumulator = self.context.last().unwrap().borrow().registers[rid].clone();
+                    self.accumulator = self.registers[rid].clone();
                 }
                 Op::StoreAccumulatorInRegister => {
                     let rid = read_u32!() as usize;
-                    self.context.last().unwrap().borrow_mut().registers[rid] =
-                        self.accumulator.clone();
+                    self.registers[rid] = self.accumulator.clone();
                 }
                 Op::SetException => {
                     self.exception = Some(std::mem::replace(&mut self.accumulator, Value::Empty));
@@ -548,14 +598,9 @@ impl Interpreter {
 
                     let mut args = Vec::with_capacity(argc);
                     for i in 0..argc {
-                        args.push(
-                            self.context.last().unwrap().borrow().registers[sargid + i].clone(),
-                        );
+                        args.push(self.registers[sargid + i].clone());
                     }
-                    let callee = std::mem::replace(
-                        &mut self.context.last().unwrap().borrow_mut().registers[cid],
-                        Value::Empty,
-                    );
+                    let callee = std::mem::replace(&mut self.registers[cid], Value::Empty);
                     self.accumulator = handle!(callee.construct(agent, args, callee.clone()));
                 }
                 Op::Call | Op::TailCall => {
@@ -564,24 +609,16 @@ impl Interpreter {
                     let sargid = read_u32!() as usize; // first argument register
                     let argc = read_u8!() as usize; // number of arguments
 
-                    let callee = std::mem::replace(
-                        &mut self.context.last().unwrap().borrow_mut().registers[cid],
-                        Value::Empty,
-                    );
+                    let callee = std::mem::replace(&mut self.registers[cid], Value::Empty);
 
                     macro_rules! slow_call {
                         () => {
                             let mut args = Vec::with_capacity(argc);
                             for i in 0..argc {
-                                args.push(
-                                    self.context.last().unwrap().borrow().registers[sargid + i]
-                                        .clone(),
-                                );
+                                args.push(self.registers[sargid + i].clone());
                             }
-                            let receiver = std::mem::replace(
-                                &mut self.context.last().unwrap().borrow_mut().registers[rid],
-                                Value::Empty,
-                            );
+                            let receiver =
+                                std::mem::replace(&mut self.registers[rid], Value::Empty);
                             self.accumulator = handle!(callee.call(agent, receiver, args));
                         };
                     }
@@ -610,18 +647,17 @@ impl Interpreter {
                                     let value = if i > argc {
                                         Value::Null
                                     } else {
-                                        self.context.last().unwrap().borrow().registers[sargid + i]
-                                            .clone()
+                                        self.registers[sargid + i].clone()
                                     };
                                     scope.borrow_mut().initialize(param, value);
                                 }
 
                                 if op == Op::TailCall {
-                                    self.context.pop();
+                                    pop_context!();
                                 } else {
                                     self.positions.push(self.pc);
                                 }
-                                self.context.push(ctx);
+                                push_context!(ctx);
                                 self.pc = *position;
                             }
                             _ => handle!(Err(Value::new_error(agent, "value is not a function"))),
@@ -629,17 +665,15 @@ impl Interpreter {
                         _ => handle!(Err(Value::new_error(agent, "value is not a function"))),
                     }
                 }
-                Op::Return => {
-                    self.context.pop();
-                    match self.positions.pop() {
-                        Some(p) => {
-                            self.pc = p;
-                        }
-                        None => {
-                            break 'main;
-                        }
+                Op::Return => match self.positions.pop() {
+                    Some(p) => {
+                        pop_context!();
+                        self.pc = p;
                     }
-                }
+                    None => {
+                        break 'main;
+                    }
+                },
                 Op::GetIterator | Op::GetAsyncIterator => {
                     let sym = handle!(if op == Op::GetAsyncIterator {
                         agent.well_known_symbol("asyncIterator")
@@ -655,9 +689,7 @@ impl Interpreter {
                 }
                 Op::IteratorNext => {
                     let iid = read_u32!() as usize;
-                    if let Value::Iterator(iterator, next) =
-                        &self.context.last().unwrap().borrow().registers[iid]
-                    {
+                    if let Value::Iterator(iterator, next) = &self.registers[iid] {
                         self.accumulator = handle!(next.call(agent, (**iterator).clone(), vec![]));
                     } else {
                         unreachable!()
@@ -665,9 +697,7 @@ impl Interpreter {
                 }
                 Op::AsyncIteratorNext => {
                     let iid = read_u32!() as usize;
-                    if let Value::Iterator(iterator, next) =
-                        &self.context.last().unwrap().borrow().registers[iid]
-                    {
+                    if let Value::Iterator(iterator, next) = &self.registers[iid] {
                         let promise = handle!(next.call(agent, (**iterator).clone(), vec![]));
                         return Err(SuspendValue(promise));
                     } else {
@@ -716,20 +746,14 @@ impl Interpreter {
                     let aid = read_u32!() as usize;
                     let idx = read_u32!();
                     let key = ObjectKey::from(idx);
-                    handle!(self.context.last().unwrap().borrow().registers[aid].set(
-                        agent,
-                        key,
-                        self.accumulator.clone()
-                    ));
+                    handle!(self.registers[aid].set(agent, key, self.accumulator.clone()));
                 }
                 Op::CreateEmptyTuple => {
                     self.accumulator = Value::new_tuple();
                 }
                 Op::StoreInTuple => {
                     let tid = read_u32!() as usize;
-                    if let Value::Tuple(items) =
-                        &mut self.context.last().unwrap().borrow_mut().registers[tid]
-                    {
+                    if let Value::Tuple(items) = &mut self.registers[tid] {
                         items.push(std::mem::replace(&mut self.accumulator, Value::Empty));
                     } else {
                         unreachable!();
@@ -741,14 +765,8 @@ impl Interpreter {
                 Op::StoreInObjectLiteral => {
                     let oid = read_u32!() as usize;
                     let kid = read_u32!() as usize;
-                    let key =
-                        handle!(self.context.last().unwrap().borrow().registers[kid]
-                            .to_object_key(agent));
-                    handle!(self.context.last().unwrap().borrow().registers[oid].set(
-                        agent,
-                        key,
-                        self.accumulator.clone()
-                    ));
+                    let key = handle!(self.registers[kid].to_object_key(agent));
+                    handle!(self.registers[oid].set(agent, key, self.accumulator.clone()));
                 }
                 Op::NewFunction => {
                     let id = read_u32!() as usize;
@@ -761,7 +779,7 @@ impl Interpreter {
                 }
                 Op::Add => {
                     let lhsid = read_u32!() as usize;
-                    match self.context.last().unwrap().borrow().registers[lhsid] {
+                    match self.registers[lhsid] {
                         Value::Number(ln) => match self.accumulator {
                             Value::Number(rn) => {
                                 self.accumulator = Value::Number(ln + rn);
@@ -796,9 +814,7 @@ impl Interpreter {
                 Op::LessThanOrEqual => num_binop_bool!(f64::le),
                 Op::Eq => {
                     let lhsid = read_u32!() as usize;
-                    self.accumulator = if self.context.last().unwrap().borrow().registers[lhsid]
-                        == self.accumulator
-                    {
+                    self.accumulator = if self.registers[lhsid] == self.accumulator {
                         Value::True
                     } else {
                         Value::False
@@ -806,9 +822,7 @@ impl Interpreter {
                 }
                 Op::Neq => {
                     let lhsid = read_u32!() as usize;
-                    self.accumulator = if self.context.last().unwrap().borrow().registers[lhsid]
-                        != self.accumulator
-                    {
+                    self.accumulator = if self.registers[lhsid] != self.accumulator {
                         Value::True
                     } else {
                         Value::False
