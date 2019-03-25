@@ -12,9 +12,9 @@ path = "src/lib.rs"
 name = "slither"
 path = "src/cli.rs"
 
-#[[bin]]
-#name = "repl"
-#path = "src/repl.rs"
+[[bin]]
+name = "repl"
+path = "src/repl.rs"
 
 [dependencies.gc]
 path = "rust-gc/gc"
