@@ -482,10 +482,7 @@ impl Value {
                 ObjectKey::Number(n) => Ok(t.get(n).unwrap_or(&Value::Null).clone()),
                 _ => Ok(Value::Null),
             },
-            _ => Err(Value::new_error(
-                agent,
-                "Cannot read property from invalid base",
-            )),
+            _ => self.to_object(agent)?.get(agent, key),
         }
     }
 
@@ -548,6 +545,30 @@ impl Value {
         }
     }
 
+    pub fn to_object(&self, agent: &Agent) -> Result<Value, Value> {
+        match self {
+            Value::Null => Err(Value::new_error(agent, "cannot convert null to object")),
+            Value::True | Value::False => Ok(Value::Object(Gc::new(ObjectInfo {
+                kind: ObjectKind::Boolean(*self == Value::True),
+                properties: GcCell::new(IndexMap::new()),
+                prototype: agent.intrinsics.boolean_prototype.clone(),
+            }))),
+            Value::Object(_) => Ok(self.clone()),
+            Value::Number(n) => Ok(Value::Object(Gc::new(ObjectInfo {
+                kind: ObjectKind::Number(*n),
+                properties: GcCell::new(IndexMap::new()),
+                prototype: agent.intrinsics.number_prototype.clone(),
+            }))),
+            Value::String(s) => Ok(Value::Object(Gc::new(ObjectInfo {
+                kind: ObjectKind::String(s.to_string()),
+                properties: GcCell::new(IndexMap::new()),
+                prototype: agent.intrinsics.string_prototype.clone(),
+            }))),
+            Value::Tuple(_) => Ok(self.clone()),
+            _ => unreachable!(),
+        }
+    }
+
     pub fn to_object_key(&self, agent: &Agent) -> Result<ObjectKey, Value> {
         match self {
             Value::Symbol(s) => Ok(ObjectKey::Symbol(s.clone())),
@@ -571,7 +592,11 @@ impl Value {
                     if *kind & FunctionKind::Arrow == FunctionKind::Arrow {
                         // FIXME: doesn't have `this` vs inherited `this` needs to be clarified
                     } else {
-                        ctx.borrow().scope.borrow_mut().this = Some(this);
+                        ctx.borrow().scope.borrow_mut().this = Some(if this == Value::Null {
+                            Value::Null
+                        } else {
+                            this.to_object(agent)?
+                        });
                     }
                     ctx.borrow_mut().function = Some(self.clone());
                     evaluate_body(agent, ctx, *position, *kind, args, parameters)
@@ -579,7 +604,11 @@ impl Value {
                 ObjectKind::BuiltinFunction(f, ..) => {
                     let c = Context::new(Scope::new(None));
                     let mut b = c.borrow_mut();
-                    b.scope.borrow_mut().this = Some(this);
+                    b.scope.borrow_mut().this = Some(if this == Value::Null {
+                        Value::Null
+                    } else {
+                        this.to_object(agent)?
+                    });
                     b.function = Some(self.clone());
                     f(agent, args, &b)
                 }

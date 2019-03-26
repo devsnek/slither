@@ -697,11 +697,11 @@ impl Interpreter {
                                 }
                                 if *kind & FunctionKind::Arrow == FunctionKind::Arrow {
                                     // FIXME: doesn't have `this` vs inherited `this` needs to be clarified
+                                } else if self.registers[rid].type_of() == "null" {
+                                    scope.borrow_mut().this = Some(Value::Null);
                                 } else {
-                                    scope.borrow_mut().this = Some(std::mem::replace(
-                                        &mut self.registers[rid],
-                                        Value::Empty,
-                                    ));
+                                    let r = handle!(self.registers[rid].to_object(agent));
+                                    scope.borrow_mut().this = Some(r);
                                 }
                                 if op == Op::TailCall {
                                     pop_context!();
