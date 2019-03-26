@@ -3,7 +3,7 @@ use crate::interpreter::Context;
 use crate::value::{ObjectKey, ObjectKind, Value};
 
 fn to_string(agent: &Agent, _: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let this = ctx.get_this(agent)?;
+    let this = ctx.scope.borrow().get_this(agent)?;
 
     match this {
         Value::Object(o) => match o.kind {

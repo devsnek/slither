@@ -7,7 +7,7 @@ use num::ToPrimitive;
 use std::io::prelude::*;
 
 fn next(agent: &Agent, _: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let this = ctx.get_this(agent)?;
+    let this = ctx.scope.borrow().get_this(agent)?;
     if !this.has_slot("net client queue") {
         return Err(Value::new_error(agent, "invalid receiver"));
     }
@@ -71,7 +71,7 @@ pub fn get_or_create_reject(agent: &Agent, target: Value, value: Value) {
 }
 
 fn write(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let this = ctx.get_this(agent)?;
+    let this = ctx.scope.borrow().get_this(agent)?;
     if !this.has_slot("net client token") {
         return Err(Value::new_error(agent, "invalid receiver"));
     }
@@ -114,7 +114,7 @@ fn write(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value>
 }
 
 fn close(agent: &Agent, _: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let this = ctx.get_this(agent)?;
+    let this = ctx.scope.borrow().get_this(agent)?;
     if !this.has_slot("net client token") {
         return Err(Value::new_error(agent, "invalid receiver"));
     }

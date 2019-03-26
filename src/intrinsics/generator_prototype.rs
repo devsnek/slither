@@ -3,7 +3,7 @@ use crate::interpreter::Context;
 use crate::value::{ObjectKey, Value};
 
 fn next(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let this = ctx.get_this(agent)?;
+    let this = ctx.scope.borrow().get_this(agent)?;
     if let Value::WrappedContext(context, _) = this.get_slot("generator context") {
         let mut args = args;
         if context.borrow_mut().interpreter.is_none() {
@@ -30,7 +30,7 @@ fn next(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> 
 }
 
 fn throw(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let this = ctx.get_this(agent)?;
+    let this = ctx.scope.borrow().get_this(agent)?;
     if let Value::WrappedContext(context, _) = this.get_slot("generator context") {
         let mut args = args;
         if context.borrow_mut().interpreter.is_none() {

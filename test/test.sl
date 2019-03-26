@@ -1,7 +1,13 @@
 import { print } from standard:debug;
 
-function add(a, b) {
-  return a + b;
+class X {
+  constructor() {
+    print('constructor!');
+    this.y = 5;
+    const x = () => this;
+    print(x());
+  }
 }
 
-add(1, 2);
+const x = new X();
+print(x);

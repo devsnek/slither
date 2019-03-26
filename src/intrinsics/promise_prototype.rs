@@ -7,7 +7,7 @@ fn promise_proto_then(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<
     let mut on_fulfilled = args.get(0).unwrap_or(&Value::Null).clone();
     let mut on_rejected = args.get(1).unwrap_or(&Value::Null).clone();
 
-    let this = ctx.get_this(agent)?;
+    let this = ctx.scope.borrow().get_this(agent)?;
 
     let constructor = this.get(agent, ObjectKey::from("constructor"))?;
 
@@ -64,7 +64,7 @@ fn promise_proto_then(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<
 
 fn promise_proto_catch(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
     let on_rejected = args.get(0).unwrap_or(&Value::Null).clone();
-    let this = ctx.get_this(agent)?;
+    let this = ctx.scope.borrow().get_this(agent)?;
     let then = this.get(agent, ObjectKey::from("then"))?;
     then.call(agent, this.clone(), vec![Value::Null, on_rejected])
 }
@@ -108,7 +108,7 @@ fn catch_finally_function(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Res
 }
 
 fn promise_proto_finally(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let promise = ctx.get_this(agent)?;
+    let promise = ctx.scope.borrow().get_this(agent)?;
     if promise.type_of() != "object" && promise.type_of() != "function" {
         return Err(Value::new_error(agent, "invalid this"));
     }

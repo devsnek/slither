@@ -3,7 +3,7 @@ use crate::interpreter::Context;
 use crate::value::{ObjectKey, ObjectKind, Value};
 
 fn match_(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let this = ctx.get_this(agent)?;
+    let this = ctx.scope.borrow().get_this(agent)?;
     match this {
         Value::Object(o) => {
             if let ObjectKind::Regex(re) = &o.kind {
@@ -51,7 +51,7 @@ fn match_(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value
 }
 
 fn test(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let this = ctx.get_this(agent)?;
+    let this = ctx.scope.borrow().get_this(agent)?;
     match this {
         Value::Object(o) => {
             if let ObjectKind::Regex(re) = &o.kind {

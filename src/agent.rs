@@ -469,6 +469,7 @@ test!(
     "#,
     Ok(Value::True)
 );
+*/
 
 test!(
     test_class,
@@ -487,4 +488,3 @@ test!(
     "#,
     Ok(Value::True)
 );
-*/

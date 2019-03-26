@@ -98,14 +98,29 @@ enum Token {
 #[derive(Debug, PartialEq, Clone, Copy)]
 #[repr(u8)]
 pub enum FunctionKind {
-    Normal,
-    Async,
-    Generator,
+    Normal = 0b0001,
+    Async = 0b0010,
+    Generator = 0b0100,
+    Arrow = 0b1000,
 }
 
 impl From<u8> for FunctionKind {
     fn from(n: u8) -> Self {
         unsafe { std::mem::transmute::<u8, Self>(n) }
+    }
+}
+
+impl std::ops::BitAnd for FunctionKind {
+    type Output = Self;
+    fn bitand(self, rhs: Self) -> Self {
+        (self as u8 & rhs as u8).into()
+    }
+}
+
+impl std::ops::BitOr for FunctionKind {
+    type Output = Self;
+    fn bitor(self, rhs: Self) -> Self {
+        (self as u8 | rhs as u8).into()
     }
 }
 
@@ -187,6 +202,9 @@ pub enum Node {
     FunctionExpression(FunctionKind, Option<String>, Vec<Node>, Box<Node>),
     FunctionDeclaration(FunctionKind, String, Vec<Node>, Box<Node>),
     ArrowFunctionExpression(FunctionKind, Vec<Node>, Box<Node>),
+
+    ClassExpression(String, Option<Box<Node>>, Vec<Node>),
+    ClassDeclaration(String, Option<Box<Node>>, Vec<Node>),
 
     LexicalInitialization(String, Box<Node>),
 
@@ -645,15 +663,21 @@ impl<'a> Parser<'a> {
             None => Err(Error::NormalEOF),
             Some(Token::LeftBrace) => self.parse_block(ParseScope::Block),
             Some(Token::Let) | Some(Token::Const) => self.parse_lexical_declaration(),
-            Some(Token::Function) => self.parse_function(false, FunctionKind::Normal),
+            Some(Token::Function) => {
+                self.lexer.next();
+                self.parse_function(false, FunctionKind::Normal)
+            }
             Some(Token::Async) => {
                 self.lexer.next();
+                self.expect(Token::Function)?;
                 self.parse_function(false, FunctionKind::Async)
             }
             Some(Token::Gen) => {
                 self.lexer.next();
+                self.expect(Token::Function)?;
                 self.parse_function(false, FunctionKind::Generator)
             }
+            Some(Token::Class) => self.parse_class(false),
             Some(Token::If) => self.parse_if_statement(),
             Some(Token::While) => self.parse_while(),
             Some(Token::For) => self.parse_for(),
@@ -722,7 +746,6 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_function(&mut self, expression: bool, kind: FunctionKind) -> Result<Node, Error> {
-        self.expect(Token::Function)?;
         let name = if expression {
             if let Some(Token::Identifier(..)) = self.lexer.peek() {
                 Some(self.parse_identifier(false)?)
@@ -738,6 +761,7 @@ impl<'a> Parser<'a> {
             FunctionKind::Normal => ParseScope::Function,
             FunctionKind::Async => ParseScope::AsyncFunction,
             FunctionKind::Generator => ParseScope::GeneratorFunction,
+            _ => unreachable!(),
         })?;
         Ok(if expression {
             Node::FunctionExpression(kind, name, args, Box::new(body))
@@ -861,7 +885,7 @@ impl<'a> Parser<'a> {
             FunctionKind::Async
         } else if self.eat(Token::Gen) {
             FunctionKind::Generator
-        } else if self.peek(Token::Function) {
+        } else if self.eat(Token::Function) {
             FunctionKind::Normal
         } else {
             return Err(Error::UnexpectedToken);
@@ -935,7 +959,10 @@ impl<'a> Parser<'a> {
         self.expect(Token::Export)?;
         let decl = match self.lexer.peek() {
             Some(Token::Let) | Some(Token::Const) => self.parse_lexical_declaration(),
-            Some(Token::Function) => self.parse_function(false, FunctionKind::Normal),
+            Some(Token::Function) => {
+                self.lexer.next();
+                self.parse_function(false, FunctionKind::Normal)
+            }
             _ => Err(Error::UnexpectedToken),
         }?;
         Ok(Node::ExportDeclaration(Box::new(decl)))
@@ -1283,7 +1310,38 @@ impl<'a> Parser<'a> {
                 self.expect(Token::Arrow)?;
                 self.parse_arrow_function(FunctionKind::Async, list)
             }
+            Some(Token::Class) => self.parse_class(true),
             _ => Err(Error::UnexpectedToken),
+        }
+    }
+
+    fn parse_class(&mut self, expression: bool) -> Result<Node, Error> {
+        if !expression {
+            self.expect(Token::Class)?;
+        }
+        let name = self.parse_identifier(false)?;
+        if !expression {
+            self.declare(&name, false)?;
+        }
+        let extends = if self.eat(Token::Extends) {
+            Some(Box::new(self.parse_left_hand_side_expression()?))
+        } else {
+            None
+        };
+        self.expect(Token::LeftBrace)?;
+        let mut fields = Vec::new();
+        while !self.eat(Token::RightBrace) {
+            let name = self.parse_identifier(false)?;
+            let f = self.parse_function(true, FunctionKind::Normal)?;
+            fields.push(Node::Initializer(
+                Box::new(Node::StringLiteral(name)),
+                Box::new(f),
+            ));
+        }
+        if expression {
+            Ok(Node::ClassExpression(name, extends, fields))
+        } else {
+            Ok(Node::ClassDeclaration(name, extends, fields))
         }
     }
 
@@ -1314,6 +1372,7 @@ impl<'a> Parser<'a> {
                 FunctionKind::Normal => ParseScope::Function,
                 FunctionKind::Async => ParseScope::AsyncFunction,
                 FunctionKind::Generator => ParseScope::GeneratorFunction,
+                _ => unreachable!(),
             })?
         } else {
             let expr = self.parse_assignment_expression()?;
@@ -1322,7 +1381,11 @@ impl<'a> Parser<'a> {
                 vec![Node::ReturnStatement(Some(Box::new(expr)))],
             )
         };
-        Ok(Node::ArrowFunctionExpression(kind, args, Box::new(body)))
+        Ok(Node::ArrowFunctionExpression(
+            kind | FunctionKind::Arrow,
+            args,
+            Box::new(body),
+        ))
     }
 
     fn parse_expression_list(&mut self, close: Token) -> Result<Vec<Node>, Error> {

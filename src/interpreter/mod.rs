@@ -31,6 +31,7 @@ pub enum OpArg {
 macro_rules! OPS {
     ($V:ident) => {
         $V!(
+            (LoadEmpty, AccumulatorUse::Write),
             (LoadNull, AccumulatorUse::Write),
             (LoadTrue, AccumulatorUse::Write),
             (LoadFalse, AccumulatorUse::Write),
@@ -46,9 +47,11 @@ macro_rules! OPS {
             (CreateEmptyObject, AccumulatorUse::Write),
             (StoreInObjectLiteral, AccumulatorUse::Read, OpArg::Register, OpArg::Register),
             (NewFunction, AccumulatorUse::ReadWrite, OpArg::FunctionInfo),
+            (FinishClass, AccumulatorUse::ReadWrite, OpArg::Register, OpArg::Register, OpArg::String),
 
             (LoadNamedProperty, AccumulatorUse::ReadWrite, OpArg::String),
             (LoadComputedProperty, AccumulatorUse::ReadWrite, OpArg::Register),
+            (StoreNamedProperty, AccumulatorUse::ReadWrite, OpArg::Register, OpArg::String),
 
             (LexicalDeclaration, AccumulatorUse::None, OpArg::String, OpArg::Boolean),
             (LexicalInitialization, AccumulatorUse::ReadWrite, OpArg::String),
@@ -153,6 +156,7 @@ struct Binding {
 pub struct Scope {
     parent: Option<Gc<GcCell<Scope>>>,
     bindings: IndexMap<String, Binding>,
+    pub this: Option<Value>,
 }
 
 impl Scope {
@@ -160,6 +164,7 @@ impl Scope {
         Gc::new(GcCell::new(Scope {
             parent,
             bindings: IndexMap::new(),
+            this: None,
         }))
     }
 
@@ -231,6 +236,16 @@ impl Scope {
             },
         }
     }
+
+    pub fn get_this(&self, agent: &Agent) -> Result<Value, Value> {
+        match self.this {
+            Some(ref t) => Ok(t.clone()),
+            None => match &self.parent {
+                None => Err(Value::new_error(agent, "invalid this")),
+                Some(p) => p.borrow().get_this(agent),
+            },
+        }
+    }
 }
 
 #[derive(Trace, Finalize, Debug)]
@@ -238,11 +253,7 @@ pub struct Context {
     pub scope: Gc<GcCell<Scope>>,
     pub interpreter: Option<Interpreter>,
     pub function: Option<Value>,
-    pub this: Option<Value>,
 }
-
-/*
- */
 
 impl Context {
     pub fn new(scope: Gc<GcCell<Scope>>) -> Gc<GcCell<Context>> {
@@ -250,15 +261,7 @@ impl Context {
             scope,
             interpreter: None,
             function: None,
-            this: None,
         }))
-    }
-
-    pub fn get_this(&self, agent: &Agent) -> Result<Value, Value> {
-        match self.this {
-            Some(ref v) => Ok(v.clone()),
-            None => Err(Value::new_error(agent, "invalid this")),
-        }
     }
 }
 
@@ -458,6 +461,9 @@ impl Interpreter {
             self.pc += 1;
 
             match op {
+                Op::LoadEmpty => {
+                    self.accumulator = Value::Empty;
+                }
                 Op::LoadNull => {
                     self.accumulator = Value::Null;
                 }
@@ -498,6 +504,12 @@ impl Interpreter {
                     let objid = read_u32!() as usize;
                     let prop = handle!(self.accumulator.to_object_key(agent));
                     self.accumulator = handle!(self.registers[objid].get(agent, prop));
+                }
+                Op::StoreNamedProperty => {
+                    let oid = read_u32!() as usize;
+                    let sid = read_u32!() as usize;
+                    let key = ObjectKey::from(agent.assembler.string_table[sid].as_str());
+                    handle!(self.registers[oid].set(agent, key, self.accumulator.clone()));
                 }
                 Op::LoadAccumulatorFromRegister => {
                     let rid = read_u32!() as usize;
@@ -575,8 +587,14 @@ impl Interpreter {
                         .set(agent, name, self.accumulator.clone()));
                 }
                 Op::GetThis => {
-                    self.accumulator =
-                        handle!(self.context.last().unwrap().borrow().get_this(agent));
+                    self.accumulator = handle!(self
+                        .context
+                        .last()
+                        .unwrap()
+                        .borrow()
+                        .scope
+                        .borrow()
+                        .get_this(agent));
                 }
                 Op::Suspend => {
                     return Err(SuspendValue(std::mem::replace(
@@ -626,7 +644,7 @@ impl Interpreter {
                     match callee {
                         Value::Object(ref o) => match &o.kind {
                             ObjectKind::BytecodeFunction { kind, .. }
-                                if *kind != FunctionKind::Normal =>
+                                if *kind & FunctionKind::Normal != FunctionKind::Normal =>
                             {
                                 slow_call!();
                             }
@@ -637,11 +655,11 @@ impl Interpreter {
                                 position,
                                 parameters,
                                 scope,
+                                kind,
                                 ..
                             } => {
                                 let scope = Scope::new(Some(scope.clone()));
                                 let ctx = Context::new(scope.clone());
-
                                 for (i, param) in parameters.iter().enumerate() {
                                     scope.borrow_mut().create(param, false);
                                     let value = if i > argc {
@@ -651,7 +669,14 @@ impl Interpreter {
                                     };
                                     scope.borrow_mut().initialize(param, value);
                                 }
-
+                                if *kind & FunctionKind::Arrow == FunctionKind::Arrow {
+                                    // FIXME: doesn't have `this` vs inherited `this` needs to be clarified
+                                } else {
+                                    scope.borrow_mut().this = Some(std::mem::replace(
+                                        &mut self.registers[rid],
+                                        Value::Empty,
+                                    ));
+                                }
                                 if op == Op::TailCall {
                                     pop_context!();
                                 } else {
@@ -776,6 +801,22 @@ impl Interpreter {
                         None => None,
                     });
                     self.accumulator = Value::new_bytecode_function(agent, info, scope);
+                }
+                Op::FinishClass => {
+                    let cid = read_u32!() as usize;
+                    let eid = read_u32!() as usize;
+                    let nid = read_u32!() as usize;
+
+                    let name = agent.assembler.string_table[nid].to_string();
+                    handle!(self.registers[cid].set(
+                        agent,
+                        ObjectKey::from("name"),
+                        Value::String(name)
+                    ));
+                    if self.registers[eid] != Value::Empty {
+                        // FIXME
+                        // self.registers[cid].set_prototype(self.registers[eid]);
+                    }
                 }
                 Op::Add => {
                     let lhsid = read_u32!() as usize;

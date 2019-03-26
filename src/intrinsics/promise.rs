@@ -220,7 +220,7 @@ pub fn promise_resolve_i(agent: &Agent, c: Value, x: Value) -> Result<Value, Val
 }
 
 fn promise_resolve(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let c = ctx.get_this(agent)?;
+    let c = ctx.scope.borrow().get_this(agent)?;
     if c.type_of() != "object" && c.type_of() != "function" {
         return Err(Value::new_error(agent, "this must be an object"));
     }
@@ -230,7 +230,7 @@ fn promise_resolve(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Val
 
 fn promise_reject(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
     let x = args.get(0).unwrap_or(&Value::Null);
-    let c = ctx.get_this(agent)?;
+    let c = ctx.scope.borrow().get_this(agent)?;
     if c.type_of() != "object" && c.type_of() != "function" {
         return Err(Value::new_error(agent, "this must be an object"));
     }

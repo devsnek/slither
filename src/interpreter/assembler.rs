@@ -142,6 +142,12 @@ impl Assembler {
             Node::ArrowFunctionExpression(kind, args, body) => {
                 self.visit_arrow_function(*kind, args, body)
             }
+            Node::ClassExpression(name, extends, body) => {
+                self.visit_class_expression(name, extends, body)
+            }
+            Node::ClassDeclaration(name, extends, body) => {
+                self.visit_class_declaration(name, extends, body)
+            }
             Node::LexicalInitialization(var, expr) => self.visit_lexical_initialization(var, expr),
             Node::ReturnStatement(expr) => self.visit_return(expr),
             Node::ThrowStatement(expr) => self.visit_throw(expr),
@@ -410,13 +416,23 @@ impl Assembler {
         let rscope = RegisterScope::new(self);
 
         if op == Operator::Assign {
-            self.visit(rhs);
-            if let Node::Identifier(s) = lhs {
-                self.push_op(Op::AssignIdentifier);
-                let id = self.string_id(s);
-                self.push_u32(id);
-            } else {
-                unreachable!();
+            match lhs {
+                Node::Identifier(s) => {
+                    self.visit(rhs);
+                    self.push_op(Op::AssignIdentifier);
+                    let id = self.string_id(s);
+                    self.push_u32(id);
+                }
+                Node::MemberExpression(base, name) => {
+                    let obj = rscope.register();
+                    self.visit(base);
+                    self.store_accumulator_in_register(&obj);
+                    self.visit(rhs);
+                    self.store_named_property(&obj, name);
+                }
+                // Node::ComputedMemberExpression(base, key) => {
+                // }
+                _ => unreachable!(),
             }
             return;
         }
@@ -425,6 +441,7 @@ impl Assembler {
         self.visit(lhs);
         self.store_accumulator_in_register(&lhsr);
         self.visit(rhs);
+        // accumulator = lhs @ rhs
         match op {
             Operator::Add | Operator::AddAssign => self.push_op(Op::Add),
             Operator::Sub | Operator::SubAssign => self.push_op(Op::Sub),
@@ -447,6 +464,7 @@ impl Assembler {
         }
         self.push_u32(lhsr.id);
 
+        // lhs = accumulator
         match op {
             Operator::AddAssign
             | Operator::SubAssign
@@ -454,12 +472,24 @@ impl Assembler {
             | Operator::DivAssign
             | Operator::ModAssign
             | Operator::PowAssign => {
-                if let Node::Identifier(s) = lhs {
-                    self.push_op(Op::AssignIdentifier);
-                    let id = self.string_id(s);
-                    self.push_u32(id);
-                } else {
-                    unreachable!();
+                match lhs {
+                    Node::Identifier(s) => {
+                        self.push_op(Op::AssignIdentifier);
+                        let id = self.string_id(s);
+                        self.push_u32(id);
+                    }
+                    Node::MemberExpression(base, name) => {
+                        let value = rscope.register();
+                        let obj = rscope.register();
+                        self.store_accumulator_in_register(&value);
+                        self.visit(base);
+                        self.store_accumulator_in_register(&obj);
+                        self.load_accumulator_with_register(&value);
+                        self.store_named_property(&obj, name);
+                    }
+                    // Node::ComputedMemberExpression(base, key) => {
+                    // }
+                    _ => unreachable!(),
                 }
             }
             _ => {}
@@ -663,6 +693,84 @@ impl Assembler {
         self.mark(&mut end);
     }
 
+    fn visit_class_expression(&mut self, name: &str, extends: &Option<Box<Node>>, fields: &[Node]) {
+        self.build_class(name, extends, fields);
+    }
+
+    fn visit_class_declaration(
+        &mut self,
+        name: &str,
+        extends: &Option<Box<Node>>,
+        fields: &[Node],
+    ) {
+        self.build_class(name, extends, fields);
+        self.lexical_initialization(name);
+    }
+
+    fn build_class(&mut self, name: &str, extends_o: &Option<Box<Node>>, fields: &[Node]) {
+        let rscope = RegisterScope::new(self);
+        let extends = rscope.register();
+        let key = rscope.register();
+        let class = rscope.register();
+        let prototype = rscope.register();
+
+        match extends_o {
+            Some(extends) => {
+                self.visit(extends);
+            }
+            None => {
+                self.load_empty();
+            }
+        }
+        self.store_accumulator_in_register(&extends);
+
+        let constructor = fields.iter().find(|f| {
+            if let Node::Initializer(name, ..) = f {
+                **name == Node::StringLiteral("constructor".to_string())
+            } else {
+                unreachable!();
+            }
+        });
+
+        if let Some(constructor) = constructor {
+            if let Node::Initializer(_, value) = constructor {
+                self.visit(value);
+            } else {
+                unreachable!();
+            }
+        } else {
+            self.load_empty();
+        }
+        self.store_accumulator_in_register(&class);
+
+        self.push_op(Op::CreateEmptyObject);
+        self.store_accumulator_in_register(&prototype);
+        self.store_named_property(&class, "prototype");
+
+        for field in fields {
+            if let Node::Initializer(name, value) = field {
+                if **name != Node::StringLiteral("constructor".to_string()) {
+                    self.visit(name);
+                    self.store_accumulator_in_register(&key);
+                    self.visit(value);
+                    self.push_op(Op::StoreInObjectLiteral);
+                    self.push_u32(prototype.id);
+                    self.push_u32(key.id);
+                }
+            } else {
+                unreachable!();
+            }
+        }
+
+        self.push_op(Op::FinishClass);
+        self.push_u32(class.id);
+        self.push_u32(extends.id);
+        let id = self.string_id(name);
+        self.push_u32(id);
+
+        self.load_accumulator_with_register(&class);
+    }
+
     fn visit_lexical_initialization(&mut self, name: &str, init: &Node) {
         self.visit(init);
         self.lexical_initialization(name);
@@ -832,6 +940,10 @@ impl Assembler {
         self.push_u32(r.id);
     }
 
+    fn load_empty(&mut self) {
+        self.push_op(Op::LoadEmpty);
+    }
+
     fn load_null(&mut self) {
         self.push_op(Op::LoadNull);
     }
@@ -864,6 +976,13 @@ impl Assembler {
     fn load_named_property(&mut self, s: &str) {
         self.push_op(Op::LoadNamedProperty);
         let id = self.string_id(s);
+        self.push_u32(id);
+    }
+
+    fn store_named_property(&mut self, obj: &Register, name: &str) {
+        self.push_op(Op::StoreNamedProperty);
+        self.push_u32(obj.id);
+        let id = self.string_id(name);
         self.push_u32(id);
     }
 

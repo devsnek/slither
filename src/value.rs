@@ -560,14 +560,18 @@ impl Value {
                     ..
                 } => {
                     let ctx = Context::new(Scope::new(Some(scope.clone())));
-                    ctx.borrow_mut().this = Some(this);
+                    if *kind & FunctionKind::Arrow == FunctionKind::Arrow {
+                        // FIXME: doesn't have `this` vs inherited `this` needs to be clarified
+                    } else {
+                        ctx.borrow().scope.borrow_mut().this = Some(this);
+                    }
                     ctx.borrow_mut().function = Some(self.clone());
                     evaluate_body(agent, ctx, *position, *kind, args, parameters)
                 }
                 ObjectKind::BuiltinFunction(f, ..) => {
                     let c = Context::new(Scope::new(None));
                     let mut b = c.borrow_mut();
-                    b.this = Some(this);
+                    b.scope.borrow_mut().this = Some(this);
                     b.function = Some(self.clone());
                     f(agent, args, &b)
                 }
@@ -592,7 +596,9 @@ impl Value {
                     parameters,
                     ..
                 } => {
-                    if *kind != FunctionKind::Normal {
+                    if *kind != FunctionKind::Normal
+                        || (*kind & FunctionKind::Arrow == FunctionKind::Arrow)
+                    {
                         Err(Value::new_error(agent, "value is not a constructor"))
                     } else {
                         let mut prototype = new_target.get(agent, ObjectKey::from("prototype"))?;
@@ -601,9 +607,14 @@ impl Value {
                         }
                         let this = Value::new_object(prototype);
                         let ctx = Context::new(Scope::new(Some(scope.clone())));
-                        ctx.borrow_mut().this = Some(this);
+                        ctx.borrow().scope.borrow_mut().this = Some(this.clone());
                         ctx.borrow_mut().function = Some(self.clone());
-                        evaluate_body(agent, ctx, *position, *kind, args, parameters)
+                        let r = evaluate_body(agent, ctx, *position, *kind, args, parameters)?;
+                        if r.type_of() == "object" {
+                            Ok(r)
+                        } else {
+                            Ok(this)
+                        }
                     }
                 }
                 ObjectKind::BuiltinFunction(f, ..) => {
@@ -613,10 +624,15 @@ impl Value {
                     }
                     let this = Value::new_object(prototype);
                     let c = Context::new(Scope::new(None));
-                    let mut b = c.borrow_mut();
-                    b.this = Some(this);
-                    b.function = Some(self.clone());
-                    f(agent, args, &b)
+                    let mut cb = c.borrow_mut();
+                    cb.scope.borrow_mut().this = Some(this.clone());
+                    cb.function = Some(self.clone());
+                    let r = f(agent, args, &cb)?;
+                    if r.type_of() == "object" {
+                        Ok(r)
+                    } else {
+                        Ok(this)
+                    }
                 }
                 _ => Err(Value::new_error(agent, "value is not a function")),
             },
@@ -648,41 +664,41 @@ fn evaluate_body(
 
     let mut interpreter = Interpreter::new(position, ctx.clone());
 
-    match kind {
-        FunctionKind::Normal => interpreter.run(agent).unwrap(),
-        FunctionKind::Generator => {
-            ctx.borrow_mut().interpreter = Some(interpreter);
-            let o = Value::new_custom_object(agent.intrinsics.generator_prototype.clone());
-            o.set_slot("generator context", Value::WrappedContext(ctx, None));
-            Ok(o)
-        }
-        FunctionKind::Async => {
-            let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
-            match interpreter.run(agent) {
-                Ok(r) => match r {
-                    Ok(v) => {
-                        promise
-                            .get_slot("resolve")
-                            .call(agent, Value::Null, vec![v])?;
-                    }
-                    Err(e) => {
-                        promise
-                            .get_slot("reject")
-                            .call(agent, Value::Null, vec![e])?;
-                    }
-                },
-                Err(mut c) => {
-                    ctx.borrow_mut().interpreter = Some(interpreter);
-                    let value = std::mem::replace(&mut c.0, Value::Null);
-                    perform_await(
-                        agent,
-                        Value::WrappedContext(ctx, Some(Box::new(promise.clone()))),
-                        value,
-                    )?;
+    if kind & FunctionKind::Normal == FunctionKind::Normal {
+        interpreter.run(agent).unwrap()
+    } else if kind & FunctionKind::Generator == FunctionKind::Generator {
+        ctx.borrow_mut().interpreter = Some(interpreter);
+        let o = Value::new_custom_object(agent.intrinsics.generator_prototype.clone());
+        o.set_slot("generator context", Value::WrappedContext(ctx, None));
+        Ok(o)
+    } else if kind & FunctionKind::Async == FunctionKind::Async {
+        let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
+        match interpreter.run(agent) {
+            Ok(r) => match r {
+                Ok(v) => {
+                    promise
+                        .get_slot("resolve")
+                        .call(agent, Value::Null, vec![v])?;
                 }
+                Err(e) => {
+                    promise
+                        .get_slot("reject")
+                        .call(agent, Value::Null, vec![e])?;
+                }
+            },
+            Err(mut c) => {
+                ctx.borrow_mut().interpreter = Some(interpreter);
+                let value = std::mem::replace(&mut c.0, Value::Null);
+                perform_await(
+                    agent,
+                    Value::WrappedContext(ctx, Some(Box::new(promise.clone()))),
+                    value,
+                )?;
             }
-            Ok(promise)
         }
+        Ok(promise)
+    } else {
+        unreachable!();
     }
 }
 
@@ -882,6 +898,6 @@ fn inspect(
                 out
             }
         }
-        _ => unreachable!(),
+        v => unreachable!("{:?}", v),
     }
 }
