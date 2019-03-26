@@ -488,3 +488,14 @@ test!(
     "#,
     Ok(Value::True)
 );
+
+test!(
+    test_default_args,
+    r#"
+    function add(a, b = 1) {
+      return a + b;
+    }
+    add(2);
+    "#,
+    Ok(Value::Number(3.into()))
+);

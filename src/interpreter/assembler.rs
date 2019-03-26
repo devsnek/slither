@@ -672,6 +672,20 @@ impl Assembler {
         self.jump(&mut end); // 5
 
         if let Node::Block(scope, stmts) = body {
+            for param in params {
+                if let Node::Initializer(name, init) = param {
+                    if let Node::Identifier(name) = &**name {
+                        let mut label = self.label();
+                        self.visit_identifier(name);
+                        self.jump_if_not_empty(&mut label);
+                        self.visit(init);
+                        self.overwrite_binding(name);
+                        self.mark(&mut label);
+                    } else {
+                        unreachable!();
+                    }
+                }
+            }
             for (name, mutable) in &scope.bindings {
                 self.lexical_declaration(name, *mutable);
             }
@@ -918,6 +932,11 @@ impl Assembler {
         self.jmp(label);
     }
 
+    fn jump_if_not_empty(&mut self, label: &mut Label) {
+        self.push_op(Op::JumpIfNotEmpty);
+        self.jmp(label);
+    }
+
     fn push_op(&mut self, op: Op) {
         self.push_u8(op as u8);
     }
@@ -995,6 +1014,12 @@ impl Assembler {
 
     fn lexical_initialization(&mut self, name: &str) {
         self.push_op(Op::LexicalInitialization);
+        let id = self.string_id(name);
+        self.push_u32(id);
+    }
+
+    fn overwrite_binding(&mut self, name: &str) {
+        self.push_op(Op::OverwriteBinding);
         let id = self.string_id(name);
         self.push_u32(id);
     }

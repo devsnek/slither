@@ -55,6 +55,7 @@ macro_rules! OPS {
 
             (LexicalDeclaration, AccumulatorUse::None, OpArg::String, OpArg::Boolean),
             (LexicalInitialization, AccumulatorUse::ReadWrite, OpArg::String),
+            (OverwriteBinding, AccumulatorUse::Read, OpArg::String),
             (ResolveIdentifier, AccumulatorUse::Write, OpArg::String),
             (AssignIdentifier, AccumulatorUse::Read, OpArg::String),
 
@@ -69,9 +70,10 @@ macro_rules! OPS {
             (EnterScope, AccumulatorUse::None),
             (ExitScope, AccumulatorUse::None),
 
-            (Jump, AccumulatorUse::None,OpArg::Position),
-            (JumpIfTrue, AccumulatorUse::Read,OpArg::Position),
-            (JumpIfFalse, AccumulatorUse::Read,OpArg::Position),
+            (Jump, AccumulatorUse::None, OpArg::Position),
+            (JumpIfTrue, AccumulatorUse::Read, OpArg::Position),
+            (JumpIfFalse, AccumulatorUse::Read, OpArg::Position),
+            (JumpIfNotEmpty, AccumulatorUse::Read, OpArg::Position),
 
             (PushTry, AccumulatorUse::None,OpArg::Position),
             (PopTry, AccumulatorUse::None),
@@ -181,6 +183,7 @@ impl Scope {
     }
 
     pub fn create_import(&mut self, name: &str, module: Gc<GcCell<Module>>) {
+        debug_assert!(!self.bindings.contains_key(name));
         self.bindings.insert(
             name.to_string(),
             Binding {
@@ -202,6 +205,10 @@ impl Scope {
                 name
             )),
         }
+    }
+
+    pub fn overwrite(&mut self, name: &str, value: Value) {
+        self.bindings.get_mut(name).unwrap().value = Some(value);
     }
 
     fn get(&self, agent: &Agent, name: &str) -> Result<Value, Value> {
@@ -562,6 +569,18 @@ impl Interpreter {
                         .borrow_mut()
                         .initialize(name, value);
                 }
+                Op::OverwriteBinding => {
+                    let sid = read_u32!() as usize;
+                    let name = &agent.assembler.string_table[sid];
+                    let value = std::mem::replace(&mut self.accumulator, Value::Null);
+                    self.context
+                        .last()
+                        .unwrap()
+                        .borrow()
+                        .scope
+                        .borrow_mut()
+                        .overwrite(name, value);
+                }
                 Op::ResolveIdentifier => {
                     let sid = read_u32!() as usize;
                     let name = &agent.assembler.string_table[sid];
@@ -742,6 +761,12 @@ impl Interpreter {
                 Op::JumpIfFalse => {
                     let position = read_u32!() as usize;
                     if !self.accumulator.to_bool() {
+                        self.pc = position;
+                    }
+                }
+                Op::JumpIfNotEmpty => {
+                    let position = read_u32!() as usize;
+                    if self.accumulator != Value::Empty {
                         self.pc = position;
                     }
                 }
