@@ -52,6 +52,7 @@ macro_rules! OPS {
             (LoadNamedProperty, AccumulatorUse::ReadWrite, OpArg::String),
             (LoadComputedProperty, AccumulatorUse::ReadWrite, OpArg::Register),
             (StoreNamedProperty, AccumulatorUse::ReadWrite, OpArg::Register, OpArg::String),
+            (StoreComputedProperty, AccumulatorUse::ReadWrite, OpArg::Register, OpArg::Register),
 
             (LexicalDeclaration, AccumulatorUse::None, OpArg::String, OpArg::Boolean),
             (LexicalInitialization, AccumulatorUse::ReadWrite, OpArg::String),
@@ -518,6 +519,12 @@ impl Interpreter {
                     let key = ObjectKey::from(agent.assembler.string_table[sid].as_str());
                     handle!(self.registers[oid].set(agent, key, self.accumulator.clone()));
                 }
+                Op::StoreComputedProperty => {
+                    let oid = read_u32!() as usize;
+                    let kid = read_u32!() as usize;
+                    let key = handle!(self.registers[kid].to_object_key(agent));
+                    handle!(self.registers[oid].set(agent, key, self.accumulator.clone()));
+                }
                 Op::LoadAccumulatorFromRegister => {
                     let rid = read_u32!() as usize;
                     self.accumulator = self.registers[rid].clone();
@@ -839,8 +846,7 @@ impl Interpreter {
                         Value::String(name)
                     ));
                     if self.registers[eid] != Value::Empty {
-                        // FIXME
-                        // self.registers[cid].set_prototype(self.registers[eid]);
+                        // FIXME: self.registers[cid].set_prototype(self.registers[eid]);
                     }
                 }
                 Op::Add => {

@@ -273,7 +273,11 @@ impl ObjectInfo {
         let mut keys = Vec::new();
         let entries = self.properties.borrow();
         for key in entries.keys() {
-            keys.push(key.clone());
+            if let ObjectKey::Symbol(Symbol(_, true, ..)) = key {
+                // private keys are unenumerable
+            } else {
+                keys.push(key.clone());
+            }
         }
         keys.sort();
         keys
@@ -328,6 +332,10 @@ unsafe impl gc::Trace for Value {
 impl Value {
     pub fn new_symbol(desc: Option<String>) -> Value {
         Value::Symbol(Symbol::new(false, desc))
+    }
+
+    pub fn new_private_symbol(desc: Option<String>) -> Value {
+        Value::Symbol(Symbol::new(true, desc))
     }
 
     pub fn new_object(prototype: Value) -> Value {

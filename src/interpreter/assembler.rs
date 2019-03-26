@@ -430,8 +430,16 @@ impl Assembler {
                     self.visit(rhs);
                     self.store_named_property(&obj, name);
                 }
-                // Node::ComputedMemberExpression(base, key) => {
-                // }
+                Node::ComputedMemberExpression(base, key) => {
+                    let obj = rscope.register();
+                    let keyr = rscope.register();
+                    self.visit(base);
+                    self.store_accumulator_in_register(&obj);
+                    self.visit(key);
+                    self.store_accumulator_in_register(&keyr);
+                    self.visit(rhs);
+                    self.store_computed_property(&obj, &keyr);
+                }
                 _ => unreachable!(),
             }
             return;
@@ -471,27 +479,35 @@ impl Assembler {
             | Operator::MulAssign
             | Operator::DivAssign
             | Operator::ModAssign
-            | Operator::PowAssign => {
-                match lhs {
-                    Node::Identifier(s) => {
-                        self.push_op(Op::AssignIdentifier);
-                        let id = self.string_id(s);
-                        self.push_u32(id);
-                    }
-                    Node::MemberExpression(base, name) => {
-                        let value = rscope.register();
-                        let obj = rscope.register();
-                        self.store_accumulator_in_register(&value);
-                        self.visit(base);
-                        self.store_accumulator_in_register(&obj);
-                        self.load_accumulator_with_register(&value);
-                        self.store_named_property(&obj, name);
-                    }
-                    // Node::ComputedMemberExpression(base, key) => {
-                    // }
-                    _ => unreachable!(),
+            | Operator::PowAssign => match lhs {
+                Node::Identifier(s) => {
+                    self.push_op(Op::AssignIdentifier);
+                    let id = self.string_id(s);
+                    self.push_u32(id);
                 }
-            }
+                Node::MemberExpression(base, name) => {
+                    let value = rscope.register();
+                    let obj = rscope.register();
+                    self.store_accumulator_in_register(&value);
+                    self.visit(base);
+                    self.store_accumulator_in_register(&obj);
+                    self.load_accumulator_with_register(&value);
+                    self.store_named_property(&obj, name);
+                }
+                Node::ComputedMemberExpression(base, key) => {
+                    let value = rscope.register();
+                    let obj = rscope.register();
+                    let keyr = rscope.register();
+                    self.store_accumulator_in_register(&value);
+                    self.visit(base);
+                    self.store_accumulator_in_register(&obj);
+                    self.visit(key);
+                    self.store_accumulator_in_register(&keyr);
+                    self.load_accumulator_with_register(&value);
+                    self.store_computed_property(&obj, &keyr);
+                }
+                _ => unreachable!(),
+            },
             _ => {}
         }
     }
@@ -523,14 +539,13 @@ impl Assembler {
         self.load_named_property(key);
     }
 
-    fn visit_computed_member_expression(&mut self, target: &Node, expr: &Node) {
+    fn visit_computed_member_expression(&mut self, base: &Node, key: &Node) {
         let rscope = RegisterScope::new(self);
         let obj = rscope.register();
-        self.visit(target);
+        self.visit(base);
         self.store_accumulator_in_register(&obj);
-        self.visit(expr);
-        self.push_op(Op::LoadComputedProperty);
-        self.push_u32(obj.id);
+        self.visit(key);
+        self.load_computed_property(&obj);
     }
 
     fn visit_call(&mut self, callee_node: &Node, args: &[Node], tail: bool) {
@@ -546,12 +561,11 @@ impl Assembler {
                 self.load_named_property(prop);
                 self.store_accumulator_in_register(&callee);
             }
-            Node::ComputedMemberExpression(base, expr) => {
+            Node::ComputedMemberExpression(base, key) => {
                 self.visit(base);
                 self.store_accumulator_in_register(&receiver);
-                self.visit(expr);
-                self.push_op(Op::LoadComputedProperty);
-                self.push_u32(receiver.id);
+                self.visit(key);
+                self.load_computed_property(&receiver);
                 self.store_accumulator_in_register(&callee);
             }
             _ => {
@@ -1003,6 +1017,17 @@ impl Assembler {
         self.push_u32(obj.id);
         let id = self.string_id(name);
         self.push_u32(id);
+    }
+
+    fn load_computed_property(&mut self, obj: &Register) {
+        self.push_op(Op::LoadComputedProperty);
+        self.push_u32(obj.id);
+    }
+
+    fn store_computed_property(&mut self, obj: &Register, key: &Register) {
+        self.push_op(Op::StoreComputedProperty);
+        self.push_u32(obj.id);
+        self.push_u32(key.id);
     }
 
     fn lexical_declaration(&mut self, name: &str, mutable: bool) {
