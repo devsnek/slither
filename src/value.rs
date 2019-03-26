@@ -696,7 +696,7 @@ fn evaluate_body(
         ctx.borrow()
             .scope
             .borrow_mut()
-            .initialize(param, args.get(i).unwrap_or(&Value::Null).clone());
+            .initialize(param, args.get(i).unwrap_or(&Value::Empty).clone());
     }
 
     let mut interpreter = Interpreter::new(position, ctx.clone());

@@ -688,8 +688,8 @@ impl Interpreter {
                                 let ctx = Context::new(scope.clone());
                                 for (i, param) in parameters.iter().enumerate() {
                                     scope.borrow_mut().create(param, false);
-                                    let value = if i > argc {
-                                        Value::Null
+                                    let value = if i >= argc {
+                                        Value::Empty
                                     } else {
                                         self.registers[sargid + i].clone()
                                     };
