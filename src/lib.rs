@@ -72,7 +72,8 @@ pub trait IntoValue: Sized {
 }
 
 pub use agent::Agent;
-use parser::Parser;
+pub use interpreter::{Context, Interpreter, Scope};
+pub use parser::Parser;
 pub use value::Value;
 
 pub fn disassemble(code: &str) {
