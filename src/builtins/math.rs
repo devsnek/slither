@@ -1,0 +1,66 @@
+use crate::agent::Agent;
+use crate::interpreter::Context;
+use crate::value::Value;
+use std::collections::HashMap;
+
+fn min(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
+    if args.is_empty() {
+        return Err(Value::new_error(agent, "argument must be a number"));
+    }
+
+    let mut numbers = Vec::new();
+    for arg in args {
+        if let Value::Number(n) = arg {
+            numbers.push(n);
+        } else {
+            return Err(Value::new_error(agent, "argument must be a number"));
+        }
+    }
+
+    numbers.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+    Ok(Value::Number(numbers[0]))
+}
+
+fn max(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
+    if args.is_empty() {
+        return Err(Value::new_error(agent, "argument must be a number"));
+    }
+
+    let mut numbers = Vec::new();
+    for arg in args {
+        if let Value::Number(n) = arg {
+            numbers.push(n);
+        } else {
+            return Err(Value::new_error(agent, "argument must be a number"));
+        }
+    }
+
+    numbers.sort_by(|a, b| b.partial_cmp(a).unwrap());
+
+    Ok(Value::Number(numbers[0]))
+}
+
+pub fn create(agent: &Agent) -> HashMap<String, Value> {
+    let mut module = HashMap::new();
+
+    module.insert("min".to_string(), Value::new_builtin_function(agent, min));
+    module.insert("max".to_string(), Value::new_builtin_function(agent, max));
+
+    macro_rules! C {
+        ($n:ident) => {
+            module.insert(
+                stringify!($n).to_string(),
+                Value::Number(std::f64::consts::$n),
+            );
+        };
+    }
+
+    C!(E);
+    C!(LN_2);
+    C!(LN_10);
+    C!(PI);
+    C!(SQRT_2);
+
+    module
+}

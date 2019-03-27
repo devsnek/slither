@@ -1002,14 +1002,6 @@ impl<'a> Parser<'a> {
 
         self.lexer.peek();
         match self.lexer.peek_immutable() {
-            /*
-            Some(Token::Operator(Operator::Assign)) => {
-                self.lexer.next();
-                self.check_assignment_target(&lhs)?;
-                let rhs = self.parse_assignment_expression()?;
-                lhs = Node::BinaryExpression(Operator::Assign, Box::new(lhs), Box::new(rhs));
-            }
-            */
             Some(Token::Operator(Operator::Assign)) => op_assign!(Operator::Assign),
             Some(Token::Operator(Operator::AddAssign)) => op_assign!(Operator::AddAssign),
             Some(Token::Operator(Operator::SubAssign)) => op_assign!(Operator::SubAssign),
