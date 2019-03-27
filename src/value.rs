@@ -692,7 +692,10 @@ fn evaluate_body(
     params: &[String],
 ) -> Result<Value, Value> {
     for (i, param) in params.iter().enumerate() {
-        ctx.borrow().scope.borrow_mut().create(param, false);
+        ctx.borrow()
+            .scope
+            .borrow_mut()
+            .create(agent, param, false)?;
         ctx.borrow()
             .scope
             .borrow_mut()

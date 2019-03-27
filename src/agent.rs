@@ -136,10 +136,10 @@ impl Agent {
 
         {
             let mut scope = agent.root_scope.borrow_mut();
-            scope.create("Promise", true);
+            scope.create(&agent, "Promise", true).unwrap();
             scope.initialize("Promise", agent.intrinsics.promise.clone());
 
-            scope.create("Symbol", true);
+            scope.create(&agent, "Symbol", true).unwrap();
             scope.initialize("Symbol", agent.intrinsics.symbol.clone());
         }
 

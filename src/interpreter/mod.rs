@@ -171,16 +171,20 @@ impl Scope {
         }))
     }
 
-    pub fn create(&mut self, name: &str, mutable: bool) {
-        debug_assert!(!self.bindings.contains_key(name));
-        self.bindings.insert(
-            name.to_string(),
-            Binding {
-                mutable,
-                value: None,
-                module: None,
-            },
-        );
+    pub fn create(&mut self, agent: &Agent, name: &str, mutable: bool) -> Result<(), Value> {
+        if self.bindings.contains_key(name) {
+            Err(Value::new_error(agent, "Binding has already been declared"))
+        } else {
+            self.bindings.insert(
+                name.to_string(),
+                Binding {
+                    mutable,
+                    value: None,
+                    module: None,
+                },
+            );
+            Ok(())
+        }
     }
 
     pub fn create_import(&mut self, name: &str, module: Gc<GcCell<Module>>) {
@@ -556,13 +560,14 @@ impl Interpreter {
                     let sid = read_u32!() as usize;
                     let mutable = read_u8!() == 1;
                     let name = &agent.assembler.string_table[sid];
-                    self.context
+                    handle!(self
+                        .context
                         .last()
                         .unwrap()
                         .borrow()
                         .scope
                         .borrow_mut()
-                        .create(name, mutable);
+                        .create(agent, name, mutable));
                 }
                 Op::LexicalInitialization => {
                     let sid = read_u32!() as usize;
@@ -687,7 +692,7 @@ impl Interpreter {
                                 let scope = Scope::new(Some(scope.clone()));
                                 let ctx = Context::new(scope.clone());
                                 for (i, param) in parameters.iter().enumerate() {
-                                    scope.borrow_mut().create(param, false);
+                                    handle!(scope.borrow_mut().create(agent, param, false));
                                     let value = if i >= argc {
                                         Value::Empty
                                     } else {

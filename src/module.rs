@@ -80,7 +80,7 @@ impl Module {
                                         Some(v) => {
                                             let ctx = module.context.borrow();
                                             let mut scope = ctx.scope.borrow_mut();
-                                            scope.create(&name, false);
+                                            scope.create(agent, &name, false)?;
                                             scope.initialize(&name, v.clone());
                                         }
                                         None => {
