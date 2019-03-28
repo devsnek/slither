@@ -56,6 +56,9 @@ pub fn create(agent: &Agent) -> HashMap<String, Value> {
         };
     }
 
+    module.insert("NAN".to_string(), Value::Number(std::f64::NAN));
+    module.insert("INFINITY".to_string(), Value::Number(std::f64::INFINITY));
+
     C!(E);
     C!(LN_2);
     C!(LN_10);
