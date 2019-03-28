@@ -94,6 +94,8 @@ macro_rules! OPS {
             (LoadAccumulatorFromRegister, AccumulatorUse::Write, OpArg::Register),
             (StoreAccumulatorInRegister, AccumulatorUse::Read, OpArg::Register),
 
+            (ToString, AccumulatorUse::ReadWrite),
+
             (Add, AccumulatorUse::ReadWrite, OpArg::Register),
             (Sub, AccumulatorUse::ReadWrite, OpArg::Register),
             (Mul, AccumulatorUse::ReadWrite, OpArg::Register),
@@ -852,6 +854,19 @@ impl Interpreter {
                     ));
                     if self.registers[eid] != Value::Empty {
                         // FIXME: self.registers[cid].set_prototype(self.registers[eid]);
+                    }
+                }
+                Op::ToString => {
+                    if self.accumulator.type_of() != "string" {
+                        let ts = handle!(self.accumulator.get(agent, ObjectKey::from("toString")));
+                        if ts.type_of() != "function" {
+                            handle!(Err(Value::new_error(
+                                agent,
+                                "value does not provide a toString method"
+                            )));
+                        }
+                        self.accumulator =
+                            handle!(ts.call(agent, self.accumulator.clone(), vec![]));
                     }
                 }
                 Op::Add => {

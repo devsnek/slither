@@ -107,6 +107,7 @@ impl Assembler {
             Node::ObjectLiteral(inits) => self.visit_object(inits),
             Node::ArrayLiteral(exprs) => self.visit_array(exprs),
             Node::TupleLiteral(exprs) => self.visit_tuple(exprs),
+            Node::TemplateLiteral(quasis, exprs) => self.visit_template(quasis, exprs),
             Node::Identifier(var) => self.visit_identifier(var),
             Node::Block(scope, stmts) => self.visit_block(scope, stmts),
             Node::IfStatement(test, consequent, alternative) => {
@@ -241,6 +242,46 @@ impl Assembler {
             }
         }
         self.load_accumulator_with_register(&obj);
+    }
+
+    fn visit_template(&mut self, quasis: &[String], exprs: &[Node]) {
+        debug_assert_eq!(quasis.len(), exprs.len() + 1);
+
+        let rscope = RegisterScope::new(self);
+        let last = rscope.register();
+
+        self.load_string("");
+        self.store_accumulator_in_register(&last);
+
+        let mut last_valid = false;
+        for (i, expr) in exprs.iter().enumerate() {
+            if i != 0 {
+                self.store_accumulator_in_register(&last);
+                last_valid = true;
+            }
+            if let Some(quasi) = quasis.get(i) {
+                self.load_string(quasi);
+                if last_valid {
+                    self.push_op(Op::Add);
+                    self.push_u32(last.id);
+                }
+                self.store_accumulator_in_register(&last);
+                last_valid = true;
+            }
+            self.visit(expr);
+            self.push_op(Op::ToString);
+            if last_valid {
+                self.push_op(Op::Add);
+                self.push_u32(last.id);
+            }
+            last_valid = false;
+        }
+        if let Some(quasi) = quasis.last() {
+            self.store_accumulator_in_register(&last);
+            self.load_string(quasi);
+            self.push_op(Op::Add);
+            self.push_u32(last.id);
+        }
     }
 
     fn visit_identifier(&mut self, name: &str) {

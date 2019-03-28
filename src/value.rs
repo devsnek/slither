@@ -164,6 +164,7 @@ pub enum ObjectKind {
     Boolean(bool),
     String(String),
     Number(f64),
+    Symbol(Symbol),
     Regex(Regex),
     Buffer(GcCell<Vec<u8>>),
     BytecodeFunction {
@@ -199,6 +200,7 @@ impl std::fmt::Debug for ObjectKind {
             ObjectKind::String(s) => format!("String({})", s),
             ObjectKind::Number(i) => format!("Number({})", i),
             ObjectKind::Regex(r) => format!("Regex({})", r),
+            ObjectKind::Symbol(s) => format!("Symbol({:?})", s),
             ObjectKind::Buffer(b) => format!("Buffer({:?})", b),
             ObjectKind::Custom(..) => "Custom".to_string(),
             ObjectKind::BytecodeFunction { position, .. } => {
@@ -563,6 +565,11 @@ impl Value {
                 kind: ObjectKind::String(s.to_string()),
                 properties: GcCell::new(IndexMap::new()),
                 prototype: agent.intrinsics.string_prototype.clone(),
+            }))),
+            Value::Symbol(s) => Ok(Value::Object(Gc::new(ObjectInfo {
+                kind: ObjectKind::Symbol(s.clone()),
+                properties: GcCell::new(IndexMap::new()),
+                prototype: agent.intrinsics.symbol_prototype.clone(),
             }))),
             Value::Tuple(_) => Ok(self.clone()),
             _ => unreachable!(),

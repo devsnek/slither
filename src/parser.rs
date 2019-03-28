@@ -173,6 +173,7 @@ pub enum Node {
     ObjectLiteral(Vec<Node>),
     ArrayLiteral(Vec<Node>),
     TupleLiteral(Vec<Node>),
+    TemplateLiteral(Vec<String>, Vec<Node>),
 
     Identifier(String),
 
@@ -1303,6 +1304,34 @@ impl<'a> Parser<'a> {
                 self.parse_arrow_function(FunctionKind::Async, list)
             }
             Some(Token::Class) => self.parse_class(true),
+            Some(Token::BackQuote) => {
+                let mut quasis = Vec::new();
+                let mut expressions = Vec::new();
+                let mut current = String::new();
+                loop {
+                    match self.lexer.chars.next() {
+                        Some('$') => {
+                            if self.lexer.chars.peek() == Some(&'(') {
+                                quasis.push(current);
+                                current = String::new();
+                                self.lexer.chars.next();
+                                let expr = self.parse_expression()?;
+                                expressions.push(expr);
+                                self.expect(Token::RightParen)?;
+                            } else {
+                                current.push('$');
+                            }
+                        }
+                        Some('`') => break,
+                        Some(c) => {
+                            current.push(c);
+                        }
+                        None => return Err(Error::UnexpectedEOF),
+                    }
+                }
+                quasis.push(current);
+                Ok(Node::TemplateLiteral(quasis, expressions))
+            }
             _ => Err(Error::UnexpectedToken),
         }
     }
