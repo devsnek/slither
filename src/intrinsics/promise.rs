@@ -84,7 +84,7 @@ struct ResolvingFunctions {
 
 fn create_resolving_functions(agent: &Agent, promise: &Value) -> ResolvingFunctions {
     let already_resolved = Value::new_custom_object(Value::Null);
-    already_resolved.set_slot("resolved", Value::False);
+    already_resolved.set_slot("resolved", Value::from(false));
 
     let resolve = Value::new_builtin_function(agent, promise_resolve_function);
     resolve.set_slot("promise", promise.clone());
@@ -105,10 +105,10 @@ fn promise_resolve_function(
     let f = ctx.function.clone().unwrap();
 
     let already_resolved = f.get_slot("already resolved");
-    if already_resolved.get_slot("resolved") == Value::True {
+    if already_resolved.get_slot("resolved") == Value::from(true) {
         return Ok(Value::Null);
     } else {
-        already_resolved.set_slot("resolved", Value::True);
+        already_resolved.set_slot("resolved", Value::from(true));
     }
 
     let promise = f.get_slot("promise");
@@ -139,10 +139,10 @@ fn promise_reject_function(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Re
     let f = ctx.function.clone().unwrap();
 
     let already_resolved = f.get_slot("already resolved");
-    if already_resolved.get_slot("resolved") == Value::True {
+    if already_resolved.get_slot("resolved") == Value::from(true) {
         return Ok(Value::Null);
     } else {
-        already_resolved.set_slot("resolved", Value::True);
+        already_resolved.set_slot("resolved", Value::from(true));
     }
 
     let promise = f.get_slot("promise");

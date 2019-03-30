@@ -19,18 +19,14 @@ fn match_(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value
                                         o.set(
                                             agent,
                                             ObjectKey::from(s),
-                                            Value::String(
-                                                captures.name(s).unwrap().as_str().to_string(),
-                                            ),
+                                            Value::from(captures.name(s).unwrap().as_str()),
                                         )?;
                                     }
                                     None => {
                                         o.set(
                                             agent,
                                             ObjectKey::from(i),
-                                            Value::String(
-                                                captures.get(i).unwrap().as_str().to_string(),
-                                            ),
+                                            Value::from(captures.get(i).unwrap().as_str()),
                                         )?;
                                         i += 1;
                                     }
@@ -57,11 +53,7 @@ fn test(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> 
             if let ObjectKind::Regex(re) = &o.kind {
                 let mut args = args;
                 match args.pop().unwrap_or(Value::Null) {
-                    Value::String(s) => Ok(if re.is_match(s.as_str()) {
-                        Value::True
-                    } else {
-                        Value::False
-                    }),
+                    Value::String(s) => Ok(Value::from(re.is_match(s.as_str()))),
                     _ => Err(Value::new_error(agent, "input must be a string")),
                 }
             } else {

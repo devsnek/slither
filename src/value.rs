@@ -435,11 +435,7 @@ impl Value {
     pub fn new_iter_result(agent: &Agent, value: Value, done: bool) -> Result<Value, Value> {
         let o = Value::new_object(agent.intrinsics.object_prototype.clone());
         o.set(agent, ObjectKey::from("value"), value)?;
-        o.set(
-            agent,
-            ObjectKey::from("done"),
-            if done { Value::True } else { Value::False },
-        )?;
+        o.set(agent, ObjectKey::from("done"), Value::from(done))?;
         Ok(o)
     }
 }
@@ -840,6 +836,34 @@ impl Hash for Value {
 impl From<&str> for Value {
     fn from(s: &str) -> Self {
         Value::String(s.to_string())
+    }
+}
+
+impl From<String> for Value {
+    fn from(s: String) -> Self {
+        Value::String(s)
+    }
+}
+
+impl From<f64> for Value {
+    fn from(n: f64) -> Self {
+        Value::Number(n)
+    }
+}
+
+impl From<u32> for Value {
+    fn from(n: u32) -> Self {
+        Value::Number(f64::from(n))
+    }
+}
+
+impl From<bool> for Value {
+    fn from(b: bool) -> Self {
+        if b {
+            Value::True
+        } else {
+            Value::False
+        }
     }
 }
 

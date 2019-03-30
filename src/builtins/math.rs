@@ -19,7 +19,7 @@ fn min(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
 
     numbers.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
-    Ok(Value::Number(numbers[0]))
+    Ok(Value::from(numbers[0]))
 }
 
 fn max(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
@@ -38,7 +38,7 @@ fn max(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
 
     numbers.sort_by(|a, b| b.partial_cmp(a).unwrap());
 
-    Ok(Value::Number(numbers[0]))
+    Ok(Value::from(numbers[0]))
 }
 
 pub fn create(agent: &Agent) -> HashMap<String, Value> {
@@ -51,13 +51,13 @@ pub fn create(agent: &Agent) -> HashMap<String, Value> {
         ($n:ident) => {
             module.insert(
                 stringify!($n).to_string(),
-                Value::Number(std::f64::consts::$n),
+                Value::from(std::f64::consts::$n),
             );
         };
     }
 
-    module.insert("NAN".to_string(), Value::Number(std::f64::NAN));
-    module.insert("INFINITY".to_string(), Value::Number(std::f64::INFINITY));
+    module.insert("NAN".to_string(), Value::from(std::f64::NAN));
+    module.insert("INFINITY".to_string(), Value::from(std::f64::INFINITY));
 
     C!(E);
     C!(LN_2);

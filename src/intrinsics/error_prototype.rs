@@ -15,7 +15,7 @@ fn to_string(agent: &Agent, _: Vec<Value>, ctx: &Context) -> Result<Value, Value
         _ => return Err(Value::new_error(agent, "Invalid error object")),
     };
 
-    Ok(Value::String(format!("{}{}", name, message)))
+    Ok(Value::from(format!("{}{}", name, message)))
 }
 
 pub fn create_error_prototype(agent: &Agent) -> Value {
@@ -30,11 +30,7 @@ pub fn create_error_prototype(agent: &Agent) -> Value {
         .unwrap();
 
     proto
-        .set(
-            agent,
-            ObjectKey::from("name"),
-            Value::String("Error".to_string()),
-        )
+        .set(agent, ObjectKey::from("name"), Value::from("Error"))
         .unwrap();
 
     proto

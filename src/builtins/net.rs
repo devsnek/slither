@@ -78,7 +78,7 @@ fn connect(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value>
             let client = Value::new_custom_object(agent.intrinsics.net_client_prototype.clone());
             client.set_slot("net client buffer", Value::new_list());
             client.set_slot("net client queue", Value::new_list());
-            client.set_slot("net client token", Value::Number(token.0 as f64));
+            client.set_slot("net client token", Value::from(token.0 as f64));
             agent
                 .mio_map
                 .borrow_mut()

@@ -24,7 +24,7 @@ pub fn handle(agent: &Agent, token: Token, promise: Value) {
         FsResponse::Read(s) => {
             promise
                 .get_slot("resolve")
-                .call(agent, promise, vec![Value::String(s)])
+                .call(agent, promise, vec![Value::from(s)])
                 .unwrap();
         }
         FsResponse::Metadata(m) => {
@@ -36,15 +36,15 @@ pub fn handle(agent: &Agent, token: Token, promise: Value) {
             }
             let ft = m.file_type();
             if ft.is_file() {
-                p!(o, "type", Value::String("file".to_string()));
+                p!(o, "type", Value::from("file"));
             } else if ft.is_dir() {
-                p!(o, "type", Value::String("directory".to_string()));
+                p!(o, "type", Value::from("directory"));
             } else if ft.is_symlink() {
-                p!(o, "type", Value::String("symlink".to_string()));
+                p!(o, "type", Value::from("symlink"));
             } else {
                 unreachable!();
             }
-            p!(o, "size", Value::Number(m.len() as f64));
+            p!(o, "size", Value::from(m.len() as f64));
             macro_rules! t {
                 ($name:expr, $value:expr) => {
                     let d = $value
@@ -54,7 +54,7 @@ pub fn handle(agent: &Agent, token: Token, promise: Value) {
                     let seconds = d.as_secs();
                     let subsec_millis = u64::from(d.subsec_millis());
                     let ms = seconds * 1000 + subsec_millis;
-                    p!(o, $name, Value::Number(ms as f64));
+                    p!(o, $name, Value::from(ms as f64));
                 };
             }
             t!("modifiedAt", m.modified());
@@ -65,11 +65,7 @@ pub fn handle(agent: &Agent, token: Token, promise: Value) {
             p!(
                 permissions,
                 "read",
-                if m.permissions().readonly() {
-                    Value::False
-                } else {
-                    Value::True
-                }
+                Value::from(!m.permissions().readonly())
             );
             p!(o, "permissions", permissions);
 
@@ -81,11 +77,7 @@ pub fn handle(agent: &Agent, token: Token, promise: Value) {
         FsResponse::Exists(exists) => {
             promise
                 .get_slot("resolve")
-                .call(
-                    agent,
-                    promise,
-                    vec![if exists { Value::True } else { Value::False }],
-                )
+                .call(agent, promise, vec![Value::from(exists)])
                 .unwrap();
         }
         FsResponse::Success => {

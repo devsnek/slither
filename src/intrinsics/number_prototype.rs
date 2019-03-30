@@ -7,7 +7,7 @@ fn to_string(agent: &Agent, _: Vec<Value>, ctx: &Context) -> Result<Value, Value
 
     match this {
         Value::Object(o) => match o.kind {
-            ObjectKind::Number(d) => Ok(Value::String(d.to_string())),
+            ObjectKind::Number(d) => Ok(Value::from(d.to_string())),
             _ => Err(Value::new_error(agent, "invalid receiver")),
         },
         _ => Err(Value::new_error(agent, "invalid receiver")),
@@ -30,7 +30,7 @@ pub fn create_number_prototype(agent: &Agent) -> Value {
             fn $n(agent: &Agent, _: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
                 if let Value::Object(o) = ctx.scope.borrow().get_this(agent)? {
                     if let ObjectKind::Number(n) = o.kind {
-                        Ok(Value::Number(n.$n()))
+                        Ok(Value::from(n.$n()))
                     } else {
                         Err(Value::new_error(agent, "invalid receiver"))
                     }
@@ -69,7 +69,7 @@ pub fn create_number_prototype(agent: &Agent) -> Value {
             fn $n(agent: &Agent, _: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
                 if let Value::Object(o) = ctx.scope.borrow().get_this(agent)? {
                     if let ObjectKind::Number(n) = o.kind {
-                        Ok(if n.$n() { Value::True } else { Value::False })
+                        Ok(Value::from(n.$n()))
                     } else {
                         Err(Value::new_error(agent, "invalid receiver"))
                     }

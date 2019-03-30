@@ -5,7 +5,7 @@ use crate::value::{ObjectKey, ObjectKind, Value};
 fn to_string(agent: &Agent, _: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
     match ctx.scope.borrow().get_this(agent)? {
         Value::Object(o) => match o.kind {
-            ObjectKind::Boolean(b) => Ok(Value::String(b.to_string())),
+            ObjectKind::Boolean(b) => Ok(Value::from(b.to_string())),
             _ => Err(Value::new_error(agent, "invalid receiver")),
         },
         _ => Err(Value::new_error(agent, "invalid receiver")),

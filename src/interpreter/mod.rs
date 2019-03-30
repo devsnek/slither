@@ -408,7 +408,7 @@ impl Interpreter {
                 match self.registers[lhsid] {
                     Value::Number(ln) => match self.accumulator {
                         Value::Number(rn) => {
-                            self.accumulator = Value::Number($fn(ln, rn));
+                            self.accumulator = Value::from($fn(ln, rn));
                         }
                         _ => handle!(Err(Value::new_error(agent, "rhs must be a number"))),
                     },
@@ -423,11 +423,7 @@ impl Interpreter {
                 match self.registers[lhsid] {
                     Value::Number(ln) => match self.accumulator {
                         Value::Number(rn) => {
-                            self.accumulator = if $fn(&ln, &rn) {
-                                Value::True
-                            } else {
-                                Value::False
-                            };
+                            self.accumulator = Value::from($fn(&ln, &rn));
                         }
                         _ => handle!(Err(Value::new_error(agent, "rhs must be a number"))),
                     },
@@ -482,24 +478,24 @@ impl Interpreter {
                     self.accumulator = Value::Null;
                 }
                 Op::LoadTrue => {
-                    self.accumulator = Value::True;
+                    self.accumulator = Value::from(true);
                 }
                 Op::LoadFalse => {
-                    self.accumulator = Value::False;
+                    self.accumulator = Value::from(false);
                 }
                 Op::LoadF64 => {
                     let n = read_f64!();
-                    self.accumulator = Value::Number(n);
+                    self.accumulator = Value::from(n);
                 }
                 Op::LoadString => {
                     let sid = read_u32!() as usize;
-                    let s = &agent.assembler.string_table[sid];
-                    self.accumulator = Value::String(s.to_string());
+                    let s = agent.assembler.string_table[sid].as_str();
+                    self.accumulator = Value::from(s);
                 }
                 Op::LoadSymbol => {
                     let nid = read_u32!() as usize;
-                    let name = agent.assembler.string_table[nid].to_string();
-                    let sym = agent.well_known_symbol(name.as_str());
+                    let name = agent.assembler.string_table[nid].as_str();
+                    let sym = agent.well_known_symbol(name);
                     self.accumulator = sym;
                 }
                 Op::BuildRegex => {
@@ -510,8 +506,8 @@ impl Interpreter {
                 }
                 Op::LoadNamedProperty => {
                     let sid = read_u32!() as usize;
-                    let key = &agent.assembler.string_table[sid];
-                    let key = ObjectKey::from(key.to_string());
+                    let key = agent.assembler.string_table[sid].as_str();
+                    let key = ObjectKey::from(key);
                     self.accumulator = handle!(self.accumulator.get(agent, key));
                 }
                 Op::LoadComputedProperty => {
@@ -846,11 +842,11 @@ impl Interpreter {
                     let eid = read_u32!() as usize;
                     let nid = read_u32!() as usize;
 
-                    let name = agent.assembler.string_table[nid].to_string();
+                    let name = agent.assembler.string_table[nid].as_str();
                     handle!(self.registers[cid].set(
                         agent,
                         ObjectKey::from("name"),
-                        Value::String(name)
+                        Value::from(name)
                     ));
                     if self.registers[eid] != Value::Empty {
                         // FIXME: self.registers[cid].set_prototype(self.registers[eid]);
@@ -874,13 +870,13 @@ impl Interpreter {
                     match self.registers[lhsid] {
                         Value::Number(ln) => match self.accumulator {
                             Value::Number(rn) => {
-                                self.accumulator = Value::Number(ln + rn);
+                                self.accumulator = Value::from(ln + rn);
                             }
                             _ => handle!(Err(Value::new_error(agent, "rhs must be a number"))),
                         },
                         Value::String(ref ls) => match self.accumulator {
                             Value::String(ref rs) => {
-                                self.accumulator = Value::String(format!("{}{}", ls, rs));
+                                self.accumulator = Value::from(format!("{}{}", ls, rs));
                             }
                             _ => handle!(Err(Value::new_error(agent, "rhs must be a string"))),
                         },
@@ -906,42 +902,30 @@ impl Interpreter {
                 Op::LessThanOrEqual => num_binop_bool!(f64::le),
                 Op::Eq => {
                     let lhsid = read_u32!() as usize;
-                    self.accumulator = if self.registers[lhsid] == self.accumulator {
-                        Value::True
-                    } else {
-                        Value::False
-                    }
+                    self.accumulator = Value::from(self.registers[lhsid] == self.accumulator);
                 }
                 Op::Neq => {
                     let lhsid = read_u32!() as usize;
-                    self.accumulator = if self.registers[lhsid] != self.accumulator {
-                        Value::True
-                    } else {
-                        Value::False
-                    }
+                    self.accumulator = Value::from(self.registers[lhsid] != self.accumulator);
                 }
                 Op::LNOT => {
-                    self.accumulator = if self.accumulator.to_bool() {
-                        Value::False
-                    } else {
-                        Value::True
-                    }
+                    self.accumulator = Value::from(!self.accumulator.to_bool());
                 }
                 Op::BitNOT => match self.accumulator {
                     Value::Number(n) => {
-                        self.accumulator = Value::Number(f64_bnot(n));
+                        self.accumulator = Value::from(f64_bnot(n));
                     }
                     _ => handle!(Err(Value::new_error(agent, "operand must be a number"))),
                 },
                 Op::Typeof => {
-                    self.accumulator = Value::String(self.accumulator.type_of().to_string());
+                    self.accumulator = Value::from(self.accumulator.type_of());
                 }
                 Op::Void => {
                     self.accumulator = Value::Null;
                 }
                 Op::UnSub => match self.accumulator {
                     Value::Number(n) => {
-                        self.accumulator = Value::Number(-n);
+                        self.accumulator = Value::from(-n);
                     }
                     _ => handle!(Err(Value::new_error(agent, "operand must be a number"))),
                 },

@@ -309,7 +309,7 @@ macro_rules! test {
             if let Ok(value) = &result {
                 agent.run_jobs();
                 if value.has_slot("promise state") {
-                    if value.get_slot("promise state") == Value::String("fulfilled".to_string()) {
+                    if value.get_slot("promise state") == Value::from("fulfilled") {
                         result = Ok(value.get_slot("result"));
                     } else {
                         result = Err(value.get_slot("result"));
@@ -322,22 +322,20 @@ macro_rules! test {
 }
 
 test!(test_decl_return, "const a = 1;", Ok(Value::Null));
+
 test!(
     test_decl_assign,
     "let a = 1; a += 1; a;",
-    Ok(Value::Number(2.into()))
+    Ok(Value::from(2))
 );
-test!(test_throw, "throw 5.0;", Err(Value::Number(5.into())));
 
-test!(
-    test_paren_expr,
-    "const a = 1; (a);",
-    Ok(Value::Number(1.into()))
-);
+test!(test_throw, "throw 5.0;", Err(Value::from(5.0)));
+
+test!(test_paren_expr, "const a = 1; (a);", Ok(Value::from(1)));
 test!(
     test_arrow_expr,
     "const a = 1; ((a) => { return a; })(2);",
-    Ok(Value::Number(2.into()))
+    Ok(Value::from(2))
 );
 
 // TODO: figure out matching objects
@@ -356,7 +354,7 @@ test!(
     };
     f.a + f.b;
     "#,
-    Ok(Value::Number(3.into()))
+    Ok(Value::from(3))
 );
 
 test!(
@@ -371,7 +369,7 @@ test!(
     }
     i;
     "#,
-    Ok(Value::Number(6.into()))
+    Ok(Value::from(6))
 );
 
 test!(
@@ -381,7 +379,7 @@ test!(
     const y = { [x]: 5 };
     y[:wk];
     "#,
-    Ok(Value::Number(5.into()))
+    Ok(Value::from(5))
 );
 
 test!(
@@ -392,7 +390,7 @@ test!(
     const t2 = re.test('ba');
     t1 && !t2;
     "#,
-    Ok(Value::True)
+    Ok(Value::from(true))
 );
 
 test!(
@@ -407,7 +405,7 @@ test!(
     }
     b();
     "#,
-    Ok(Value::Number(10.into()))
+    Ok(Value::from(10))
 );
 
 test!(
@@ -426,7 +424,7 @@ test!(
     }
     i;
     "#,
-    Ok(Value::Number(45.into()))
+    Ok(Value::from(45))
 );
 
 test!(
@@ -436,7 +434,7 @@ test!(
     const b = (1, 2);
     a == a && a != b && a[0] == b[0];
     "#,
-    Ok(Value::True)
+    Ok(Value::from(true))
 );
 
 test!(
@@ -453,7 +451,7 @@ test!(
     }
     owo();
     "#,
-    Ok(Value::String("123".to_string()))
+    Ok(Value::from("123"))
 );
 
 /*
@@ -467,7 +465,7 @@ test!(
     const b = x('1');
     a == '123' && b == '189';
     "#,
-    Ok(Value::True)
+    Ok(Value::from(true))
 );
 */
 
@@ -486,7 +484,7 @@ test!(
     const x = new X(1, 2);
     x.z() == 3 && X.name == 'X';
     "#,
-    Ok(Value::True)
+    Ok(Value::from(true))
 );
 
 test!(
@@ -497,5 +495,5 @@ test!(
     }
     add(2);
     "#,
-    Ok(Value::Number(3.into()))
+    Ok(Value::from(3))
 );
