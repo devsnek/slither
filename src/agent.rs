@@ -84,7 +84,6 @@ impl Agent {
         let object_prototype = create_object_prototype();
         let array_prototype = create_array_prototype(object_prototype.clone());
         let function_prototype = create_function_prototype(object_prototype.clone());
-        let string_prototype = create_string_prototype(object_prototype.clone());
         let symbol_prototype = create_symbol_prototype(object_prototype.clone());
 
         let mut agent = Agent {
@@ -96,7 +95,7 @@ impl Agent {
                 function_prototype,
                 boolean_prototype: Value::Null,
                 number_prototype: Value::Null,
-                string_prototype,
+                string_prototype: Value::Null,
                 promise_prototype: Value::Null,
                 promise: Value::Null,
                 symbol_prototype,
@@ -120,6 +119,7 @@ impl Agent {
 
         agent.intrinsics.boolean_prototype = create_boolean_prototype(&agent);
         agent.intrinsics.number_prototype = create_number_prototype(&agent);
+        agent.intrinsics.string_prototype = create_string_prototype(&agent);
         agent.intrinsics.regex_prototype = create_regex_prototype(&agent);
         agent.intrinsics.symbol = create_symbol(&agent);
         agent.intrinsics.error_prototype = create_error_prototype(&agent);
