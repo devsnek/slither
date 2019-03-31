@@ -43,8 +43,9 @@ enum Token {
     Null,
     True,
     False,
-    NumberLiteral(f64),
-    StringLiteral(String),
+
+    NumberLiteralStart(char),
+    StringLiteralStart(char),
 
     Identifier(String),
 
@@ -275,55 +276,8 @@ impl<'a> Lexer<'a> {
             None => match self.chars.next() {
                 Some(char) => match char {
                     ' ' | '\t' | '\r' | '\n' => self.next(),
-                    '0'...'9' => {
-                        let mut str = char.to_string();
-                        let mut one_dot = false;
-                        while let Some(c) = self.chars.peek() {
-                            match c {
-                                '0'...'9' => {
-                                    str.push(self.chars.next().unwrap());
-                                }
-                                '.' => {
-                                    if !one_dot {
-                                        one_dot = true;
-                                        str.push(self.chars.next().unwrap());
-                                    } else {
-                                        break;
-                                    }
-                                }
-                                _ => break,
-                            }
-                        }
-                        let num = str
-                            .parse::<f64>()
-                            .unwrap_or_else(|_| panic!("Invalid number {}", str));
-                        Some(Token::NumberLiteral(num))
-                    }
-                    '"' | '\'' => {
-                        let mut str = String::new();
-                        while let Some(c) = self.chars.peek() {
-                            if c == &char {
-                                self.chars.next();
-                                break;
-                            }
-                            let c = self.chars.next().unwrap();
-                            match c {
-                                '\\' => match self.chars.next().unwrap() {
-                                    'n' => str.push('\n'),
-                                    't' => str.push('\t'),
-                                    '"' => str.push('"'),
-                                    '\'' => str.push('\''),
-                                    '\\' => str.push('\\'),
-                                    c => str.push(c),
-                                },
-                                '\r' | '\n' => {
-                                    panic!("unexpected end of string");
-                                }
-                                c => str.push(c),
-                            }
-                        }
-                        Some(Token::StringLiteral(str))
-                    }
+                    '0'...'9' => Some(Token::NumberLiteralStart(char)),
+                    '"' | '\'' => Some(Token::StringLiteralStart(char)),
                     'a'...'z' | 'A'...'Z' | '_' => {
                         let mut ident = char.to_string();
                         while let Some(c) = self.chars.peek() {
@@ -906,14 +860,11 @@ impl<'a> Parser<'a> {
 
     fn parse_import(&mut self) -> Result<Node, Error> {
         self.expect(Token::Import)?;
-        match self.lexer.peek() {
+        self.lexer.peek();
+        match self.lexer.peek_immutable() {
             // import "specifier";
-            Some(Token::StringLiteral(..)) => {
-                let specifier = match self.lexer.next() {
-                    Some(Token::StringLiteral(s)) => s,
-                    _ => unreachable!(),
-                };
-                self.lexer.next();
+            Some(Token::StringLiteralStart(c)) => {
+                let specifier = self.parse_string_literal(*c)?;
                 self.expect(Token::Semicolon)?;
                 Ok(Node::ImportDeclaration(specifier))
             }
@@ -925,9 +876,10 @@ impl<'a> Parser<'a> {
                 let bindings = self.parse_identifier_list(Token::RightBrace)?;
                 self.expect(Token::From)?;
                 match self.lexer.next() {
-                    Some(Token::StringLiteral(s)) => {
+                    Some(Token::StringLiteralStart(c)) => {
                         self.expect(Token::Semicolon)?;
-                        Ok(Node::ImportNamedDeclaration(s, bindings))
+                        let specifier = self.parse_string_literal(c)?;
+                        Ok(Node::ImportNamedDeclaration(specifier, bindings))
                     }
                     Some(Token::Identifier(ref s)) if s == "standard" => {
                         self.expect(Token::Colon)?;
@@ -940,12 +892,11 @@ impl<'a> Parser<'a> {
             }
 
             // import x from "specifier";
-            // import x from standard:xy;
             Some(Token::Identifier(..)) => {
                 let binding = self.parse_identifier(false)?;
                 self.expect(Token::From)?;
                 let specifier = match self.lexer.next() {
-                    Some(Token::StringLiteral(s)) => s,
+                    Some(Token::StringLiteralStart(c)) => self.parse_string_literal(c)?,
                     _ => unreachable!(),
                 };
                 self.expect(Token::Semicolon)?;
@@ -1219,8 +1170,34 @@ impl<'a> Parser<'a> {
             Some(Token::Null) => Ok(Node::NullLiteral),
             Some(Token::True) => Ok(Node::TrueLiteral),
             Some(Token::False) => Ok(Node::FalseLiteral),
-            Some(Token::StringLiteral(v)) => Ok(Node::StringLiteral(v)),
-            Some(Token::NumberLiteral(v)) => Ok(Node::NumberLiteral(v)),
+            Some(Token::StringLiteralStart(char)) => {
+                let str = self.parse_string_literal(char)?;
+                Ok(Node::StringLiteral(str))
+            }
+            Some(Token::NumberLiteralStart(c)) => {
+                let mut str = c.to_string();
+                let mut one_dot = false;
+                while let Some(c) = self.lexer.chars.peek() {
+                    match c {
+                        '0'...'9' => {
+                            str.push(self.lexer.chars.next().unwrap());
+                        }
+                        '.' => {
+                            if !one_dot {
+                                one_dot = true;
+                                str.push(self.lexer.chars.next().unwrap());
+                            } else {
+                                break;
+                            }
+                        }
+                        _ => break,
+                    }
+                }
+                match str.parse::<f64>() {
+                    Ok(n) => Ok(Node::NumberLiteral(n)),
+                    Err(_) => Err(Error::UnexpectedToken),
+                }
+            }
             Some(Token::Colon) => {
                 let name = self.parse_identifier(false)?;
                 Ok(Node::SymbolLiteral(name))
@@ -1334,6 +1311,63 @@ impl<'a> Parser<'a> {
             }
             _ => Err(Error::UnexpectedToken),
         }
+    }
+
+    fn parse_string_literal(&mut self, char: char) -> Result<String, Error> {
+        let mut str = String::new();
+        while let Some(c) = self.lexer.chars.peek() {
+            if c == &char {
+                self.lexer.chars.next();
+                break;
+            }
+            let c = self.lexer.chars.next().unwrap();
+            match c {
+                '\\' => match self.lexer.chars.next().unwrap() {
+                    'n' => str.push('\n'),
+                    't' => str.push('\t'),
+                    '"' => str.push('"'),
+                    '\'' => str.push('\''),
+                    '\\' => str.push('\\'),
+                    'u' => {
+                        if Some('{') != self.lexer.chars.next() {
+                            return Err(Error::UnexpectedToken);
+                        }
+                        let mut n = String::new();
+                        macro_rules! digit {
+                            () => {
+                                let next = self.lexer.chars.next();
+                                match next {
+                                    Some('0'...'9') | Some('a'...'f') | Some('A'...'F') => {
+                                        n.push(next.unwrap());
+                                    }
+                                    _ => return Err(Error::UnexpectedToken),
+                                }
+                            };
+                        }
+                        digit!();
+                        digit!();
+                        digit!();
+                        digit!();
+                        match u32::from_str_radix(n.as_str(), 16) {
+                            Ok(n) => match std::char::from_u32(n) {
+                                Some(c) => str.push(c),
+                                None => return Err(Error::UnexpectedToken),
+                            },
+                            Err(_) => return Err(Error::UnexpectedToken),
+                        }
+                        if Some('}') != self.lexer.chars.next() {
+                            return Err(Error::UnexpectedToken);
+                        }
+                    }
+                    _ => return Err(Error::UnexpectedToken),
+                },
+                '\r' | '\n' => {
+                    panic!("unexpected end of string");
+                }
+                c => str.push(c),
+            }
+        }
+        Ok(str)
     }
 
     fn parse_class(&mut self, expression: bool) -> Result<Node, Error> {

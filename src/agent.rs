@@ -497,3 +497,13 @@ test!(
     "#,
     Ok(Value::from(3))
 );
+
+test!(
+    test_string_unicode,
+    r#"
+    const a = 'hi \u{2764}';
+    const b = '\u{276F}';
+    b + a;
+    "#,
+    Ok(Value::from("\u{276F}hi \u{2764}"))
+);
