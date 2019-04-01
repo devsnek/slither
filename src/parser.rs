@@ -1290,20 +1290,78 @@ impl<'a> Parser<'a> {
                 loop {
                     match self.lexer.chars.next() {
                         Some('$') => {
-                            if self.lexer.chars.peek() == Some(&'(') {
+                            if self.lexer.chars.peek() == Some(&'{') {
                                 quasis.push(current);
                                 current = String::new();
                                 self.lexer.chars.next();
                                 let expr = self.parse_expression()?;
                                 expressions.push(expr);
-                                self.expect(Token::RightParen)?;
+                                self.expect(Token::RightBrace)?;
                             } else {
                                 current.push('$');
                             }
                         }
                         Some('`') => break,
                         Some(c) => {
-                            current.push(c);
+                            if c == '\\' {
+                                match self.lexer.chars.next() {
+                                    Some('n') => current.push('\n'),
+                                    Some('t') => current.push('\t'),
+                                    Some('\\') => current.push('\\'),
+                                    Some('u') => {
+                                        if Some('{') != self.lexer.chars.next() {
+                                            return Err(Error::UnexpectedToken);
+                                        }
+                                        let mut n = String::new();
+                                        macro_rules! digit {
+                                            () => {
+                                                let next = self.lexer.chars.next();
+                                                match next {
+                                                    Some('0'...'9') | Some('a'...'f')
+                                                    | Some('A'...'F') => {
+                                                        n.push(next.unwrap());
+                                                    }
+                                                    _ => return Err(Error::UnexpectedToken),
+                                                }
+                                            };
+                                        }
+                                        digit!();
+                                        digit!();
+                                        digit!();
+                                        digit!();
+                                        match u32::from_str_radix(n.as_str(), 16) {
+                                            Ok(n) => match std::char::from_u32(n) {
+                                                Some(c) => current.push(c),
+                                                None => return Err(Error::UnexpectedToken),
+                                            },
+                                            Err(_) => return Err(Error::UnexpectedToken),
+                                        }
+                                        if Some('}') != self.lexer.chars.next() {
+                                            return Err(Error::UnexpectedToken);
+                                        }
+                                    }
+                                    Some('U') => {
+                                        if Some('{') != self.lexer.chars.next() {
+                                            return Err(Error::UnexpectedToken);
+                                        }
+                                        let mut name = String::new();
+                                        loop {
+                                            match self.lexer.chars.next() {
+                                                Some('}') => break,
+                                                None => return Err(Error::UnexpectedEOF),
+                                                Some(c) => name.push(c),
+                                            }
+                                        }
+                                        match UNICODE_NAME_MAP.get(name.as_str()) {
+                                            Some(c) => current.push(*c),
+                                            None => return Err(Error::UnexpectedToken),
+                                        };
+                                    }
+                                    None | _ => return Err(Error::UnexpectedEOF),
+                                }
+                            } else {
+                                current.push(c);
+                            }
                         }
                         None => return Err(Error::UnexpectedEOF),
                     }
