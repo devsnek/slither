@@ -30,5 +30,10 @@ pub fn to_string(n: f64) -> String {
         return if n > 0f64 { "INFINITY" } else { "-INFINITY" }.to_string();
     }
     let mut buffer = ryu::Buffer::new();
-    buffer.format(n).to_string()
+    let s = buffer.format(n);
+    if s.ends_with(".0") {
+        s[0..(s.len() - 2)].to_string()
+    } else {
+        s.to_string()
+    }
 }

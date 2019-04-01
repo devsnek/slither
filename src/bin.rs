@@ -62,10 +62,13 @@ fn start_repl() {
                 rl.add_history_entry(line.as_ref());
                 let ast = match Parser::parse(&line) {
                     Ok(a) => a,
-                    Err(e) => {
-                        println!("Uncaught Exception: {:?}", e);
-                        continue;
-                    }
+                    Err(e) => match Parser::parse((line + ";").as_str()) {
+                        Ok(a) => a,
+                        Err(_) => {
+                            println!("Uncaught Exception: {:?}", e);
+                            continue;
+                        }
+                    },
                 };
                 let index = agent.assembler.assemble(&ast);
                 let mut interpreter = Interpreter::new(index, context.clone());
