@@ -1,13 +1,43 @@
-extern crate rustyline;
-
 use clap::App;
-use rustyline::error::ReadlineError;
-use rustyline::Editor;
-use slither::{Agent, Context, Interpreter, Parser, Scope, Value};
+use rustyline::{error::ReadlineError, Editor};
+use slither::{disassemble, Agent, Context, Interpreter, Parser, Scope, Value};
 
 fn main() {
-    let _matches = App::new("slither repl").version("0.1").get_matches();
+    let matches = App::new("slither")
+        .version("0.1")
+        .args_from_usage(
+            r#"
+        [FILENAME]           'File to run'
+        -d, --disassemble    'Print disassembly instead of running'
+        -e, --eval=[code]    'Code to eval inline'
+        "#,
+        )
+        .get_matches();
 
+    let source = if matches.is_present("FILENAME") {
+        let filename = matches.value_of("FILENAME").unwrap();
+        std::fs::read_to_string(filename).unwrap()
+    } else if matches.is_present("eval") {
+        matches.value_of("eval").unwrap().to_string()
+    } else {
+        start_repl();
+        return;
+    };
+
+    if matches.is_present("disassemble") {
+        disassemble(source.as_str());
+    } else {
+        let filename = matches.value_of("FILENAME").unwrap();
+        let referrer = std::env::current_dir().unwrap().join("slither");
+        let referrer = referrer.to_str().unwrap();
+
+        let mut agent = Agent::new();
+        agent.import(filename, referrer).unwrap();
+        agent.run_jobs();
+    }
+}
+
+fn start_repl() {
     let mut agent = Agent::new();
 
     agent.set_uncaught_exception_handler(|agent: &Agent, v: Value| {

@@ -10,11 +10,7 @@ path = "src/lib.rs"
 
 [[bin]]
 name = "slither"
-path = "src/cli.rs"
-
-[[bin]]
-name = "repl"
-path = "src/repl.rs"
+path = "src/bin.rs"
 
 [dependencies.gc]
 path = "rust-gc/gc"
