@@ -245,13 +245,16 @@ impl Assembler {
     }
 
     fn visit_template(&mut self, quasis: &[String], exprs: &[Node]) {
+        if exprs.is_empty() {
+            debug_assert_eq!(quasis.len(), 1);
+            self.load_string(quasis[0].as_str());
+            return;
+        }
+
         debug_assert_eq!(quasis.len(), exprs.len() + 1);
 
         let rscope = RegisterScope::new(self);
         let last = rscope.register();
-
-        self.load_string("");
-        self.store_accumulator_in_register(&last);
 
         let mut last_valid = false;
         for (i, expr) in exprs.iter().enumerate() {
@@ -259,6 +262,7 @@ impl Assembler {
                 self.store_accumulator_in_register(&last);
                 last_valid = true;
             }
+
             if let Some(quasi) = quasis.get(i) {
                 self.load_string(quasi);
                 if last_valid {
@@ -268,6 +272,7 @@ impl Assembler {
                 self.store_accumulator_in_register(&last);
                 last_valid = true;
             }
+
             self.visit(expr);
             self.push_op(Op::ToString);
             if last_valid {
@@ -276,6 +281,7 @@ impl Assembler {
             }
             last_valid = false;
         }
+
         if let Some(quasi) = quasis.last() {
             self.store_accumulator_in_register(&last);
             self.load_string(quasi);
