@@ -4,6 +4,8 @@ use std::collections::VecDeque;
 use std::iter::Peekable;
 use std::str::Chars;
 
+include!(concat!(env!("OUT_DIR"), "/unicode_name_map_gen.rs"));
+
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Operator {
     Add,
@@ -1358,6 +1360,23 @@ impl<'a> Parser<'a> {
                         if Some('}') != self.lexer.chars.next() {
                             return Err(Error::UnexpectedToken);
                         }
+                    }
+                    'U' => {
+                        if Some('{') != self.lexer.chars.next() {
+                            return Err(Error::UnexpectedToken);
+                        }
+                        let mut name = String::new();
+                        loop {
+                            match self.lexer.chars.next() {
+                                Some('}') => break,
+                                None => return Err(Error::UnexpectedEOF),
+                                Some(c) => name.push(c),
+                            }
+                        }
+                        match UNICODE_NAME_MAP.get(name.as_str()) {
+                            Some(c) => str.push(*c),
+                            None => return Err(Error::UnexpectedToken),
+                        };
                     }
                     _ => return Err(Error::UnexpectedToken),
                 },

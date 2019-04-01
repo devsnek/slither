@@ -14,6 +14,7 @@ extern crate mio;
 extern crate num_cpus;
 extern crate regex;
 extern crate threadpool;
+extern crate unic;
 
 macro_rules! custom_trace {
     ($this:ident, $body:expr) => {
