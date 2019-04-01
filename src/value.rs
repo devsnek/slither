@@ -478,6 +478,7 @@ impl Value {
             Value::Object(o) => Ok(o.get(key)),
             Value::Tuple(t, ..) => match key {
                 ObjectKey::Number(n) => Ok(t.get(n).unwrap_or(&Value::Null).clone()),
+                ObjectKey::String(ref s) if s == "length" => Ok(Value::from(t.len() as f64)),
                 _ => Ok(Value::Null),
             },
             _ => self.to_object(agent)?.get(agent, key),

@@ -1117,7 +1117,7 @@ impl<'a> Parser<'a> {
                 self.expect(Token::RightBracket)?;
                 base = Node::ComputedMemberExpression(Box::new(base), Box::new(property));
             } else if self.eat(Token::LeftParen) {
-                let list = self.parse_expression_list(Token::RightParen)?;
+                let (list, ..) = self.parse_expression_list(Token::RightParen)?;
                 base = Node::CallExpression(Box::new(base), list);
             } else {
                 return Ok(base);
@@ -1228,7 +1228,7 @@ impl<'a> Parser<'a> {
             }
             Some(Token::Identifier(i)) => Ok(Node::Identifier(i)),
             Some(Token::LeftBracket) => {
-                let exprs = self.parse_expression_list(Token::RightBracket)?;
+                let (exprs, ..) = self.parse_expression_list(Token::RightBracket)?;
                 Ok(Node::ArrayLiteral(exprs))
             }
             Some(Token::LeftBrace) => {
@@ -1261,14 +1261,14 @@ impl<'a> Parser<'a> {
                 Ok(Node::ObjectLiteral(fields))
             }
             Some(Token::LeftParen) => {
-                let mut list = self.parse_expression_list(Token::RightParen)?;
+                let (mut list, trailing) = self.parse_expression_list(Token::RightParen)?;
                 if self.eat(Token::Arrow) {
                     // ( ... ) =>
                     self.parse_arrow_function(FunctionKind::Normal, list)
                 } else if list.is_empty() {
                     // ( )
                     Err(Error::UnexpectedToken)
-                } else if list.len() == 1 {
+                } else if list.len() == 1 && !trailing {
                     // ( expr )
                     Ok(Node::ParenthesizedExpression(Box::new(list.pop().unwrap())))
                 } else {
@@ -1462,21 +1462,24 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    fn parse_expression_list(&mut self, close: Token) -> Result<Vec<Node>, Error> {
+    fn parse_expression_list(&mut self, close: Token) -> Result<(Vec<Node>, bool), Error> {
         let mut list = Vec::new();
         let mut first = true;
+        let mut trailing = false;
         while !self.eat(close.clone()) {
             if first {
                 first = false;
             } else {
                 self.expect(Token::Comma)?;
+                trailing = true;
                 if self.eat(close.clone()) {
                     break;
                 }
+                trailing = false;
             }
             list.push(self.parse_expression()?);
         }
-        Ok(list)
+        Ok((list, trailing))
     }
 
     fn parse_identifier_list(&mut self, close: Token) -> Result<Vec<String>, Error> {

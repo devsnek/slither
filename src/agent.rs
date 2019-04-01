@@ -431,8 +431,13 @@ test!(
     test_tuple,
     r#"
     const a = (1, 2, 3);
-    const b = (1, 2);
-    a == a && a != b && a[0] == b[0];
+    const b = (1,);
+    a == a
+      && a != b
+      && a[0] == b[0]
+      && b.length == 1
+      && typeof a == 'tuple'
+      && typeof b == 'tuple';
     "#,
     Ok(Value::from(true))
 );
