@@ -26,6 +26,14 @@ fn main() {
 
     if matches.is_present("disassemble") {
         disassemble(source.as_str());
+    } else if matches.is_present("eval") {
+        let mut agent = Agent::new();
+        let value = agent.run("eval", source.as_str());
+        agent.run_jobs();
+        match value {
+            Ok(v) => println!("{}", Value::inspect(&agent, &v)),
+            Err(e) => println!("Uncaught Exception: {}", Value::inspect(&agent, &e)),
+        };
     } else {
         let filename = matches.value_of("FILENAME").unwrap();
         let referrer = std::env::current_dir().unwrap().join("slither");
@@ -65,7 +73,7 @@ fn start_repl() {
                 agent.run_jobs();
                 match value {
                     Ok(v) => println!("{}", Value::inspect(&agent, &v)),
-                    Err(e) => println!("Uncaught Exception: {}", Value::inspect(&agent, &e),),
+                    Err(e) => println!("Uncaught Exception: {}", Value::inspect(&agent, &e)),
                 }
             }
             Err(ReadlineError::Interrupted) => {
