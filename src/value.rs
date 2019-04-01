@@ -890,7 +890,7 @@ fn inspect(
         Value::Null => "null".to_string(),
         Value::True => "true".to_string(),
         Value::False => "false".to_string(),
-        Value::Number(n) => format!("{}", n),
+        Value::Number(n) => crate::num_util::to_string(*n),
         Value::String(s) => format!("'{}'", s),
         Value::Symbol(Symbol(_, _, d)) => {
             if let Some(s) = d {

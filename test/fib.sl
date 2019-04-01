@@ -20,4 +20,23 @@ function fib(n) {
   return fib(n - 1) + fib(n - 2);
 }
 
-print(fib(22));
+gen function genfib() {
+  let fn1 = 0;
+  let fn2 = 1;
+  while true {
+    const current = fn1;
+    fn1 = fn2;
+    fn2 = current + fn1;
+    let reset = yield current;
+    if (reset) {
+        fn1 = 0;
+        fn2 = 1;
+    }
+  }
+}
+
+for i in genfib() {
+  print(i);
+}
+
+print('fib 22 =', fibTail(22));

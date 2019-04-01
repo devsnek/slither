@@ -1,5 +1,6 @@
 use crate::agent::Agent;
 use crate::interpreter::Context;
+use crate::num_util;
 use crate::value::{ObjectKey, ObjectKind, Value};
 
 fn to_string(agent: &Agent, _: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
@@ -7,7 +8,7 @@ fn to_string(agent: &Agent, _: Vec<Value>, ctx: &Context) -> Result<Value, Value
 
     match this {
         Value::Object(o) => match o.kind {
-            ObjectKind::Number(d) => Ok(Value::from(d.to_string())),
+            ObjectKind::Number(n) => Ok(Value::from(num_util::to_string(n))),
             _ => Err(Value::new_error(agent, "invalid receiver")),
         },
         _ => Err(Value::new_error(agent, "invalid receiver")),
