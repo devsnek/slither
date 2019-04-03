@@ -118,6 +118,8 @@ macro_rules! OPS {
             (Typeof, AccumulatorUse::ReadWrite),
             (Void, AccumulatorUse::ReadWrite),
             (UnSub, AccumulatorUse::ReadWrite),
+
+            (End, AccumulatorUse::None),
         );
     };
 }
@@ -175,7 +177,10 @@ impl Scope {
 
     pub fn create(&mut self, agent: &Agent, name: &str, mutable: bool) -> Result<(), Value> {
         if self.bindings.contains_key(name) {
-            Err(Value::new_error(agent, "Binding has already been declared"))
+            Err(Value::new_error(
+                agent,
+                format!("Binding `{}` has already been declared", name).as_str(),
+            ))
         } else {
             self.bindings.insert(
                 name.to_string(),
@@ -471,6 +476,9 @@ impl Interpreter {
             self.pc += 1;
 
             match op {
+                Op::End => {
+                    break 'main;
+                }
                 Op::LoadEmpty => {
                     self.accumulator = Value::Empty;
                 }

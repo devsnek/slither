@@ -879,8 +879,8 @@ impl<'a> Parser<'a> {
                 self.expect(Token::From)?;
                 match self.lexer.next() {
                     Some(Token::StringLiteralStart(c)) => {
-                        self.expect(Token::Semicolon)?;
                         let specifier = self.parse_string_literal(c)?;
+                        self.expect(Token::Semicolon)?;
                         Ok(Node::ImportNamedDeclaration(specifier, bindings))
                     }
                     Some(Token::Identifier(ref s)) if s == "standard" => {

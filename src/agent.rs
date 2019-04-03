@@ -177,23 +177,25 @@ impl Agent {
         let filename = std::path::Path::new(referrer)
             .parent()
             .unwrap()
-            .join(specifier)
-            .to_str()
-            .unwrap()
-            .to_string();
+            .join(specifier);
         match std::fs::metadata(&filename) {
-            Ok(ref r) if r.is_file() => Ok(filename),
+            Ok(ref r) if r.is_file() => Ok(filename
+                .canonicalize()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_string()),
             Ok(_) => {
-                let r = filename + "/module.sl";
+                let r = filename.with_file_name("module.sl");
                 match std::fs::metadata(&r) {
-                    Ok(_) => Ok(r),
+                    Ok(_) => Ok(r.canonicalize().unwrap().to_str().unwrap().to_string()),
                     Err(e) => Err(e),
                 }
             }
             Err(_) => {
-                let r = filename + ".sl";
+                let r = filename.with_extension("sl");
                 match std::fs::metadata(&r) {
-                    Ok(_) => Ok(r),
+                    Ok(_) => Ok(r.canonicalize().unwrap().to_str().unwrap().to_string()),
                     Err(e) => Err(e),
                 }
             }

@@ -92,6 +92,7 @@ impl Assembler {
     pub fn assemble(&mut self, ast: &Node) -> usize {
         let start = self.code.len();
         self.visit(ast);
+        self.push_op(Op::End);
         start
     }
 

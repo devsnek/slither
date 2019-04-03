@@ -1,4 +1,6 @@
 import { print } from standard:debug;
-import { EPSILON } from standard:math;
+import { a, setA } from './exports';
 
-print(EPSILON);
+print(a);
+setA(10);
+print(a);
