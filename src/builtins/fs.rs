@@ -2,6 +2,7 @@ use crate::agent::{Agent, MioMapType};
 use crate::interpreter::Context;
 use crate::intrinsics::promise::new_promise_capability;
 use crate::value::{ObjectKey, Value};
+use lazy_static::lazy_static;
 use mio::{PollOpt, Ready, Registration, Token};
 use std::collections::HashMap;
 use std::sync::Mutex;

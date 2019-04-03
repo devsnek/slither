@@ -1,13 +1,13 @@
 use crate::agent::{Agent, MioMapType};
 use crate::interpreter::Context;
+use crate::linked_list::LinkedList;
 use crate::value::Value;
+use lazy_static::lazy_static;
 use mio::{PollOpt, Ready, Registration, SetReadiness, Token};
 use num::ToPrimitive;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-
-use crate::linked_list::LinkedList;
 
 struct TimerList {
     instant: Instant,
