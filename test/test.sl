@@ -1,3 +1,4 @@
 import { print } from standard:debug;
+import { EPSILON } from standard:math;
 
-`hi`;
+print(EPSILON);

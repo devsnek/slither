@@ -58,6 +58,7 @@ pub fn create(agent: &Agent) -> HashMap<String, Value> {
 
     module.insert("NAN".to_string(), Value::from(std::f64::NAN));
     module.insert("INFINITY".to_string(), Value::from(std::f64::INFINITY));
+    module.insert("EPSILON".to_string(), Value::from(std::f64::EPSILON));
 
     C!(E);
     C!(LN_2);
