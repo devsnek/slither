@@ -12,8 +12,7 @@ pub fn create_async_iterator_prototype(agent: &Agent) -> Value {
     proto
         .set(
             agent,
-            agent
-                .well_known_symbol("asyncIterator")
+            Value::new_well_known_symbol("asyncIterator".to_string())
                 .to_object_key(agent)
                 .unwrap(),
             Value::new_builtin_function(agent, iterator),

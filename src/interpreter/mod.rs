@@ -502,8 +502,8 @@ impl Interpreter {
                 }
                 Op::LoadSymbol => {
                     let nid = read_u32!() as usize;
-                    let name = agent.assembler.string_table[nid].as_str();
-                    let sym = agent.well_known_symbol(name);
+                    let name = agent.assembler.string_table[nid].to_string();
+                    let sym = Value::new_well_known_symbol(name);
                     self.accumulator = sym;
                 }
                 Op::BuildRegex => {
@@ -737,11 +737,14 @@ impl Interpreter {
                     }
                 },
                 Op::GetIterator | Op::GetAsyncIterator => {
-                    let sym = handle!(if op == Op::GetAsyncIterator {
-                        agent.well_known_symbol("asyncIterator")
-                    } else {
-                        agent.well_known_symbol("iterator")
-                    }
+                    let sym = handle!(Value::new_well_known_symbol(
+                        if op == Op::GetAsyncIterator {
+                            "asyncIterator"
+                        } else {
+                            "iterator"
+                        }
+                        .to_string()
+                    )
                     .to_object_key(agent));
                     let iterator = handle!(self.accumulator.get(agent, sym));
                     let iterator = handle!(iterator.call(agent, self.accumulator.clone(), vec![]));

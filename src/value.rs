@@ -12,14 +12,78 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 type BuiltinFunction = fn(&Agent, Vec<Value>, &Context) -> Result<Value, Value>;
 
 static SYMBOL_COUNTER: AtomicUsize = AtomicUsize::new(0);
-#[derive(Debug, Clone, Trace, Finalize, Hash, PartialEq, Eq)]
-pub struct Symbol(pub usize, pub bool, pub Option<String>); // id, private, description
+#[derive(Debug, Clone, Trace, Finalize, Eq)]
+pub enum Symbol {
+    Unregistered {
+        id: usize,
+        private: bool,
+        description: Option<String>,
+    },
+    Registered(String),
+}
+
+impl PartialEq for Symbol {
+    fn eq(&self, other: &Self) -> bool {
+        match self {
+            Symbol::Unregistered { id, .. } => match other {
+                Symbol::Unregistered { id: ido, .. } if ido == id => true,
+                _ => false,
+            },
+            Symbol::Registered(s) => match other {
+                Symbol::Registered(so) if so == s => true,
+                _ => false,
+            },
+        }
+    }
+}
+
+impl Hash for Symbol {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            Symbol::Unregistered {
+                id,
+                private,
+                description,
+            } => {
+                0.hash(state);
+                id.hash(state);
+                private.hash(state);
+                description.hash(state);
+            }
+            Symbol::Registered(description) => {
+                1.hash(state);
+                description.hash(state);
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for Symbol {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Symbol::Unregistered { description, .. } => write!(
+                fmt,
+                "Symbol({})",
+                description.as_ref().unwrap_or(&String::new())
+            ),
+            Symbol::Registered(description) => write!(fmt, "Symbol({})", description),
+        }
+    }
+}
 
 impl Symbol {
-    pub fn new(private: bool, desc: Option<String>) -> Symbol {
-        let s = Symbol(SYMBOL_COUNTER.load(Ordering::Relaxed), private, desc);
+    pub fn new_unregistered(private: bool, description: Option<String>) -> Symbol {
+        let id = SYMBOL_COUNTER.load(Ordering::Relaxed);
         SYMBOL_COUNTER.fetch_add(1, Ordering::Relaxed);
-        s
+        Symbol::Unregistered {
+            id,
+            private,
+            description,
+        }
+    }
+
+    pub fn new_registered(description: String) -> Symbol {
+        Symbol::Registered(description)
     }
 }
 
@@ -102,13 +166,7 @@ impl std::fmt::Display for ObjectKey {
         match self {
             ObjectKey::Number(n) => write!(fmt, "{}", n),
             ObjectKey::String(s) => write!(fmt, "{}", s),
-            ObjectKey::Symbol(Symbol(_, _, d)) => {
-                if let Some(s) = d {
-                    write!(fmt, "[Symbol({})]", s)
-                } else {
-                    write!(fmt, "[Symbol()]")
-                }
-            }
+            ObjectKey::Symbol(s) => write!(fmt, "{}", s),
         }
     }
 }
@@ -224,7 +282,7 @@ impl ObjectInfo {
         match self.properties.borrow().get(&property) {
             Some(v) => v.clone(),
             _ => {
-                if let ObjectKey::Symbol(Symbol(_, true, _)) = property {
+                if let ObjectKey::Symbol(Symbol::Unregistered { private: true, .. }) = property {
                     // don't traverse for private symbol
                     Value::Null
                 } else {
@@ -245,7 +303,7 @@ impl ObjectInfo {
         value: Value,
         receiver: Gc<ObjectInfo>,
     ) -> Result<Value, Value> {
-        let own = if let ObjectKey::Symbol(Symbol(_, true, _)) = property {
+        let own = if let ObjectKey::Symbol(Symbol::Unregistered { private: true, .. }) = property {
             true
         } else {
             false
@@ -275,7 +333,7 @@ impl ObjectInfo {
         let mut keys = Vec::new();
         let entries = self.properties.borrow();
         for key in entries.keys() {
-            if let ObjectKey::Symbol(Symbol(_, true, ..)) = key {
+            if let ObjectKey::Symbol(Symbol::Unregistered { private: true, .. }) = key {
                 // private keys are unenumerable
             } else {
                 keys.push(key.clone());
@@ -333,11 +391,15 @@ unsafe impl gc::Trace for Value {
 
 impl Value {
     pub fn new_symbol(desc: Option<String>) -> Value {
-        Value::Symbol(Symbol::new(false, desc))
+        Value::Symbol(Symbol::new_unregistered(false, desc))
     }
 
     pub fn new_private_symbol(desc: Option<String>) -> Value {
-        Value::Symbol(Symbol::new(true, desc))
+        Value::Symbol(Symbol::new_unregistered(true, desc))
+    }
+
+    pub fn new_well_known_symbol(desc: String) -> Value {
+        Value::Symbol(Symbol::new_registered(desc))
     }
 
     pub fn new_object(prototype: Value) -> Value {
@@ -892,13 +954,7 @@ fn inspect(
         Value::False => "false".to_string(),
         Value::Number(n) => crate::num_util::to_string(*n),
         Value::String(s) => format!("'{}'", s),
-        Value::Symbol(Symbol(_, _, d)) => {
-            if let Some(s) = d {
-                format!("Symbol({})", s)
-            } else {
-                "Symbol()".to_string()
-            }
-        }
+        Value::Symbol(s) => format!("{}", s),
         Value::Tuple(items) => {
             let mut ins = Vec::new();
             for item in items {

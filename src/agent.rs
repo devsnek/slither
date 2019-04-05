@@ -61,7 +61,6 @@ unsafe impl gc::Trace for MioMapType {
 #[derive(Finalize)]
 pub struct Agent {
     pub assembler: Assembler,
-    well_known_symbols: GcCell<HashMap<String, Value>>,
     pub intrinsics: Intrinsics,
     pub builtins: HashMap<String, HashMap<String, Value>>,
     pub root_scope: Gc<GcCell<Scope>>,
@@ -75,7 +74,11 @@ pub struct Agent {
 
 unsafe impl gc::Trace for Agent {
     custom_trace!(this, {
-        mark(&this.well_known_symbols);
+        mark(&this.builtins);
+        mark(&this.root_scope);
+        mark(&this.job_queue);
+        // mark(&this.mio_map);
+        mark(&this.modules);
     });
 }
 
@@ -88,7 +91,6 @@ impl Agent {
 
         let mut agent = Agent {
             assembler: Assembler::new(),
-            well_known_symbols: GcCell::new(HashMap::new()),
             intrinsics: Intrinsics {
                 object_prototype: object_prototype.clone(),
                 array_prototype,
@@ -198,18 +200,6 @@ impl Agent {
                     Ok(_) => Ok(r.canonicalize().unwrap().to_str().unwrap().to_string()),
                     Err(e) => Err(e),
                 }
-            }
-        }
-    }
-
-    pub fn well_known_symbol(&self, name: &str) -> Value {
-        let mut wks = self.well_known_symbols.borrow_mut();
-        match wks.get(name) {
-            Some(v) => v.clone(),
-            None => {
-                let s = Value::new_symbol(Some(name.to_string()));
-                wks.insert(name.to_string(), s.clone());
-                s
             }
         }
     }
@@ -372,6 +362,17 @@ test!(
     i;
     "#,
     Ok(Value::from(6))
+);
+
+test!(
+    test_symbols,
+    r#"
+    const a = Symbol('a');
+    const b = Symbol('a');
+
+    a == a && b != a;
+    "#,
+    Ok(Value::from(true))
 );
 
 test!(
