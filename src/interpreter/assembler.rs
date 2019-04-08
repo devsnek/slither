@@ -423,6 +423,7 @@ impl Assembler {
         self.jump(&mut head);
 
         self.mark(&mut end);
+        self.load_null();
     }
 
     fn visit_expression_statement(&mut self, expr: &Node) {
@@ -933,6 +934,8 @@ impl Assembler {
         if let Some(finallyc) = finallyc {
             self.visit(finallyc);
         }
+
+        self.load_null();
     }
 
     fn visit_export(&mut self, decl: &Node) {
