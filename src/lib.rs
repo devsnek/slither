@@ -54,6 +54,7 @@ mod linked_list;
 mod module;
 mod num_util;
 mod parser;
+mod sort;
 mod value;
 
 pub trait IntoValue: Sized {

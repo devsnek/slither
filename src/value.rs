@@ -218,7 +218,7 @@ impl From<f64> for ObjectKey {
 #[derive(Finalize)]
 pub enum ObjectKind {
     Ordinary,
-    Array,
+    Array(GcCell<Vec<Value>>),
     Boolean(bool),
     String(String),
     Number(f64),
@@ -253,7 +253,7 @@ impl std::fmt::Debug for ObjectKind {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
         let r = match self {
             ObjectKind::Ordinary => "Ordinary".to_string(),
-            ObjectKind::Array => "Array".to_string(),
+            ObjectKind::Array(..) => "Array".to_string(),
             ObjectKind::Boolean(b) => format!("Boolean({})", b),
             ObjectKind::String(s) => format!("String({})", s),
             ObjectKind::Number(i) => format!("Number({})", i),
@@ -279,6 +279,15 @@ pub struct ObjectInfo {
 
 impl ObjectInfo {
     fn get(&self, property: ObjectKey) -> Value {
+        if let ObjectKey::Number(n) = property {
+            if let ObjectInfo {
+                kind: ObjectKind::Array(values),
+                ..
+            } = self
+            {
+                return values.borrow().get(n).unwrap_or(&Value::Null).clone();
+            }
+        }
         match self.properties.borrow().get(&property) {
             Some(v) => v.clone(),
             _ => {
@@ -303,6 +312,20 @@ impl ObjectInfo {
         value: Value,
         receiver: Gc<ObjectInfo>,
     ) -> Result<Value, Value> {
+        if let ObjectKey::Number(n) = property {
+            if let ObjectInfo {
+                kind: ObjectKind::Array(values),
+                ..
+            } = self
+            {
+                let mut values = values.borrow_mut();
+                if values.len() <= n {
+                    values.resize(n + 1, Value::Null);
+                }
+                values[n] = value.clone();
+                return Ok(Value::Null);
+            }
+        }
         let own = if let ObjectKey::Symbol(Symbol::Unregistered { private: true, .. }) = property {
             true
         } else {
@@ -331,6 +354,11 @@ impl ObjectInfo {
 
     fn keys(&self) -> Vec<ObjectKey> {
         let mut keys = Vec::new();
+        if let ObjectKind::Array(values) = &self.kind {
+            for i in 0..(values.borrow().len()) {
+                keys.push(ObjectKey::Number(i));
+            }
+        }
         let entries = self.properties.borrow();
         for key in entries.keys() {
             if let ObjectKey::Symbol(Symbol::Unregistered { private: true, .. }) = key {
@@ -389,6 +417,39 @@ unsafe impl gc::Trace for Value {
     });
 }
 
+impl PartialOrd for Value {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match self {
+            Value::Null => match other {
+                Value::Null => Some(std::cmp::Ordering::Equal),
+                _ => None,
+            },
+            Value::True | Value::False => match other {
+                Value::True => Some(std::cmp::Ordering::Equal),
+                Value::False => Some(std::cmp::Ordering::Equal),
+                _ => None,
+            },
+            Value::Number(n) => match other {
+                Value::Number(bn) => Some(n.partial_cmp(bn).unwrap_or(std::cmp::Ordering::Equal)),
+                _ => None,
+            },
+            Value::String(s) => match other {
+                Value::String(bs) => Some(s.cmp(bs)),
+                _ => None,
+            },
+            Value::Symbol(..) => match other {
+                Value::Symbol(..) => Some(std::cmp::Ordering::Equal),
+                _ => None,
+            },
+            Value::Object(..) | Value::Tuple(..) => match other {
+                Value::Object(..) | Value::Tuple(..) => Some(std::cmp::Ordering::Equal),
+                _ => panic!(),
+            },
+            _ => None,
+        }
+    }
+}
+
 impl Value {
     pub fn new_symbol(desc: Option<String>) -> Value {
         Value::Symbol(Symbol::new_unregistered(false, desc))
@@ -433,7 +494,7 @@ impl Value {
 
     pub fn new_array(agent: &Agent) -> Value {
         Value::Object(Gc::new(ObjectInfo {
-            kind: ObjectKind::Array,
+            kind: ObjectKind::Array(GcCell::new(Vec::new())),
             properties: GcCell::new(IndexMap::new()),
             prototype: agent.intrinsics.array_prototype.clone(),
         }))
@@ -980,7 +1041,7 @@ fn inspect(
             } else {
                 inspected.insert(hash_key);
                 let array = match o.kind {
-                    ObjectKind::Array => true,
+                    ObjectKind::Array(..) => true,
                     _ => false,
                 };
                 let function = value.type_of() == "function";

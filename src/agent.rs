@@ -85,7 +85,6 @@ unsafe impl gc::Trace for Agent {
 impl Agent {
     pub fn new() -> Agent {
         let object_prototype = create_object_prototype();
-        let array_prototype = create_array_prototype(object_prototype.clone());
         let function_prototype = create_function_prototype(object_prototype.clone());
         let symbol_prototype = create_symbol_prototype(object_prototype.clone());
 
@@ -93,7 +92,7 @@ impl Agent {
             assembler: Assembler::new(),
             intrinsics: Intrinsics {
                 object_prototype: object_prototype.clone(),
-                array_prototype,
+                array_prototype: Value::Null,
                 function_prototype,
                 boolean_prototype: Value::Null,
                 number_prototype: Value::Null,
@@ -128,6 +127,8 @@ impl Agent {
         agent.intrinsics.iterator_prototype = create_iterator_prototype(&agent);
         agent.intrinsics.async_iterator_prototype = create_async_iterator_prototype(&agent);
         agent.intrinsics.generator_prototype = create_generator_prototype(&agent);
+
+        agent.intrinsics.array_prototype = create_array_prototype(&agent);
 
         agent.intrinsics.promise_prototype = create_promise_prototype(&agent);
         agent.intrinsics.promise = create_promise(&agent);
@@ -514,4 +515,20 @@ test!(
     b + a;
     "#,
     Ok(Value::from("\u{276F}hi \u{2764}"))
+);
+
+test!(
+    test_array_sort,
+    r#"
+    const a = [3, 1, 2];
+    a.sort();
+    const c1 = a[0] == 1 && a[1] == 2 && a[2] == 3;
+
+    const b = [3, 1, 2];
+    b.sort((a, b) => b - a);
+    const c2 = b[0] == 3 && b[1] == 2 && b[2] == 1;
+
+    c1 && c2;
+    "#,
+    Ok(Value::from(true))
 );
