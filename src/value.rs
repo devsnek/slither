@@ -94,6 +94,19 @@ pub enum ObjectKey {
     Symbol(Symbol),
 }
 
+impl ObjectKey {
+    fn to_number(&self) -> Option<usize> {
+        match self {
+            ObjectKey::Number(n) => Some(*n),
+            ObjectKey::String(s) => match s.parse::<usize>() {
+                Ok(n) => Some(n),
+                Err(_) => None,
+            },
+            ObjectKey::Symbol(..) => None,
+        }
+    }
+}
+
 impl PartialEq for ObjectKey {
     fn eq(&self, other: &Self) -> bool {
         match self {
@@ -279,7 +292,7 @@ pub struct ObjectInfo {
 
 impl ObjectInfo {
     fn get(&self, property: ObjectKey) -> Value {
-        if let ObjectKey::Number(n) = property {
+        if let Some(n) = property.to_number() {
             if let ObjectInfo {
                 kind: ObjectKind::Array(values),
                 ..
@@ -312,7 +325,7 @@ impl ObjectInfo {
         value: Value,
         receiver: Gc<ObjectInfo>,
     ) -> Result<Value, Value> {
-        if let ObjectKey::Number(n) = property {
+        if let Some(n) = property.to_number() {
             if let ObjectInfo {
                 kind: ObjectKind::Array(values),
                 ..
@@ -599,11 +612,15 @@ impl Value {
     pub fn get(&self, agent: &Agent, key: ObjectKey) -> Result<Value, Value> {
         match self {
             Value::Object(o) => Ok(o.get(key)),
-            Value::Tuple(t, ..) => match key {
-                ObjectKey::Number(n) => Ok(t.get(n).unwrap_or(&Value::Null).clone()),
-                ObjectKey::String(ref s) if s == "length" => Ok(Value::from(t.len() as f64)),
-                _ => Ok(Value::Null),
-            },
+            Value::Tuple(t, ..) => {
+                if let Some(n) = key.to_number() {
+                    Ok(t.get(n).unwrap_or(&Value::Null).clone())
+                } else if key == ObjectKey::from("length") {
+                    Ok(Value::from(t.len() as f64))
+                } else {
+                    Ok(Value::Null)
+                }
+            }
             _ => self.to_object(agent)?.get(agent, key),
         }
     }
