@@ -389,8 +389,7 @@ impl ObjectInfo {
 pub enum Value {
     // Language types
     Null,
-    True,
-    False,
+    Boolean(bool),
     String(String),
     Number(f64),
     Symbol(Symbol),
@@ -404,12 +403,19 @@ pub enum Value {
     Iterator(Box<Value>, Box<Value>),
 }
 
+
+#[allow(non_upper_case_globals)]
+#[allow(clippy::declare_interior_mutable_const)]
+impl Value {
+    const True: Value = Value::Boolean(true);
+    const False: Value = Value::Boolean(false);
+}
+
 unsafe impl gc::Trace for Value {
     custom_trace!(this, {
         match this {
             Value::Null
-            | Value::True
-            | Value::False
+            | Value::Boolean(_)
             | Value::String(_)
             | Value::Number(_)
             | Value::Symbol(_) => {}
@@ -437,11 +443,10 @@ impl PartialOrd for Value {
                 Value::Null => Some(std::cmp::Ordering::Equal),
                 _ => None,
             },
-            Value::True | Value::False => match other {
-                Value::True => Some(std::cmp::Ordering::Equal),
-                Value::False => Some(std::cmp::Ordering::Equal),
+            Value::Boolean(..) => match other {
+                Value::Boolean(..) => Some(std::cmp::Ordering::Equal),
                 _ => None,
-            },
+            }
             Value::Number(n) => match other {
                 Value::Number(bn) => Some(n.partial_cmp(bn).unwrap_or(std::cmp::Ordering::Equal)),
                 _ => None,
@@ -580,8 +585,7 @@ impl Value {
     pub fn type_of(&self) -> &str {
         match &self {
             Value::Null => "null",
-            Value::True => "boolean",
-            Value::False => "boolean",
+            Value::Boolean(..) => "boolean",
             Value::Number(..) => "number",
             Value::String(..) => "string",
             Value::Symbol(..) => "symbol",
@@ -598,8 +602,7 @@ impl Value {
     pub fn to_bool(&self) -> bool {
         match &self {
             Value::Null => false,
-            Value::True => true,
-            Value::False => false,
+            Value::Boolean(b) => *b,
             Value::Number(n) => *n != 0.0,
             Value::String(s) => !s.is_empty(),
             Value::Symbol(..) => true,
@@ -687,8 +690,8 @@ impl Value {
     pub fn to_object(&self, agent: &Agent) -> Result<Value, Value> {
         match self {
             Value::Null => Err(Value::new_error(agent, "cannot convert null to object")),
-            Value::True | Value::False => Ok(Value::Object(Gc::new(ObjectInfo {
-                kind: ObjectKind::Boolean(*self == Value::True),
+            Value::Boolean(b) => Ok(Value::Object(Gc::new(ObjectInfo {
+                kind: ObjectKind::Boolean(*b),
                 properties: GcCell::new(IndexMap::new()),
                 prototype: agent.intrinsics.boolean_prototype.clone(),
             }))),
@@ -898,14 +901,10 @@ impl PartialEq for Value {
                 Value::Null => true,
                 _ => false,
             },
-            Value::True => match other {
-                Value::True => true,
+            Value::Boolean(b) => match other {
+                Value::Boolean(vb) => b == vb,
                 _ => false,
-            },
-            Value::False => match other {
-                Value::False => true,
-                _ => false,
-            },
+            }
             Value::String(s) => match &other {
                 Value::String(vs) => s == vs,
                 _ => false,
@@ -946,27 +945,29 @@ impl Hash for Value {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
             Value::Null => 0.hash(state),
-            Value::True => 1.hash(state),
-            Value::False => 2.hash(state),
+            Value::Boolean(b) => {
+                1.hash(state);
+                b.hash(state);
+            }
             Value::String(s) => {
-                3.hash(state);
+                2.hash(state);
                 s.hash(state);
             }
             Value::Number(n) => {
-                4.hash(state);
+                3.hash(state);
                 n.to_bits().hash(state);
             }
             Value::Symbol(s) => {
-                5.hash(state);
+                4.hash(state);
                 s.hash(state);
             }
             Value::Object(o) => {
-                6.hash(state);
+                5.hash(state);
                 // hash the memory address of the map sigh
                 (&*o.properties.borrow() as *const IndexMap<ObjectKey, Value>).hash(state);
             }
             Value::Tuple(items) => {
-                7.hash(state);
+                6.hash(state);
                 items.hash(state);
             }
             _ => unreachable!(),
@@ -1028,8 +1029,7 @@ fn inspect(
 ) -> String {
     match value {
         Value::Null => "null".to_string(),
-        Value::True => "true".to_string(),
-        Value::False => "false".to_string(),
+        Value::Boolean(b) => b.to_string(),
         Value::Number(n) => crate::num_util::to_string(*n),
         Value::String(s) => format!("'{}'", s),
         Value::Symbol(s) => format!("{}", s),
