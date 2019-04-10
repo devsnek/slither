@@ -49,6 +49,25 @@ fn sort(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> 
     }
 }
 
+fn for_each(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
+    match ctx.scope.borrow().get_this(agent)? {
+        Value::Object(o) => match &o.kind {
+            ObjectKind::Array(values) => {
+                for (i, value) in values.borrow().iter().enumerate() {
+                    args.get(0).unwrap_or(&Value::Null).call(
+                        agent,
+                        Value::Null,
+                        vec![value.clone(), Value::from(i as f64)],
+                    )?;
+                }
+                Ok(ctx.scope.borrow().get_this(agent)?)
+            }
+            _ => Err(Value::new_error(agent, "invalid receiver")),
+        },
+        _ => Err(Value::new_error(agent, "invalid receiver")),
+    }
+}
+
 pub fn create_array_prototype(agent: &Agent) -> Value {
     let p = Value::new_object(agent.intrinsics.object_prototype.clone());
 
@@ -56,6 +75,13 @@ pub fn create_array_prototype(agent: &Agent) -> Value {
         agent,
         ObjectKey::from("sort"),
         Value::new_builtin_function(agent, sort),
+    )
+    .unwrap();
+
+    p.set(
+        agent,
+        ObjectKey::from("forEach"),
+        Value::new_builtin_function(agent, for_each),
     )
     .unwrap();
 

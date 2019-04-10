@@ -403,7 +403,6 @@ pub enum Value {
     Iterator(Box<Value>, Box<Value>),
 }
 
-
 #[allow(non_upper_case_globals)]
 #[allow(clippy::declare_interior_mutable_const)]
 impl Value {
@@ -446,7 +445,7 @@ impl PartialOrd for Value {
             Value::Boolean(..) => match other {
                 Value::Boolean(..) => Some(std::cmp::Ordering::Equal),
                 _ => None,
-            }
+            },
             Value::Number(n) => match other {
                 Value::Number(bn) => Some(n.partial_cmp(bn).unwrap_or(std::cmp::Ordering::Equal)),
                 _ => None,
@@ -904,7 +903,7 @@ impl PartialEq for Value {
             Value::Boolean(b) => match other {
                 Value::Boolean(vb) => b == vb,
                 _ => false,
-            }
+            },
             Value::String(s) => match &other {
                 Value::String(vs) => s == vs,
                 _ => false,
