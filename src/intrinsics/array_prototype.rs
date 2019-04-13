@@ -49,23 +49,11 @@ fn sort(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> 
     }
 }
 
-fn for_each(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    match ctx.scope.borrow().get_this(agent)? {
-        Value::Object(o) => match &o.kind {
-            ObjectKind::Array(values) => {
-                for (i, value) in values.borrow().iter().enumerate() {
-                    args.get(0).unwrap_or(&Value::Null).call(
-                        agent,
-                        Value::Null,
-                        vec![value.clone(), Value::from(i as f64)],
-                    )?;
-                }
-                Ok(ctx.scope.borrow().get_this(agent)?)
-            }
-            _ => Err(Value::new_error(agent, "invalid receiver")),
-        },
-        _ => Err(Value::new_error(agent, "invalid receiver")),
-    }
+fn iterator(agent: &Agent, _args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
+    let it = Value::new_custom_object(agent.intrinsics.array_iterator_prototype.clone());
+    it.set_slot("array iterator next index", Value::from(0));
+    it.set_slot("iterated object", ctx.scope.borrow().get_this(agent)?);
+    Ok(it)
 }
 
 pub fn create_array_prototype(agent: &Agent) -> Value {
@@ -80,8 +68,10 @@ pub fn create_array_prototype(agent: &Agent) -> Value {
 
     p.set(
         agent,
-        ObjectKey::from("forEach"),
-        Value::new_builtin_function(agent, for_each),
+        Value::new_well_known_symbol("iterator")
+            .to_object_key(agent)
+            .unwrap(),
+        Value::new_builtin_function(agent, iterator),
     )
     .unwrap();
 

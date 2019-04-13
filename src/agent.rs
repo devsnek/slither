@@ -1,10 +1,10 @@
 use crate::interpreter::{Assembler, Interpreter, Scope};
 use crate::intrinsics::{
-    create_array_prototype, create_async_iterator_prototype, create_boolean_prototype,
-    create_error_prototype, create_function_prototype, create_generator_prototype,
-    create_iterator_prototype, create_net_client_prototype, create_number_prototype,
-    create_object_prototype, create_promise, create_promise_prototype, create_regex_prototype,
-    create_string_prototype, create_symbol, create_symbol_prototype,
+    create_array_iterator_prototype, create_array_prototype, create_async_iterator_prototype,
+    create_boolean_prototype, create_error_prototype, create_function_prototype,
+    create_generator_prototype, create_iterator_prototype, create_net_client_prototype,
+    create_number_prototype, create_object_prototype, create_promise, create_promise_prototype,
+    create_regex_prototype, create_string_prototype, create_symbol, create_symbol_prototype,
 };
 use crate::module::Module;
 use crate::Value;
@@ -16,6 +16,7 @@ use threadpool::ThreadPool;
 pub struct Intrinsics {
     pub object_prototype: Value,
     pub array_prototype: Value,
+    pub array_iterator_prototype: Value,
     pub function_prototype: Value,
     pub boolean_prototype: Value,
     pub string_prototype: Value,
@@ -93,6 +94,7 @@ impl Agent {
             intrinsics: Intrinsics {
                 object_prototype: object_prototype.clone(),
                 array_prototype: Value::Null,
+                array_iterator_prototype: Value::Null,
                 function_prototype,
                 boolean_prototype: Value::Null,
                 number_prototype: Value::Null,
@@ -129,6 +131,7 @@ impl Agent {
         agent.intrinsics.generator_prototype = create_generator_prototype(&agent);
 
         agent.intrinsics.array_prototype = create_array_prototype(&agent);
+        agent.intrinsics.array_iterator_prototype = create_array_iterator_prototype(&agent);
 
         agent.intrinsics.promise_prototype = create_promise_prototype(&agent);
         agent.intrinsics.promise = create_promise(&agent);
@@ -426,9 +429,12 @@ test!(
     for item in numbers() {
       i += item;
     }
+    for item in [1, 2, 3] {
+        i += item;
+    }
     i;
     "#,
-    Ok(Value::from(45))
+    Ok(Value::from(51))
 );
 
 test!(

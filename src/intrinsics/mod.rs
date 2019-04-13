@@ -1,3 +1,4 @@
+mod array_iterator_prototype;
 mod array_prototype;
 mod async_iterator_prototype;
 mod boolean_prototype;
@@ -18,6 +19,7 @@ mod symbol_prototype;
 
 pub use perform_await::perform_await;
 
+pub use array_iterator_prototype::create_array_iterator_prototype;
 pub use array_prototype::create_array_prototype;
 pub use async_iterator_prototype::create_async_iterator_prototype;
 pub use boolean_prototype::create_boolean_prototype;

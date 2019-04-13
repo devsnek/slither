@@ -502,7 +502,7 @@ impl Interpreter {
                 }
                 Op::LoadSymbol => {
                     let nid = read_u32!() as usize;
-                    let name = agent.assembler.string_table[nid].to_string();
+                    let name = &agent.assembler.string_table[nid];
                     let sym = Value::new_well_known_symbol(name);
                     self.accumulator = sym;
                 }
@@ -737,15 +737,13 @@ impl Interpreter {
                     }
                 },
                 Op::GetIterator | Op::GetAsyncIterator => {
-                    let sym = handle!(Value::new_well_known_symbol(
-                        if op == Op::GetAsyncIterator {
+                    let sym =
+                        handle!(Value::new_well_known_symbol(if op == Op::GetAsyncIterator {
                             "asyncIterator"
                         } else {
                             "iterator"
-                        }
-                        .to_string()
-                    )
-                    .to_object_key(agent));
+                        })
+                        .to_object_key(agent));
                     let iterator = handle!(self.accumulator.get(agent, sym));
                     let iterator = handle!(iterator.call(agent, self.accumulator.clone(), vec![]));
                     let next = handle!(iterator.get(agent, ObjectKey::from("next")));

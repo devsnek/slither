@@ -82,8 +82,8 @@ impl Symbol {
         }
     }
 
-    pub fn new_registered(description: String) -> Symbol {
-        Symbol::Registered(description)
+    pub fn new_registered(description: &str) -> Symbol {
+        Symbol::Registered(description.to_string())
     }
 }
 
@@ -292,12 +292,15 @@ pub struct ObjectInfo {
 
 impl ObjectInfo {
     fn get(&self, property: ObjectKey) -> Value {
-        if let Some(n) = property.to_number() {
-            if let ObjectInfo {
-                kind: ObjectKind::Array(values),
-                ..
-            } = self
-            {
+        if let ObjectInfo {
+            kind: ObjectKind::Array(values),
+            ..
+        } = self
+        {
+            if ObjectKey::from("length") == property {
+                return Value::from(values.borrow().len() as f64);
+            }
+            if let Some(n) = property.to_number() {
                 return values.borrow().get(n).unwrap_or(&Value::Null).clone();
             }
         }
@@ -325,12 +328,20 @@ impl ObjectInfo {
         value: Value,
         receiver: Gc<ObjectInfo>,
     ) -> Result<Value, Value> {
-        if let Some(n) = property.to_number() {
-            if let ObjectInfo {
-                kind: ObjectKind::Array(values),
-                ..
-            } = self
-            {
+        if let ObjectInfo {
+            kind: ObjectKind::Array(values),
+            ..
+        } = self
+        {
+            if ObjectKey::from("length") == property {
+                if let Value::Number(len) = value {
+                    values.borrow_mut().resize(len as usize, Value::Null);
+                    return Ok(Value::Null);
+                } else {
+                    return Err(Value::new_error(agent, "invalid array length"));
+                }
+            }
+            if let Some(n) = property.to_number() {
                 let mut values = values.borrow_mut();
                 if values.len() <= n {
                     values.resize(n + 1, Value::Null);
@@ -406,8 +417,8 @@ pub enum Value {
 #[allow(non_upper_case_globals)]
 #[allow(clippy::declare_interior_mutable_const)]
 impl Value {
-    const True: Value = Value::Boolean(true);
-    const False: Value = Value::Boolean(false);
+    pub const True: Value = Value::Boolean(true);
+    pub const False: Value = Value::Boolean(false);
 }
 
 unsafe impl gc::Trace for Value {
@@ -476,7 +487,7 @@ impl Value {
         Value::Symbol(Symbol::new_unregistered(true, desc))
     }
 
-    pub fn new_well_known_symbol(desc: String) -> Value {
+    pub fn new_well_known_symbol(desc: &str) -> Value {
         Value::Symbol(Symbol::new_registered(desc))
     }
 

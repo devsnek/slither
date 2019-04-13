@@ -12,7 +12,7 @@ pub fn create_iterator_prototype(agent: &Agent) -> Value {
     proto
         .set(
             agent,
-            Value::new_well_known_symbol("iterator".to_string())
+            Value::new_well_known_symbol("iterator")
                 .to_object_key(agent)
                 .unwrap(),
             Value::new_builtin_function(agent, iterator),
