@@ -2,9 +2,10 @@ use crate::interpreter::{Assembler, Interpreter, Scope};
 use crate::intrinsics::{
     create_array_iterator_prototype, create_array_prototype, create_async_iterator_prototype,
     create_boolean_prototype, create_error_prototype, create_function_prototype,
-    create_generator_prototype, create_iterator_prototype, create_net_client_prototype,
-    create_number_prototype, create_object_prototype, create_promise, create_promise_prototype,
-    create_regex_prototype, create_string_prototype, create_symbol, create_symbol_prototype,
+    create_generator_prototype, create_iterator_map_prototype, create_iterator_prototype,
+    create_net_client_prototype, create_number_prototype, create_object_prototype, create_promise,
+    create_promise_prototype, create_regex_prototype, create_string_prototype, create_symbol,
+    create_symbol_prototype,
 };
 use crate::module::Module;
 use crate::Value;
@@ -27,6 +28,7 @@ pub struct Intrinsics {
     pub symbol: Value,
     pub regex_prototype: Value,
     pub iterator_prototype: Value,
+    pub iterator_map_prototype: Value,
     pub generator_prototype: Value,
     pub async_iterator_prototype: Value,
     pub net_client_prototype: Value,
@@ -105,6 +107,7 @@ impl Agent {
                 symbol: Value::Null,
                 regex_prototype: Value::Null,
                 iterator_prototype: Value::Null,
+                iterator_map_prototype: Value::Null,
                 generator_prototype: Value::Null,
                 async_iterator_prototype: Value::Null,
                 net_client_prototype: Value::Null,
@@ -127,6 +130,7 @@ impl Agent {
         agent.intrinsics.symbol = create_symbol(&agent);
         agent.intrinsics.error_prototype = create_error_prototype(&agent);
         agent.intrinsics.iterator_prototype = create_iterator_prototype(&agent);
+        agent.intrinsics.iterator_map_prototype = create_iterator_map_prototype(&agent);
         agent.intrinsics.async_iterator_prototype = create_async_iterator_prototype(&agent);
         agent.intrinsics.generator_prototype = create_generator_prototype(&agent);
 

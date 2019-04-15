@@ -737,18 +737,11 @@ impl Interpreter {
                     }
                 },
                 Op::GetIterator | Op::GetAsyncIterator => {
-                    let sym =
-                        handle!(Value::new_well_known_symbol(if op == Op::GetAsyncIterator {
-                            "asyncIterator"
-                        } else {
-                            "iterator"
-                        })
-                        .to_object_key(agent));
-                    let iterator = handle!(self.accumulator.get(agent, sym));
-                    let iterator = handle!(iterator.call(agent, self.accumulator.clone(), vec![]));
-                    let next = handle!(iterator.get(agent, ObjectKey::from("next")));
-                    let iterator = Value::Iterator(Box::new(iterator), Box::new(next));
-                    self.accumulator = iterator;
+                    self.accumulator = handle!(if op == Op::GetAsyncIterator {
+                        self.accumulator.to_async_iterator(agent)
+                    } else {
+                        self.accumulator.to_iterator(agent)
+                    });
                 }
                 Op::IteratorNext => {
                     let iid = read_u32!() as usize;

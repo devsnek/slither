@@ -735,6 +735,26 @@ impl Value {
         }
     }
 
+    pub fn to_iterator(&self, agent: &Agent) -> Result<Value, Value> {
+        let iterator = self.get(
+            agent,
+            Value::new_well_known_symbol("iterator").to_object_key(agent)?,
+        )?;
+        let iterator = iterator.call(agent, self.clone(), vec![])?;
+        let next = iterator.get(agent, ObjectKey::from("next"))?;
+        Ok(Value::Iterator(Box::new(iterator), Box::new(next)))
+    }
+
+    pub fn to_async_iterator(&self, agent: &Agent) -> Result<Value, Value> {
+        let iterator = self.get(
+            agent,
+            Value::new_well_known_symbol("asyncIterator").to_object_key(agent)?,
+        )?;
+        let iterator = iterator.call(agent, self.clone(), vec![])?;
+        let next = iterator.get(agent, ObjectKey::from("next"))?;
+        Ok(Value::Iterator(Box::new(iterator), Box::new(next)))
+    }
+
     pub fn call(&self, agent: &Agent, this: Value, args: Vec<Value>) -> Result<Value, Value> {
         match self {
             Value::Object(o) => match &o.kind {
