@@ -158,12 +158,14 @@ impl Assembler {
             Node::TryStatement(tryc, binding, catch, finally) => {
                 self.visit_try(tryc, binding, catch, finally)
             }
+            Node::MatchExpression(expr, arms) => self.visit_match(expr, arms),
             Node::ImportDeclaration(..)
             | Node::ImportNamedDeclaration(..)
             | Node::ImportDefaultDeclaration(..)
             | Node::ImportStandardDeclaration(..) => {}
             Node::ExportDeclaration(decl) => self.visit_export(decl),
             Node::Initializer(..) => unreachable!(),
+            Node::MatchArm(..) => unreachable!(),
         }
     }
 
@@ -428,7 +430,6 @@ impl Assembler {
 
     fn visit_expression_statement(&mut self, expr: &Node) {
         self.visit(expr);
-        self.load_null();
     }
 
     fn visit_unary(&mut self, op: Operator, expr: &Node) {
@@ -936,6 +937,34 @@ impl Assembler {
         }
 
         self.load_null();
+    }
+
+    fn visit_match(&mut self, expr: &Node, arms: &[Node]) {
+        let mut end = self.label();
+
+        let rscope = RegisterScope::new(self);
+        let value = rscope.register();
+
+        self.visit(expr);
+        self.store_accumulator_in_register(&value);
+
+        for arm in arms {
+            if let Node::MatchArm(test, consequent) = arm {
+                let mut next = self.label();
+                self.visit(test);
+                self.push_op(Op::Eq);
+                self.push_u32(value.id);
+                self.jump_if_false(&mut next);
+                self.visit(consequent);
+                self.jump(&mut end);
+                self.mark(&mut next);
+            } else {
+                unreachable!();
+            }
+        }
+
+        self.load_null();
+        self.mark(&mut end);
     }
 
     fn visit_export(&mut self, decl: &Node) {

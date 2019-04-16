@@ -94,6 +94,7 @@ enum Token {
     Export,
     Default,
     From,
+    Match,
 
     Operator(Operator),
 }
@@ -197,6 +198,9 @@ pub enum Node {
     AwaitExpression(Box<Node>),
     ThisExpression,
     NewExpression(Box<Node>),
+
+    MatchExpression(Box<Node>, Vec<Node>),
+    MatchArm(Box<Node>, Box<Node>),
 
     MemberExpression(Box<Node>, String),
     ComputedMemberExpression(Box<Node>, Box<Node>),
@@ -322,6 +326,7 @@ impl<'a> Lexer<'a> {
                             "await" => Token::Await,
                             "gen" => Token::Gen,
                             "yield" => Token::Yield,
+                            "match" => Token::Match,
                             "typeof" => Token::Operator(Operator::Typeof),
                             "void" => Token::Operator(Operator::Void),
                             _ => Token::Identifier(ident),
@@ -1160,6 +1165,7 @@ impl<'a> Parser<'a> {
             Some(Token::Await) if allow_keyword => Ok("await".to_string()),
             Some(Token::Gen) if allow_keyword => Ok("gen".to_string()),
             Some(Token::Yield) if allow_keyword => Ok("yield".to_string()),
+            Some(Token::Match) if allow_keyword => Ok("match".to_string()),
             Some(Token::Operator(Operator::Typeof)) if allow_keyword => Ok("typeof".to_string()),
             Some(Token::Operator(Operator::Void)) if allow_keyword => Ok("void".to_string()),
             _ => Err(Error::UnexpectedToken),
@@ -1368,6 +1374,32 @@ impl<'a> Parser<'a> {
                 }
                 quasis.push(current);
                 Ok(Node::TemplateLiteral(quasis, expressions))
+            }
+            Some(Token::Match) => {
+                let expr = self.parse_expression()?;
+                self.expect(Token::LeftBrace)?;
+                let mut arms = Vec::new();
+                while !self.eat(Token::RightBrace) {
+                    match self.lexer.peek() {
+                        Some(Token::NumberLiteralStart(..))
+                        | Some(Token::StringLiteralStart(..)) => {
+                            let test = self.parse_expression()?;
+                            self.expect(Token::Arrow)?;
+                            let consequent = if self.peek(Token::LeftBrace) {
+                                let b = self.parse_block(ParseScope::Block)?;
+                                self.eat(Token::Comma);
+                                b
+                            } else {
+                                let e = self.parse_expression()?;
+                                self.expect(Token::Comma)?;
+                                e
+                            };
+                            arms.push(Node::MatchArm(Box::new(test), Box::new(consequent)));
+                        }
+                        _ => return Err(Error::UnexpectedToken),
+                    }
+                }
+                Ok(Node::MatchExpression(Box::new(expr), arms))
             }
             _ => Err(Error::UnexpectedToken),
         }
