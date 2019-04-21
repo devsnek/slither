@@ -46,8 +46,8 @@ enum Token {
     True,
     False,
 
-    NumberLiteralStart(char),
-    StringLiteralStart(char),
+    NumberLiteral(f64),
+    StringLiteral(String),
 
     Identifier(String),
 
@@ -97,6 +97,8 @@ enum Token {
     Match,
 
     Operator(Operator),
+
+    EOF,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -248,7 +250,7 @@ enum ParseScope {
     GeneratorFunction = 0b0010_1000,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Error {
     NormalEOF,
     UnexpectedEOF,
@@ -265,254 +267,345 @@ impl IntoValue for Error {
 
 struct Lexer<'a> {
     chars: Peekable<Chars<'a>>,
-    peeked: Option<Option<Token>>,
+    peeked: Option<Result<Token, Error>>,
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(code: &'a str) -> Lexer<'a> {
+    fn new(code: &'a str) -> Lexer<'a> {
         Lexer {
-            peeked: None,
             chars: code.chars().peekable(),
+            peeked: None,
         }
     }
 
-    fn next(&mut self) -> Option<Token> {
-        match self.peeked.take() {
-            Some(v) => v,
-            None => match self.chars.next() {
-                Some(char) => match char {
-                    ' ' | '\t' | '\r' | '\n' => self.next(),
-                    '0'...'9' => Some(Token::NumberLiteralStart(char)),
-                    '"' | '\'' => Some(Token::StringLiteralStart(char)),
-                    'a'...'z' | 'A'...'Z' | '_' => {
-                        let mut ident = char.to_string();
-                        while let Some(c) = self.chars.peek() {
-                            match c {
-                                'a'...'z' | 'A'...'Z' | '0'...'9' | '_' => {
-                                    ident.push(self.chars.next().unwrap())
-                                }
-                                _ => break,
+    fn inner_next(&mut self) -> Result<Token, Error> {
+        Ok(match self.chars.next() {
+            Some(c) => match c {
+                ' ' | '\t' | '\r' | '\n' => self.next()?,
+                '0'...'9' => {
+                    let mut str = c.to_string();
+                    let mut one_dot = false;
+                    while let Some(c) = self.chars.peek() {
+                        match c {
+                            '0'...'9' => {
+                                str.push(self.chars.next().unwrap());
                             }
-                        }
-                        // UPDATE parse_identifier WHEN YOU ADD TO THIS LIST!!!!!!
-                        Some(match ident.as_ref() {
-                            "true" => Token::True,
-                            "false" => Token::False,
-                            "null" => Token::Null,
-                            "this" => Token::This,
-                            "class" => Token::Class,
-                            "extends" => Token::Extends,
-                            "function" => Token::Function,
-                            "let" => Token::Let,
-                            "const" => Token::Const,
-                            "throw" => Token::Throw,
-                            "return" => Token::Return,
-                            "try" => Token::Try,
-                            "catch" => Token::Catch,
-                            "finally" => Token::Finally,
-                            "break" => Token::Break,
-                            "continue" => Token::Continue,
-                            "if" => Token::If,
-                            "else" => Token::Else,
-                            "while" => Token::While,
-                            "for" => Token::For,
-                            "in" => Token::In,
-                            "new" => Token::New,
-                            "import" => Token::Import,
-                            "export" => Token::Export,
-                            "default" => Token::Default,
-                            "from" => Token::From,
-                            "async" => Token::Async,
-                            "await" => Token::Await,
-                            "gen" => Token::Gen,
-                            "yield" => Token::Yield,
-                            "match" => Token::Match,
-                            "typeof" => Token::Operator(Operator::Typeof),
-                            "void" => Token::Operator(Operator::Void),
-                            _ => Token::Identifier(ident),
-                        })
-                    }
-                    '{' => Some(Token::LeftBrace),
-                    '}' => Some(Token::RightBrace),
-                    '[' => Some(Token::LeftBracket),
-                    ']' => Some(Token::RightBracket),
-                    '(' => Some(Token::LeftParen),
-                    ')' => Some(Token::RightParen),
-                    ':' => Some(Token::Colon),
-                    ';' => Some(Token::Semicolon),
-                    '?' => Some(Token::Question),
-                    '.' => Some(match self.chars.peek() {
-                        Some('.') => {
-                            self.chars.next();
-                            if let Some('.') = self.chars.peek() {
-                                self.chars.next();
-                                Token::Ellipsis
-                            } else {
-                                panic!();
-                            }
-                        }
-                        _ => Token::Dot,
-                    }),
-                    ',' => Some(Token::Comma),
-                    '`' => Some(Token::BackQuote),
-                    '+' => Some(match self.chars.peek() {
-                        Some('=') => {
-                            self.chars.next();
-                            Token::Operator(Operator::AddAssign)
-                        }
-                        _ => Token::Operator(Operator::Add),
-                    }),
-                    '-' => Some(match self.chars.peek() {
-                        Some('=') => {
-                            self.chars.next();
-                            Token::Operator(Operator::SubAssign)
-                        }
-                        _ => Token::Operator(Operator::Sub),
-                    }),
-                    '*' => Some(match self.chars.peek() {
-                        Some('*') => {
-                            self.chars.next();
-                            match self.chars.peek() {
-                                Some('=') => {
-                                    self.chars.next();
-                                    Token::Operator(Operator::PowAssign)
-                                }
-                                _ => Token::Operator(Operator::Pow),
-                            }
-                        }
-                        _ => match self.chars.peek() {
-                            Some('=') => {
-                                self.chars.next();
-                                Token::Operator(Operator::MulAssign)
-                            }
-                            _ => Token::Operator(Operator::Mul),
-                        },
-                    }),
-                    '/' => match self.chars.peek() {
-                        Some('=') => {
-                            self.chars.next();
-                            Some(Token::Operator(Operator::DivAssign))
-                        }
-                        Some('*') => {
-                            loop {
-                                if self.chars.peek() == None {
-                                    return None; // Err(Error::UnexpectedEOF);
-                                }
-                                if let Some('*') = self.chars.next() {
-                                    if let Some('/') = self.chars.next() {
-                                        break;
-                                    }
-                                }
-                            }
-                            self.next()
-                        }
-                        Some('/') => {
-                            loop {
-                                if self.chars.peek() == None {
-                                    return None; // Err(Error::UnexpectedEOF);
-                                }
-                                if let Some('\n') = self.chars.next() {
+                            '.' => {
+                                if !one_dot {
+                                    one_dot = true;
+                                    str.push(self.chars.next().unwrap());
+                                } else {
                                     break;
                                 }
                             }
-                            self.next()
+                            _ => break,
                         }
-                        _ => Some(Token::Operator(Operator::Div)),
-                    },
-                    '%' => Some(match self.chars.peek() {
-                        Some('=') => {
-                            self.chars.next();
-                            Token::Operator(Operator::ModAssign)
-                        }
-                        _ => Token::Operator(Operator::Mod),
-                    }),
-                    '<' => Some(match self.chars.peek() {
-                        Some('<') => {
-                            self.chars.next();
-                            Token::Operator(Operator::LeftShift)
-                        }
-                        Some('=') => {
-                            self.chars.next();
-                            Token::Operator(Operator::LessThanOrEqual)
-                        }
-                        _ => Token::Operator(Operator::LessThan),
-                    }),
-                    '!' => Some(match self.chars.peek() {
-                        Some('=') => {
-                            self.chars.next();
-                            Token::Operator(Operator::NotEqual)
-                        }
-                        _ => Token::Operator(Operator::Not),
-                    }),
-                    '>' => Some(match self.chars.peek() {
-                        Some('>') => {
-                            self.chars.next();
-                            Token::Operator(Operator::RightShift)
-                        }
-                        Some('=') => {
-                            self.chars.next();
-                            Token::Operator(Operator::GreaterThanOrEqual)
-                        }
-                        _ => Token::Operator(Operator::GreaterThan),
-                    }),
-                    '&' => Some(match self.chars.peek() {
-                        Some('&') => {
-                            self.chars.next();
-                            Token::Operator(Operator::LogicalAND)
-                        }
-                        _ => Token::Operator(Operator::BitwiseAND),
-                    }),
-                    '|' => Some(match self.chars.peek() {
-                        Some('|') => {
-                            self.chars.next();
-                            Token::Operator(Operator::LogicalOR)
-                        }
-                        _ => Token::Operator(Operator::BitwiseOR),
-                    }),
-                    '^' => Some(Token::Operator(Operator::BitwiseXOR)),
-                    '~' => Some(Token::Operator(Operator::BitwiseNOT)),
-                    '=' => Some(match self.chars.peek() {
-                        Some('=') => {
-                            self.chars.next();
-                            Token::Operator(Operator::Equal)
-                        }
-                        Some('>') => {
-                            self.chars.next();
-                            Token::Arrow
-                        }
-                        _ => Token::Operator(Operator::Assign),
-                    }),
-                    '@' => Some(Token::At),
-                    _ => {
-                        panic!("unexpected token {}", char);
                     }
+                    match str.parse::<f64>() {
+                        Ok(n) => Token::NumberLiteral(n),
+                        Err(_) => return Err(Error::UnexpectedToken),
+                    }
+                }
+                '"' | '\'' => {
+                    let mut str = String::new();
+                    while let Some(char) = self.chars.peek() {
+                        if *char == c {
+                            self.chars.next();
+                            break;
+                        }
+                        let c = self.chars.next().unwrap();
+                        match c {
+                            '\\' => match self.chars.next().unwrap() {
+                                'n' => str.push('\n'),
+                                't' => str.push('\t'),
+                                '"' => str.push('"'),
+                                '\'' => str.push('\''),
+                                '\\' => str.push('\\'),
+                                'u' => {
+                                    if Some('{') != self.chars.next() {
+                                        return Err(Error::UnexpectedToken);
+                                    }
+                                    let mut n = String::new();
+                                    macro_rules! digit {
+                                        () => {
+                                            let next = self.chars.next();
+                                            match next {
+                                                Some('0'...'9') | Some('a'...'f')
+                                                | Some('A'...'F') => {
+                                                    n.push(next.unwrap());
+                                                }
+                                                _ => return Err(Error::UnexpectedToken),
+                                            }
+                                        };
+                                    }
+                                    digit!();
+                                    digit!();
+                                    digit!();
+                                    digit!();
+                                    match u32::from_str_radix(n.as_str(), 16) {
+                                        Ok(n) => match std::char::from_u32(n) {
+                                            Some(c) => str.push(c),
+                                            None => return Err(Error::UnexpectedToken),
+                                        },
+                                        Err(_) => return Err(Error::UnexpectedToken),
+                                    }
+                                    if Some('}') != self.chars.next() {
+                                        return Err(Error::UnexpectedToken);
+                                    }
+                                }
+                                'U' => {
+                                    if Some('{') != self.chars.next() {
+                                        return Err(Error::UnexpectedToken);
+                                    }
+                                    let mut name = String::new();
+                                    loop {
+                                        match self.chars.next() {
+                                            Some('}') => break,
+                                            None => return Err(Error::UnexpectedEOF),
+                                            Some(c) => name.push(c),
+                                        }
+                                    }
+                                    match UNICODE_NAME_MAP.get(name.as_str()) {
+                                        Some(c) => str.push(*c),
+                                        None => return Err(Error::UnexpectedToken),
+                                    };
+                                }
+                                _ => return Err(Error::UnexpectedToken),
+                            },
+                            '\r' | '\n' => return Err(Error::UnexpectedToken),
+                            c => str.push(c),
+                        }
+                    }
+                    Token::StringLiteral(str)
+                }
+                'a'...'z' | 'A'...'Z' | '_' => {
+                    let mut ident = c.to_string();
+                    while let Some(c) = self.chars.peek() {
+                        match c {
+                            'a'...'z' | 'A'...'Z' | '0'...'9' | '_' => {
+                                ident.push(self.chars.next().unwrap())
+                            }
+                            _ => break,
+                        }
+                    }
+                    // UPDATE parse_identifier WHEN YOU ADD TO THIS LIST!
+                    match ident.as_ref() {
+                        "true" => Token::True,
+                        "false" => Token::False,
+                        "null" => Token::Null,
+                        "this" => Token::This,
+                        "class" => Token::Class,
+                        "extends" => Token::Extends,
+                        "function" => Token::Function,
+                        "let" => Token::Let,
+                        "const" => Token::Const,
+                        "throw" => Token::Throw,
+                        "return" => Token::Return,
+                        "try" => Token::Try,
+                        "catch" => Token::Catch,
+                        "finally" => Token::Finally,
+                        "break" => Token::Break,
+                        "continue" => Token::Continue,
+                        "if" => Token::If,
+                        "else" => Token::Else,
+                        "while" => Token::While,
+                        "for" => Token::For,
+                        "in" => Token::In,
+                        "new" => Token::New,
+                        "import" => Token::Import,
+                        "export" => Token::Export,
+                        "default" => Token::Default,
+                        "from" => Token::From,
+                        "async" => Token::Async,
+                        "await" => Token::Await,
+                        "gen" => Token::Gen,
+                        "yield" => Token::Yield,
+                        "match" => Token::Match,
+                        "typeof" => Token::Operator(Operator::Typeof),
+                        "void" => Token::Operator(Operator::Void),
+                        _ => Token::Identifier(ident),
+                    }
+                }
+                '{' => Token::LeftBrace,
+                '}' => Token::RightBrace,
+                '[' => Token::LeftBracket,
+                ']' => Token::RightBracket,
+                '(' => Token::LeftParen,
+                ')' => Token::RightParen,
+                ':' => Token::Colon,
+                ';' => Token::Semicolon,
+                '?' => Token::Question,
+                '.' => match self.chars.peek() {
+                    Some('.') => {
+                        self.chars.next();
+                        if let Some('.') = self.chars.peek() {
+                            self.chars.next();
+                            Token::Ellipsis
+                        } else {
+                            return Err(Error::UnexpectedToken);
+                        }
+                    }
+                    _ => Token::Dot,
                 },
-                None => None,
+                ',' => Token::Comma,
+                '`' => Token::BackQuote,
+                '+' => match self.chars.peek() {
+                    Some('=') => {
+                        self.chars.next();
+                        Token::Operator(Operator::AddAssign)
+                    }
+                    _ => Token::Operator(Operator::Add),
+                },
+                '-' => match self.chars.peek() {
+                    Some('=') => {
+                        self.chars.next();
+                        Token::Operator(Operator::SubAssign)
+                    }
+                    _ => Token::Operator(Operator::Sub),
+                },
+                '*' => match self.chars.peek() {
+                    Some('*') => {
+                        self.chars.next();
+                        match self.chars.peek() {
+                            Some('=') => {
+                                self.chars.next();
+                                Token::Operator(Operator::PowAssign)
+                            }
+                            _ => Token::Operator(Operator::Pow),
+                        }
+                    }
+                    _ => match self.chars.peek() {
+                        Some('=') => {
+                            self.chars.next();
+                            Token::Operator(Operator::MulAssign)
+                        }
+                        _ => Token::Operator(Operator::Mul),
+                    },
+                },
+                '/' => match self.chars.peek() {
+                    Some('=') => {
+                        self.chars.next();
+                        Token::Operator(Operator::DivAssign)
+                    }
+                    Some('*') => {
+                        loop {
+                            if self.chars.peek() == None {
+                                return Err(Error::UnexpectedEOF);
+                            }
+                            if let Some('*') = self.chars.next() {
+                                if let Some('/') = self.chars.next() {
+                                    break;
+                                }
+                            }
+                        }
+                        self.next()?
+                    }
+                    Some('/') => {
+                        loop {
+                            if self.chars.peek() == None {
+                                return Err(Error::UnexpectedEOF);
+                            }
+                            if let Some('\n') = self.chars.next() {
+                                break;
+                            }
+                        }
+                        self.next()?
+                    }
+                    _ => Token::Operator(Operator::Div),
+                },
+                '%' => match self.chars.peek() {
+                    Some('=') => {
+                        self.chars.next();
+                        Token::Operator(Operator::ModAssign)
+                    }
+                    _ => Token::Operator(Operator::Mod),
+                },
+                '<' => match self.chars.peek() {
+                    Some('<') => {
+                        self.chars.next();
+                        Token::Operator(Operator::LeftShift)
+                    }
+                    Some('=') => {
+                        self.chars.next();
+                        Token::Operator(Operator::LessThanOrEqual)
+                    }
+                    _ => Token::Operator(Operator::LessThan),
+                },
+                '!' => match self.chars.peek() {
+                    Some('=') => {
+                        self.chars.next();
+                        Token::Operator(Operator::NotEqual)
+                    }
+                    _ => Token::Operator(Operator::Not),
+                },
+                '>' => match self.chars.peek() {
+                    Some('>') => {
+                        self.chars.next();
+                        Token::Operator(Operator::RightShift)
+                    }
+                    Some('=') => {
+                        self.chars.next();
+                        Token::Operator(Operator::GreaterThanOrEqual)
+                    }
+                    _ => Token::Operator(Operator::GreaterThan),
+                },
+                '&' => match self.chars.peek() {
+                    Some('&') => {
+                        self.chars.next();
+                        Token::Operator(Operator::LogicalAND)
+                    }
+                    _ => Token::Operator(Operator::BitwiseAND),
+                },
+                '|' => match self.chars.peek() {
+                    Some('|') => {
+                        self.chars.next();
+                        Token::Operator(Operator::LogicalOR)
+                    }
+                    _ => Token::Operator(Operator::BitwiseOR),
+                },
+                '^' => Token::Operator(Operator::BitwiseXOR),
+                '~' => Token::Operator(Operator::BitwiseNOT),
+                '=' => match self.chars.peek() {
+                    Some('=') => {
+                        self.chars.next();
+                        Token::Operator(Operator::Equal)
+                    }
+                    Some('>') => {
+                        self.chars.next();
+                        Token::Arrow
+                    }
+                    _ => Token::Operator(Operator::Assign),
+                },
+                '@' => Token::At,
+                _ => return Err(Error::UnexpectedToken),
             },
+            None => Token::EOF,
+        })
+    }
+
+    fn next(&mut self) -> Result<Token, Error> {
+        match self.peeked.take() {
+            Some(v) => v,
+            None => self.inner_next(),
         }
     }
 
-    #[inline]
-    pub fn peek(&mut self) -> Option<&Token> {
+    pub fn peek(&mut self) -> Result<&Token, Error> {
         if self.peeked.is_none() {
             self.peeked = Some(self.next());
         }
         match self.peeked {
-            Some(Some(ref value)) => Some(value),
-            Some(None) => None,
+            Some(Ok(ref value)) => Ok(value),
+            Some(Err(e)) => Err(e),
             _ => unreachable!(),
         }
     }
 
-    #[inline]
-    pub fn peek_immutable(&self) -> Option<&Token> {
-        if self.peeked.is_none() {
-            panic!();
-        }
+    pub fn peek_immutable(&self) -> Result<&Token, Error> {
         match self.peeked {
-            Some(Some(ref value)) => Some(value),
-            Some(None) => None,
-            _ => unreachable!(),
+            Some(Ok(ref value)) => Ok(value),
+            Some(Err(e)) => Err(e),
+            _ => panic!(),
         }
     }
 
@@ -535,10 +628,10 @@ macro_rules! binop_production {
     ( $name:ident, $lower:ident, [ $( $op:path ),* ] ) => {
         fn $name(&mut self) -> Result<Node, Error> {
             let mut lhs = self.$lower()?;
-            match self.lexer.peek() {
-                Some(Token::Operator(op)) if $( op == &$op )||* => {
+            match self.lexer.peek()? {
+                Token::Operator(op) if $( op == &$op )||* => {
                     let op = op.clone();
-                    self.lexer.next();
+                    self.lexer.next()?;
                     let rhs = self.$name()?;
                     lhs = Node::BinaryExpression(op, Box::new(lhs), Box::new(rhs));
                 }
@@ -597,13 +690,13 @@ impl<'a> Parser<'a> {
     }
 
     fn peek(&mut self, token: Token) -> bool {
-        self.lexer.peek() == Some(&token)
+        self.lexer.peek() == Ok(&token)
     }
 
     #[inline]
     fn eat(&mut self, token: Token) -> bool {
         if self.peek(token) {
-            self.lexer.next();
+            self.lexer.next().unwrap();
             true
         } else {
             false
@@ -611,54 +704,52 @@ impl<'a> Parser<'a> {
     }
 
     fn expect(&mut self, token: Token) -> Result<Token, Error> {
-        let t = self.lexer.next();
-        match t {
-            Some(ref t) if t == &token => Ok(token),
-            None => Err(Error::UnexpectedEOF),
+        match self.lexer.next()? {
+            ref t if t == &token => Ok(token),
             _ => Err(Error::UnexpectedToken),
         }
     }
 
     fn parse_statement(&mut self) -> Result<Node, Error> {
-        self.lexer.peek();
-        match self.lexer.peek_immutable() {
-            None => Err(Error::NormalEOF),
-            Some(Token::LeftBrace) => self.parse_block(ParseScope::Block),
-            Some(Token::Let) | Some(Token::Const) => self.parse_lexical_declaration(),
-            Some(Token::Function) => {
-                self.lexer.next();
+        self.lexer.peek()?;
+        match self.lexer.peek_immutable()? {
+            Token::EOF => Err(Error::NormalEOF),
+            Token::LeftBrace => self.parse_block(ParseScope::Block),
+            Token::Let | Token::Const => self.parse_lexical_declaration(),
+            Token::Function => {
+                self.lexer.next()?;
                 self.parse_function(false, FunctionKind::Normal)
             }
-            Some(Token::Async) => {
-                self.lexer.next();
+            Token::Async => {
+                self.lexer.next()?;
                 self.expect(Token::Function)?;
                 self.parse_function(false, FunctionKind::Async)
             }
-            Some(Token::Gen) => {
-                self.lexer.next();
+            Token::Gen => {
+                self.lexer.next()?;
                 self.expect(Token::Function)?;
                 self.parse_function(false, FunctionKind::Generator)
             }
-            Some(Token::Class) => self.parse_class(false),
-            Some(Token::If) => self.parse_if_statement(),
-            Some(Token::While) => self.parse_while(),
-            Some(Token::For) => self.parse_for(),
-            Some(Token::Continue) if self.scope(ParseScope::Loop) => {
-                self.lexer.next();
+            Token::Class => self.parse_class(false),
+            Token::If => self.parse_if_statement(),
+            Token::While => self.parse_while(),
+            Token::For => self.parse_for(),
+            Token::Continue if self.scope(ParseScope::Loop) => {
+                self.lexer.next()?;
                 self.expect(Token::Semicolon)?;
                 Ok(Node::ContinueStatement)
             }
-            Some(Token::Break) if self.scope(ParseScope::Loop) => {
-                self.lexer.next();
+            Token::Break if self.scope(ParseScope::Loop) => {
+                self.lexer.next()?;
                 self.expect(Token::Semicolon)?;
                 Ok(Node::BreakStatement)
             }
-            Some(Token::Return) if self.scope(ParseScope::Function) => self.parse_return(),
-            Some(Token::Throw) => self.parse_throw(),
-            Some(Token::Try) => self.parse_try(),
-            Some(Token::At) => self.parse_decorators(),
-            Some(Token::Import) if self.scope(ParseScope::TopLevel) => self.parse_import(),
-            Some(Token::Export) if self.scope(ParseScope::TopLevel) => self.parse_export(),
+            Token::Return if self.scope(ParseScope::Function) => self.parse_return(),
+            Token::Throw => self.parse_throw(),
+            Token::Try => self.parse_try(),
+            Token::At => self.parse_decorators(),
+            Token::Import if self.scope(ParseScope::TopLevel) => self.parse_import(),
+            Token::Export if self.scope(ParseScope::TopLevel) => self.parse_export(),
             _ => {
                 let r = self.parse_expression()?;
                 self.expect(Token::Semicolon)?;
@@ -709,7 +800,7 @@ impl<'a> Parser<'a> {
 
     fn parse_function(&mut self, expression: bool, kind: FunctionKind) -> Result<Node, Error> {
         let name = if expression {
-            if let Some(Token::Identifier(..)) = self.lexer.peek() {
+            if let Ok(Token::Identifier(..)) = self.lexer.peek() {
                 Some(self.parse_identifier(false)?)
             } else {
                 None
@@ -739,7 +830,7 @@ impl<'a> Parser<'a> {
         let test = self.parse_expression()?;
         let consequent = self.parse_block(ParseScope::Block)?;
         if self.eat(Token::Else) {
-            let alternative = if self.lexer.peek() == Some(&Token::If) {
+            let alternative = if self.lexer.peek() == Ok(&Token::If) {
                 self.parse_if_statement()?
             } else {
                 self.parse_block(ParseScope::Block)?
@@ -817,7 +908,7 @@ impl<'a> Parser<'a> {
             ))
         } else {
             self.expect(Token::Catch)?;
-            let binding = if let Some(Token::Identifier(..)) = self.lexer.peek() {
+            let binding = if let Ok(Token::Identifier(..)) = self.lexer.peek() {
                 Some(self.parse_identifier(false)?)
             } else {
                 None
@@ -867,28 +958,29 @@ impl<'a> Parser<'a> {
 
     fn parse_import(&mut self) -> Result<Node, Error> {
         self.expect(Token::Import)?;
-        self.lexer.peek();
-        match self.lexer.peek_immutable() {
+        self.lexer.peek()?;
+        match self.lexer.peek_immutable()? {
             // import "specifier";
-            Some(Token::StringLiteralStart(c)) => {
-                let specifier = self.parse_string_literal(*c)?;
+            Token::StringLiteral(s) => {
+                let specifier = s.to_string();
+                self.lexer.next()?;
                 self.expect(Token::Semicolon)?;
                 Ok(Node::ImportDeclaration(specifier))
             }
 
             // import { x, y } from "specifier";
             // import { x, y } from standard:xy;
-            Some(Token::LeftBrace) => {
-                self.lexer.next();
+            Token::LeftBrace => {
+                self.lexer.next()?;
                 let bindings = self.parse_identifier_list(Token::RightBrace)?;
                 self.expect(Token::From)?;
-                match self.lexer.next() {
-                    Some(Token::StringLiteralStart(c)) => {
-                        let specifier = self.parse_string_literal(c)?;
+                match self.lexer.next()? {
+                    Token::StringLiteral(c) => {
+                        let specifier = c;
                         self.expect(Token::Semicolon)?;
                         Ok(Node::ImportNamedDeclaration(specifier, bindings))
                     }
-                    Some(Token::Identifier(ref s)) if s == "standard" => {
+                    Token::Identifier(ref s) if s == "standard" => {
                         self.expect(Token::Colon)?;
                         let namespace = self.parse_identifier(true)?;
                         self.expect(Token::Semicolon)?;
@@ -899,11 +991,11 @@ impl<'a> Parser<'a> {
             }
 
             // import x from "specifier";
-            Some(Token::Identifier(..)) => {
+            Token::Identifier(..) => {
                 let binding = self.parse_identifier(false)?;
                 self.expect(Token::From)?;
-                let specifier = match self.lexer.next() {
-                    Some(Token::StringLiteralStart(c)) => self.parse_string_literal(c)?,
+                let specifier = match self.lexer.next()? {
+                    Token::StringLiteral(s) => s,
                     _ => unreachable!(),
                 };
                 self.expect(Token::Semicolon)?;
@@ -916,10 +1008,10 @@ impl<'a> Parser<'a> {
 
     fn parse_export(&mut self) -> Result<Node, Error> {
         self.expect(Token::Export)?;
-        let decl = match self.lexer.peek() {
-            Some(Token::Let) | Some(Token::Const) => self.parse_lexical_declaration(),
-            Some(Token::Function) => {
-                self.lexer.next();
+        let decl = match self.lexer.peek()? {
+            Token::Let | Token::Const => self.parse_lexical_declaration(),
+            Token::Function => {
+                self.lexer.next()?;
                 self.parse_function(false, FunctionKind::Normal)
             }
             _ => Err(Error::UnexpectedToken),
@@ -933,13 +1025,13 @@ impl<'a> Parser<'a> {
 
     fn parse_assignment_expression(&mut self) -> Result<Node, Error> {
         if self.eat(Token::Yield) && self.scope(ParseScope::GeneratorFunction) {
-            match self.lexer.peek() {
-                Some(Token::Semicolon)
-                | Some(Token::RightBrace)
-                | Some(Token::RightBracket)
-                | Some(Token::RightParen)
-                | Some(Token::Colon)
-                | Some(Token::Comma) => {
+            match self.lexer.peek()? {
+                Token::Semicolon
+                | Token::RightBrace
+                | Token::RightBracket
+                | Token::RightParen
+                | Token::Colon
+                | Token::Comma => {
                     return Ok(Node::YieldExpression(None));
                 }
                 _ => {
@@ -952,22 +1044,22 @@ impl<'a> Parser<'a> {
 
         macro_rules! op_assign {
             ($op:expr) => {{
-                self.lexer.next();
+                self.lexer.next()?;
                 self.check_assignment_target(&lhs)?;
                 let rhs = self.parse_assignment_expression()?;
                 lhs = Node::BinaryExpression($op, Box::new(lhs), Box::new(rhs));
             }};
         }
 
-        self.lexer.peek();
-        match self.lexer.peek_immutable() {
-            Some(Token::Operator(Operator::Assign)) => op_assign!(Operator::Assign),
-            Some(Token::Operator(Operator::AddAssign)) => op_assign!(Operator::AddAssign),
-            Some(Token::Operator(Operator::SubAssign)) => op_assign!(Operator::SubAssign),
-            Some(Token::Operator(Operator::MulAssign)) => op_assign!(Operator::MulAssign),
-            Some(Token::Operator(Operator::PowAssign)) => op_assign!(Operator::PowAssign),
-            Some(Token::Operator(Operator::DivAssign)) => op_assign!(Operator::DivAssign),
-            Some(Token::Operator(Operator::ModAssign)) => op_assign!(Operator::ModAssign),
+        self.lexer.peek()?;
+        match self.lexer.peek_immutable()? {
+            Token::Operator(Operator::Assign) => op_assign!(Operator::Assign),
+            Token::Operator(Operator::AddAssign) => op_assign!(Operator::AddAssign),
+            Token::Operator(Operator::SubAssign) => op_assign!(Operator::SubAssign),
+            Token::Operator(Operator::MulAssign) => op_assign!(Operator::MulAssign),
+            Token::Operator(Operator::PowAssign) => op_assign!(Operator::PowAssign),
+            Token::Operator(Operator::DivAssign) => op_assign!(Operator::DivAssign),
+            Token::Operator(Operator::ModAssign) => op_assign!(Operator::ModAssign),
             _ => {}
         }
 
@@ -1070,40 +1162,40 @@ impl<'a> Parser<'a> {
     );
 
     fn parse_unary_expression(&mut self) -> Result<Node, Error> {
-        self.lexer.peek();
-        match self.lexer.peek_immutable() {
-            Some(Token::Operator(Operator::Add)) => {
-                self.lexer.next();
+        self.lexer.peek()?;
+        match self.lexer.peek_immutable()? {
+            Token::Operator(Operator::Add) => {
+                self.lexer.next()?;
                 let expr = self.parse_unary_expression()?;
                 Ok(Node::UnaryExpression(Operator::Add, Box::new(expr)))
             }
-            Some(Token::Operator(Operator::Sub)) => {
-                self.lexer.next();
+            Token::Operator(Operator::Sub) => {
+                self.lexer.next()?;
                 let expr = self.parse_unary_expression()?;
                 Ok(Node::UnaryExpression(Operator::Sub, Box::new(expr)))
             }
-            Some(Token::Operator(Operator::BitwiseNOT)) => {
-                self.lexer.next();
+            Token::Operator(Operator::BitwiseNOT) => {
+                self.lexer.next()?;
                 let expr = self.parse_unary_expression()?;
                 Ok(Node::UnaryExpression(Operator::BitwiseNOT, Box::new(expr)))
             }
-            Some(Token::Operator(Operator::Not)) => {
-                self.lexer.next();
+            Token::Operator(Operator::Not) => {
+                self.lexer.next()?;
                 let expr = self.parse_unary_expression()?;
                 Ok(Node::UnaryExpression(Operator::Not, Box::new(expr)))
             }
-            Some(Token::Operator(Operator::Typeof)) => {
-                self.lexer.next();
+            Token::Operator(Operator::Typeof) => {
+                self.lexer.next()?;
                 let expr = self.parse_unary_expression()?;
                 Ok(Node::UnaryExpression(Operator::Typeof, Box::new(expr)))
             }
-            Some(Token::Operator(Operator::Void)) => {
-                self.lexer.next();
+            Token::Operator(Operator::Void) => {
+                self.lexer.next()?;
                 let expr = self.parse_unary_expression()?;
                 Ok(Node::UnaryExpression(Operator::Void, Box::new(expr)))
             }
-            Some(Token::Await) if self.scope(ParseScope::AsyncFunction) => {
-                self.lexer.next();
+            Token::Await if self.scope(ParseScope::AsyncFunction) => {
+                self.lexer.next()?;
                 let expr = self.parse_unary_expression()?;
                 Ok(Node::AwaitExpression(Box::new(expr)))
             }
@@ -1131,86 +1223,60 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_identifier(&mut self, allow_keyword: bool) -> Result<String, Error> {
-        match self.lexer.next() {
-            Some(Token::Identifier(name)) => Ok(name),
-            Some(Token::Throw) if allow_keyword => Ok("throw".to_string()),
-            Some(Token::Catch) if allow_keyword => Ok("catch".to_string()),
-            Some(Token::True) if allow_keyword => Ok("true".to_string()),
-            Some(Token::False) if allow_keyword => Ok("false".to_string()),
-            Some(Token::Null) if allow_keyword => Ok("null".to_string()),
-            Some(Token::This) if allow_keyword => Ok("this".to_string()),
-            Some(Token::Class) if allow_keyword => Ok("class".to_string()),
-            Some(Token::Extends) if allow_keyword => Ok("extends".to_string()),
-            Some(Token::Finally) if allow_keyword => Ok("finally".to_string()),
-            Some(Token::Function) if allow_keyword => Ok("function".to_string()),
-            Some(Token::Let) if allow_keyword => Ok("let".to_string()),
-            Some(Token::Const) if allow_keyword => Ok("const".to_string()),
-            Some(Token::Throw) if allow_keyword => Ok("throw".to_string()),
-            Some(Token::Return) if allow_keyword => Ok("return".to_string()),
-            Some(Token::While) if allow_keyword => Ok("while".to_string()),
-            Some(Token::For) if allow_keyword => Ok("for".to_string()),
-            Some(Token::In) if allow_keyword => Ok("in".to_string()),
-            Some(Token::Break) if allow_keyword => Ok("break".to_string()),
-            Some(Token::Continue) if allow_keyword => Ok("continue".to_string()),
-            Some(Token::Try) if allow_keyword => Ok("try".to_string()),
-            Some(Token::Catch) if allow_keyword => Ok("catch".to_string()),
-            Some(Token::If) if allow_keyword => Ok("if".to_string()),
-            Some(Token::Else) if allow_keyword => Ok("else".to_string()),
-            Some(Token::New) if allow_keyword => Ok("new".to_string()),
-            Some(Token::Import) if allow_keyword => Ok("import".to_string()),
-            Some(Token::Export) if allow_keyword => Ok("export".to_string()),
-            Some(Token::Default) if allow_keyword => Ok("default".to_string()),
-            Some(Token::From) if allow_keyword => Ok("from".to_string()),
-            Some(Token::Async) if allow_keyword => Ok("async".to_string()),
-            Some(Token::Await) if allow_keyword => Ok("await".to_string()),
-            Some(Token::Gen) if allow_keyword => Ok("gen".to_string()),
-            Some(Token::Yield) if allow_keyword => Ok("yield".to_string()),
-            Some(Token::Match) if allow_keyword => Ok("match".to_string()),
-            Some(Token::Operator(Operator::Typeof)) if allow_keyword => Ok("typeof".to_string()),
-            Some(Token::Operator(Operator::Void)) if allow_keyword => Ok("void".to_string()),
+        match self.lexer.next()? {
+            Token::Identifier(name) => Ok(name),
+            Token::Throw if allow_keyword => Ok("throw".to_string()),
+            Token::Catch if allow_keyword => Ok("catch".to_string()),
+            Token::True if allow_keyword => Ok("true".to_string()),
+            Token::False if allow_keyword => Ok("false".to_string()),
+            Token::Null if allow_keyword => Ok("null".to_string()),
+            Token::This if allow_keyword => Ok("this".to_string()),
+            Token::Class if allow_keyword => Ok("class".to_string()),
+            Token::Extends if allow_keyword => Ok("extends".to_string()),
+            Token::Finally if allow_keyword => Ok("finally".to_string()),
+            Token::Function if allow_keyword => Ok("function".to_string()),
+            Token::Let if allow_keyword => Ok("let".to_string()),
+            Token::Const if allow_keyword => Ok("const".to_string()),
+            Token::Throw if allow_keyword => Ok("throw".to_string()),
+            Token::Return if allow_keyword => Ok("return".to_string()),
+            Token::While if allow_keyword => Ok("while".to_string()),
+            Token::For if allow_keyword => Ok("for".to_string()),
+            Token::In if allow_keyword => Ok("in".to_string()),
+            Token::Break if allow_keyword => Ok("break".to_string()),
+            Token::Continue if allow_keyword => Ok("continue".to_string()),
+            Token::Try if allow_keyword => Ok("try".to_string()),
+            Token::Catch if allow_keyword => Ok("catch".to_string()),
+            Token::If if allow_keyword => Ok("if".to_string()),
+            Token::Else if allow_keyword => Ok("else".to_string()),
+            Token::New if allow_keyword => Ok("new".to_string()),
+            Token::Import if allow_keyword => Ok("import".to_string()),
+            Token::Export if allow_keyword => Ok("export".to_string()),
+            Token::Default if allow_keyword => Ok("default".to_string()),
+            Token::From if allow_keyword => Ok("from".to_string()),
+            Token::Async if allow_keyword => Ok("async".to_string()),
+            Token::Await if allow_keyword => Ok("await".to_string()),
+            Token::Gen if allow_keyword => Ok("gen".to_string()),
+            Token::Yield if allow_keyword => Ok("yield".to_string()),
+            Token::Match if allow_keyword => Ok("match".to_string()),
+            Token::Operator(Operator::Typeof) if allow_keyword => Ok("typeof".to_string()),
+            Token::Operator(Operator::Void) if allow_keyword => Ok("void".to_string()),
             _ => Err(Error::UnexpectedToken),
         }
     }
 
     fn parse_primary_expression(&mut self) -> Result<Node, Error> {
-        let token = self.lexer.next();
+        let token = self.lexer.next()?;
         match token {
-            Some(Token::Null) => Ok(Node::NullLiteral),
-            Some(Token::True) => Ok(Node::TrueLiteral),
-            Some(Token::False) => Ok(Node::FalseLiteral),
-            Some(Token::StringLiteralStart(char)) => {
-                let str = self.parse_string_literal(char)?;
-                Ok(Node::StringLiteral(str))
-            }
-            Some(Token::NumberLiteralStart(c)) => {
-                let mut str = c.to_string();
-                let mut one_dot = false;
-                while let Some(c) = self.lexer.chars.peek() {
-                    match c {
-                        '0'...'9' => {
-                            str.push(self.lexer.chars.next().unwrap());
-                        }
-                        '.' => {
-                            if !one_dot {
-                                one_dot = true;
-                                str.push(self.lexer.chars.next().unwrap());
-                            } else {
-                                break;
-                            }
-                        }
-                        _ => break,
-                    }
-                }
-                match str.parse::<f64>() {
-                    Ok(n) => Ok(Node::NumberLiteral(n)),
-                    Err(_) => Err(Error::UnexpectedToken),
-                }
-            }
-            Some(Token::Colon) => {
+            Token::Null => Ok(Node::NullLiteral),
+            Token::True => Ok(Node::TrueLiteral),
+            Token::False => Ok(Node::FalseLiteral),
+            Token::StringLiteral(s) => Ok(Node::StringLiteral(s)),
+            Token::NumberLiteral(n) => Ok(Node::NumberLiteral(n)),
+            Token::Colon => {
                 let name = self.parse_identifier(false)?;
                 Ok(Node::SymbolLiteral(name))
             }
-            Some(Token::Operator(Operator::Div)) => {
+            Token::Operator(Operator::Div) => {
                 let mut pattern = String::new();
                 loop {
                     match self.lexer.chars.next() {
@@ -1227,17 +1293,17 @@ impl<'a> Parser<'a> {
                 }
                 Ok(Node::RegexLiteral(pattern))
             }
-            Some(Token::This) => Ok(Node::ThisExpression),
-            Some(Token::New) => {
+            Token::This => Ok(Node::ThisExpression),
+            Token::New => {
                 let expr = self.parse_left_hand_side_expression()?;
                 Ok(Node::NewExpression(Box::new(expr)))
             }
-            Some(Token::Identifier(i)) => Ok(Node::Identifier(i)),
-            Some(Token::LeftBracket) => {
+            Token::Identifier(i) => Ok(Node::Identifier(i)),
+            Token::LeftBracket => {
                 let (exprs, ..) = self.parse_expression_list(Token::RightBracket)?;
                 Ok(Node::ArrayLiteral(exprs))
             }
-            Some(Token::LeftBrace) => {
+            Token::LeftBrace => {
                 let mut fields = Vec::new();
                 let mut first = true;
                 while !self.eat(Token::RightBrace) {
@@ -1266,7 +1332,7 @@ impl<'a> Parser<'a> {
                 }
                 Ok(Node::ObjectLiteral(fields))
             }
-            Some(Token::LeftParen) => {
+            Token::LeftParen => {
                 let (mut list, trailing) = self.parse_expression_list(Token::RightParen)?;
                 if self.eat(Token::Arrow) {
                     // ( ... ) =>
@@ -1282,14 +1348,14 @@ impl<'a> Parser<'a> {
                     Ok(Node::TupleLiteral(list))
                 }
             }
-            Some(Token::Async) => {
+            Token::Async => {
                 self.expect(Token::LeftParen)?;
                 let list = self.parse_parameters(Token::RightParen)?;
                 self.expect(Token::Arrow)?;
                 self.parse_arrow_function(FunctionKind::Async, list)
             }
-            Some(Token::Class) => self.parse_class(true),
-            Some(Token::BackQuote) => {
+            Token::Class => self.parse_class(true),
+            Token::BackQuote => {
                 let mut quasis = Vec::new();
                 let mut expressions = Vec::new();
                 let mut current = String::new();
@@ -1375,14 +1441,13 @@ impl<'a> Parser<'a> {
                 quasis.push(current);
                 Ok(Node::TemplateLiteral(quasis, expressions))
             }
-            Some(Token::Match) => {
+            Token::Match => {
                 let expr = self.parse_expression()?;
                 self.expect(Token::LeftBrace)?;
                 let mut arms = Vec::new();
                 while !self.eat(Token::RightBrace) {
-                    match self.lexer.peek() {
-                        Some(Token::NumberLiteralStart(..))
-                        | Some(Token::StringLiteralStart(..)) => {
+                    match self.lexer.peek()? {
+                        Token::NumberLiteral(..) | Token::StringLiteral(..) => {
                             let test = self.parse_expression()?;
                             self.expect(Token::Arrow)?;
                             let consequent = if self.peek(Token::LeftBrace) {
@@ -1403,80 +1468,6 @@ impl<'a> Parser<'a> {
             }
             _ => Err(Error::UnexpectedToken),
         }
-    }
-
-    fn parse_string_literal(&mut self, char: char) -> Result<String, Error> {
-        let mut str = String::new();
-        while let Some(c) = self.lexer.chars.peek() {
-            if c == &char {
-                self.lexer.chars.next();
-                break;
-            }
-            let c = self.lexer.chars.next().unwrap();
-            match c {
-                '\\' => match self.lexer.chars.next().unwrap() {
-                    'n' => str.push('\n'),
-                    't' => str.push('\t'),
-                    '"' => str.push('"'),
-                    '\'' => str.push('\''),
-                    '\\' => str.push('\\'),
-                    'u' => {
-                        if Some('{') != self.lexer.chars.next() {
-                            return Err(Error::UnexpectedToken);
-                        }
-                        let mut n = String::new();
-                        macro_rules! digit {
-                            () => {
-                                let next = self.lexer.chars.next();
-                                match next {
-                                    Some('0'...'9') | Some('a'...'f') | Some('A'...'F') => {
-                                        n.push(next.unwrap());
-                                    }
-                                    _ => return Err(Error::UnexpectedToken),
-                                }
-                            };
-                        }
-                        digit!();
-                        digit!();
-                        digit!();
-                        digit!();
-                        match u32::from_str_radix(n.as_str(), 16) {
-                            Ok(n) => match std::char::from_u32(n) {
-                                Some(c) => str.push(c),
-                                None => return Err(Error::UnexpectedToken),
-                            },
-                            Err(_) => return Err(Error::UnexpectedToken),
-                        }
-                        if Some('}') != self.lexer.chars.next() {
-                            return Err(Error::UnexpectedToken);
-                        }
-                    }
-                    'U' => {
-                        if Some('{') != self.lexer.chars.next() {
-                            return Err(Error::UnexpectedToken);
-                        }
-                        let mut name = String::new();
-                        loop {
-                            match self.lexer.chars.next() {
-                                Some('}') => break,
-                                None => return Err(Error::UnexpectedEOF),
-                                Some(c) => name.push(c),
-                            }
-                        }
-                        match UNICODE_NAME_MAP.get(name.as_str()) {
-                            Some(c) => str.push(*c),
-                            None => return Err(Error::UnexpectedToken),
-                        };
-                    }
-                    _ => return Err(Error::UnexpectedToken),
-                },
-                '\r' | '\n' => {
-                    panic!("unexpected end of string");
-                }
-                c => str.push(c),
-            }
-        }
-        Ok(str)
     }
 
     fn parse_class(&mut self, expression: bool) -> Result<Node, Error> {
@@ -1602,8 +1593,8 @@ impl<'a> Parser<'a> {
                 }
             }
             let ident = self.parse_identifier(false)?;
-            if self.lexer.peek() == Some(&Token::Operator(Operator::Assign)) {
-                self.lexer.next();
+            if self.lexer.peek()? == &Token::Operator(Operator::Assign) {
+                self.lexer.next()?;
                 let init = self.parse_expression()?;
                 parameters.push(Node::Initializer(
                     Box::new(Node::Identifier(ident)),

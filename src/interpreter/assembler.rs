@@ -335,6 +335,12 @@ impl Assembler {
     }
 
     fn visit_while(&mut self, test: &Node, body: &Node) {
+        let rscope = RegisterScope::new(self);
+        let result = rscope.register();
+
+        self.visit_null();
+        self.store_accumulator_in_register(&result);
+
         let mut head = self.label();
         let mut end = self.label();
         self.mark(&mut head);
@@ -345,11 +351,12 @@ impl Assembler {
         let pcl = self.continue_label;
         self.continue_label = Some(&mut head as *mut Label);
         self.visit(body);
+        self.store_accumulator_in_register(&result);
         self.break_label = pbl;
         self.continue_label = pcl;
         self.jump(&mut head);
         self.mark(&mut end);
-        self.load_null();
+        self.load_accumulator_with_register(&result);
     }
 
     fn visit_for(&mut self, r#async: bool, binding: &str, target: &Node, body: &Node) {
@@ -374,6 +381,10 @@ impl Assembler {
         let mut end = self.label();
 
         let rscope = RegisterScope::new(self);
+        let body_result = rscope.register();
+
+        self.load_null();
+        self.store_accumulator_in_register(&body_result);
 
         let iterator = rscope.register();
         self.visit(target);
@@ -415,6 +426,7 @@ impl Assembler {
             for stmt in stmts {
                 self.visit(stmt);
             }
+            self.store_accumulator_in_register(&body_result);
             self.break_label = pbl;
             self.continue_label = pcl;
         } else {
@@ -425,7 +437,7 @@ impl Assembler {
         self.jump(&mut head);
 
         self.mark(&mut end);
-        self.load_null();
+        self.load_accumulator_with_register(&body_result);
     }
 
     fn visit_expression_statement(&mut self, expr: &Node) {
@@ -935,8 +947,6 @@ impl Assembler {
         if let Some(finallyc) = finallyc {
             self.visit(finallyc);
         }
-
-        self.load_null();
     }
 
     fn visit_match(&mut self, expr: &Node, arms: &[Node]) {
