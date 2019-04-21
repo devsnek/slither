@@ -162,7 +162,9 @@ impl Assembler {
             Node::ImportDeclaration(..)
             | Node::ImportNamedDeclaration(..)
             | Node::ImportDefaultDeclaration(..)
-            | Node::ImportStandardDeclaration(..) => {}
+            | Node::ImportStandardDeclaration(..) => {
+                self.load_null();
+            }
             Node::ExportDeclaration(decl) => self.visit_export(decl),
             Node::Initializer(..) => unreachable!(),
             Node::MatchArm(..) => unreachable!(),
