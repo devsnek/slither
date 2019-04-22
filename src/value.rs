@@ -598,10 +598,12 @@ impl Value {
         Ok(o)
     }
 
-    pub fn from_s<T>(agent: &Agent, v: &T) -> Value
-        where T: ?Sized + serde::Serialize {
-            crate::serde_slither::serialize(agent, v).unwrap()
-        }
+    pub fn from_rust<T>(agent: &Agent, v: &T) -> Value
+    where
+        T: ?Sized + serde::Serialize,
+    {
+        crate::serde::serialize(agent, v).unwrap()
+    }
 }
 
 impl Value {

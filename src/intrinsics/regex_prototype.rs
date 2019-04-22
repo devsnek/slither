@@ -8,35 +8,35 @@ fn match_(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value
         Value::Object(o) => {
             if let ObjectKind::Regex(re) = &o.kind {
                 let mut args = args;
-                match args.pop().unwrap_or(Value::Null) {
-                    Value::String(s) => match re.captures(s.as_str()) {
-                        Some(captures) => {
-                            let o = Value::new_array(agent);
-                            let mut i = 0;
-                            for name in re.capture_names() {
-                                match name {
-                                    Some(s) => {
-                                        o.set(
-                                            agent,
-                                            ObjectKey::from(s),
-                                            Value::from(captures.name(s).unwrap().as_str()),
-                                        )?;
-                                    }
-                                    None => {
-                                        o.set(
-                                            agent,
-                                            ObjectKey::from(i),
-                                            Value::from(captures.get(i).unwrap().as_str()),
-                                        )?;
-                                        i += 1;
-                                    }
+                if let Some(Value::String(s)) = args.pop() {
+                    if let Some(captures) = re.captures(s.as_str()) {
+                        let o = Value::new_array(agent);
+                        let mut i = 0;
+                        for name in re.capture_names() {
+                            match name {
+                                Some(s) => {
+                                    o.set(
+                                        agent,
+                                        ObjectKey::from(s),
+                                        Value::from(captures.name(s).unwrap().as_str()),
+                                    )?;
+                                }
+                                None => {
+                                    o.set(
+                                        agent,
+                                        ObjectKey::from(i),
+                                        Value::from(captures.get(i).unwrap().as_str()),
+                                    )?;
+                                    i += 1;
                                 }
                             }
-                            Ok(o)
                         }
-                        None => Ok(Value::Null),
-                    },
-                    _ => Err(Value::new_error(agent, "input must be a string")),
+                        Ok(o)
+                    } else {
+                        Ok(Value::Null)
+                    }
+                } else {
+                    Err(Value::new_error(agent, "input must be a string"))
                 }
             } else {
                 Err(Value::new_error(agent, "invalid receiver"))

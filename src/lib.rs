@@ -54,9 +54,9 @@ mod linked_list;
 mod module;
 mod num_util;
 mod parser;
+mod serde;
 mod sort;
 mod value;
-mod serde_slither;
 
 pub trait IntoValue: Sized {
     fn into_value(&self, _: &agent::Agent) -> value::Value;

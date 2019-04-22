@@ -1,5 +1,5 @@
-use crate::{Agent, Value};
 use crate::value::ObjectKey;
+use crate::{Agent, Value};
 
 #[derive(Debug)]
 pub struct Error;
@@ -11,9 +11,11 @@ impl std::fmt::Display for Error {
 impl std::error::Error for Error {}
 impl serde::ser::Error for Error {
     fn custom<T>(_msg: T) -> Error
-        where T: std::fmt::Display {
-            Error
-        }
+    where
+        T: std::fmt::Display,
+    {
+        Error
+    }
 }
 
 type SerializerResult = Result<Value, Error>;
@@ -23,9 +25,11 @@ pub struct Serializer<'a> {
 }
 
 pub fn serialize<T>(agent: &Agent, v: &T) -> SerializerResult
-    where T: ?Sized + serde::Serialize {
-        v.serialize(Serializer { agent })
-    }
+where
+    T: ?Sized + serde::Serialize,
+{
+    v.serialize(Serializer { agent })
+}
 
 impl<'a> serde::Serializer for Serializer<'a> {
     type Ok = Value;
@@ -34,10 +38,10 @@ impl<'a> serde::Serializer for Serializer<'a> {
     type SerializeSeq = SequenceSerializer<'a>;
     type SerializeTuple = TupleSerializer<'a>;
     type SerializeTupleStruct = Self::SerializeTuple;
-    type SerializeTupleVariant = Self;
+    type SerializeTupleVariant = Self::SerializeTuple;
     type SerializeMap = MapSerializer<'a>;
     type SerializeStruct = Self::SerializeMap;
-    type SerializeStructVariant = Self;
+    type SerializeStructVariant = Self::SerializeMap;
 
     fn serialize_bool(self, v: bool) -> SerializerResult {
         Ok(Value::from(v))
@@ -130,33 +134,24 @@ impl<'a> serde::Serializer for Serializer<'a> {
 
     // As is done here, serializers are encouraged to treat newtype structs as
     // insignificant wrappers around the data they contain.
-    fn serialize_newtype_struct<T>(
-        self,
-        _name: &'static str,
-        value: &T,
-    ) -> SerializerResult
+    fn serialize_newtype_struct<T>(self, _name: &'static str, value: &T) -> SerializerResult
     where
         T: ?Sized + serde::Serialize,
     {
         value.serialize(self)
     }
 
-    // Note that newtype variant (and all of the other variant serialization
-    // methods) refer exclusively to the "externally tagged" enum
-    // representation.
-    //
-    // Serialize this to JSON in externally tagged form as `{ NAME: VALUE }`.
     fn serialize_newtype_variant<T>(
         self,
         _name: &'static str,
         _variant_index: u32,
         _variant: &'static str,
-        _value: &T,
+        value: &T,
     ) -> SerializerResult
     where
         T: ?Sized + serde::Serialize,
     {
-        panic!()
+        serialize(self.agent, value)
     }
 
     fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq, Error> {
@@ -176,19 +171,16 @@ impl<'a> serde::Serializer for Serializer<'a> {
         self.serialize_tuple(len)
     }
 
-    // Tuple variants are represented in JSON as `{ NAME: [DATA...] }`. Again
-    // this method is only responsible for the externally tagged representation.
     fn serialize_tuple_variant(
         self,
         _name: &'static str,
         _variant_index: u32,
         _variant: &'static str,
-        _len: usize,
+        len: usize,
     ) -> Result<Self::SerializeTupleVariant, Error> {
-        panic!()
+        self.serialize_tuple(len)
     }
 
-    // Maps are represented in JSON as `{ K: V, K: V, ... }`.
     fn serialize_map(self, len: Option<usize>) -> Result<Self::SerializeMap, Error> {
         Ok(Self::SerializeMap::new(self, len))
     }
@@ -201,22 +193,20 @@ impl<'a> serde::Serializer for Serializer<'a> {
         self.serialize_map(Some(len))
     }
 
-    // Struct variants are represented in JSON as `{ NAME: { K: V, ... } }`.
-    // This is the externally tagged representation.
     fn serialize_struct_variant(
         self,
-        _name: &'static str,
+        name: &'static str,
         _variant_index: u32,
         _variant: &'static str,
-        _len: usize,
+        len: usize,
     ) -> Result<Self::SerializeStructVariant, Error> {
-        panic!()
+        self.serialize_struct(name, len)
     }
 }
 
 pub struct SequenceSerializer<'a> {
     agent: &'a Agent,
-    values: Vec<Value>
+    values: Vec<Value>,
 }
 
 impl<'a> SequenceSerializer<'a> {
@@ -294,6 +284,22 @@ impl<'a> serde::ser::SerializeTupleStruct for TupleSerializer<'a> {
     }
 }
 
+impl<'a> serde::ser::SerializeTupleVariant for TupleSerializer<'a> {
+    type Ok = Value;
+    type Error = Error;
+
+    fn serialize_field<T>(&mut self, value: &T) -> Result<(), Error>
+    where
+        T: ?Sized + serde::Serialize,
+    {
+        serde::ser::SerializeTuple::serialize_element(self, value)
+    }
+
+    fn end(self) -> SerializerResult {
+        serde::ser::SerializeTuple::end(self)
+    }
+}
+
 pub struct MapSerializer<'a> {
     agent: &'a Agent,
     object: Value,
@@ -329,7 +335,9 @@ impl<'a> serde::ser::SerializeMap for MapSerializer<'a> {
         T: ?Sized + serde::Serialize,
     {
         let value = serialize(self.agent, value)?;
-        self.object.set(self.agent, self.key.take().unwrap(), value).unwrap();
+        self.object
+            .set(self.agent, self.key.take().unwrap(), value)
+            .unwrap();
         Ok(())
     }
 
@@ -354,34 +362,22 @@ impl<'a> serde::ser::SerializeStruct for MapSerializer<'a> {
     }
 }
 
-impl<'a> serde::ser::SerializeTupleVariant for Serializer<'a> {
+impl<'a> serde::ser::SerializeStructVariant for MapSerializer<'a> {
     type Ok = Value;
     type Error = Error;
 
-    fn serialize_field<T>(&mut self, _value: &T) -> Result<(), Error>
+    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<(), Error>
     where
         T: ?Sized + serde::Serialize,
     {
-        panic!()
+        let value = serialize(self.agent, value)?;
+        self.object
+            .set(self.agent, ObjectKey::from(key), value)
+            .unwrap();
+        Ok(())
     }
 
     fn end(self) -> SerializerResult {
-        panic!()
-    }
-}
-
-impl<'a> serde::ser::SerializeStructVariant for Serializer<'a> {
-    type Ok = Value;
-    type Error = Error;
-
-    fn serialize_field<T>(&mut self, _key: &'static str, _value: &T) -> Result<(), Error>
-    where
-        T: ?Sized + serde::Serialize,
-    {
-        panic!()
-    }
-
-    fn end(self) -> SerializerResult {
-        panic!()
+        Ok(self.object)
     }
 }
