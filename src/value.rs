@@ -528,6 +528,14 @@ impl Value {
         }))
     }
 
+    pub fn new_array_from_vec(agent: &Agent, values: Vec<Value>) -> Value {
+        Value::Object(Gc::new(ObjectInfo {
+            kind: ObjectKind::Array(GcCell::new(values)),
+            properties: GcCell::new(IndexMap::new()),
+            prototype: agent.intrinsics.array_prototype.clone(),
+        }))
+    }
+
     pub fn new_regex_object(agent: &Agent, r: &str) -> Result<Value, Value> {
         let re = match Regex::new(r) {
             Ok(r) => r,
@@ -589,6 +597,11 @@ impl Value {
         o.set(agent, ObjectKey::from("done"), Value::from(done))?;
         Ok(o)
     }
+
+    pub fn from_s<T>(agent: &Agent, v: &T) -> Value
+        where T: ?Sized + serde::Serialize {
+            crate::serde_slither::serialize(agent, v).unwrap()
+        }
 }
 
 impl Value {

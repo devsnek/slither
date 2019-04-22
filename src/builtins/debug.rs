@@ -1,6 +1,5 @@
-use crate::agent::Agent;
+use crate::{Agent, Value};
 use crate::interpreter::Context;
-use crate::value::Value;
 use std::collections::HashMap;
 
 fn print(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {

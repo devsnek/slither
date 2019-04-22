@@ -1,6 +1,3 @@
-import { print } from standard:debug;
-import { a, setA } from './exports';
+import { serdeExample, print } from standard:debug;
 
-print(a);
-setA(10);
-print(a);
+print(serdeExample());
