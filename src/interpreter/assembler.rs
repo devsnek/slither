@@ -168,6 +168,7 @@ impl Assembler {
             Node::ExportDeclaration(decl) => self.visit_export(decl),
             Node::Initializer(..) => unreachable!(),
             Node::MatchArm(..) => unreachable!(),
+            Node::ObjectPattern(..) | Node::ArrayPattern(..) => unreachable!(),
         }
     }
 
@@ -308,6 +309,9 @@ impl Assembler {
         for (name, mutable) in &scope.bindings {
             self.lexical_declaration(name, *mutable);
         }
+        if stmts.is_empty() {
+            self.load_null();
+        }
         for stmt in stmts {
             self.visit(stmt);
         }
@@ -413,27 +417,20 @@ impl Assembler {
         self.load_named_property("value");
 
         self.push_op(Op::EnterScope);
+
         self.lexical_declaration(binding, false);
         self.lexical_initialization(binding);
 
-        if let Node::Block(scope, stmts) = body {
-            for (name, mutable) in &scope.bindings {
-                self.lexical_declaration(name, *mutable);
-            }
+        let pbl = self.break_label;
+        self.break_label = Some(&mut end as *mut Label);
+        let pcl = self.continue_label;
+        self.continue_label = Some(&mut head as *mut Label);
 
-            let pbl = self.break_label;
-            self.break_label = Some(&mut end as *mut Label);
-            let pcl = self.continue_label;
-            self.continue_label = Some(&mut head as *mut Label);
-            for stmt in stmts {
-                self.visit(stmt);
-            }
-            self.store_accumulator_in_register(&body_result);
-            self.break_label = pbl;
-            self.continue_label = pcl;
-        } else {
-            unreachable!();
-        }
+        self.visit(body);
+
+        self.break_label = pbl;
+        self.continue_label = pcl;
+
         self.push_op(Op::ExitScope);
 
         self.jump(&mut head);
@@ -925,25 +922,20 @@ impl Assembler {
 
         self.mark(&mut catch);
         if let Some(catchc) = catchc {
-            self.push_op(Op::EnterScope);
+            let mut exit = false;
             if let Some(binding) = binding {
+                self.push_op(Op::EnterScope);
+                exit = true;
                 self.lexical_declaration(binding, false);
                 self.push_op(Op::GetException);
                 self.lexical_initialization(binding);
             } else {
                 self.push_op(Op::ClearException);
             }
-            if let Node::Block(scope, stmts) = &**catchc {
-                for (name, mutable) in &scope.bindings {
-                    self.lexical_declaration(name, *mutable);
-                }
-                for stmt in stmts {
-                    self.visit(stmt);
-                }
-            } else {
-                unreachable!();
+            self.visit(catchc);
+            if exit {
+                self.push_op(Op::ExitScope);
             }
-            self.push_op(Op::ExitScope);
         }
 
         self.mark(&mut finally);
@@ -964,11 +956,40 @@ impl Assembler {
         for arm in arms {
             if let Node::MatchArm(test, consequent) = arm {
                 let mut next = self.label();
-                self.visit(test);
-                self.push_op(Op::Eq);
-                self.push_u32(value.id);
-                self.jump_if_false(&mut next);
-                self.visit(consequent);
+                match &**test {
+                    Node::Identifier(binding) => {
+                        self.push_op(Op::EnterScope);
+                        self.lexical_declaration(binding, false);
+                        self.load_accumulator_with_register(&value);
+                        self.lexical_initialization(binding);
+                        self.visit(consequent);
+                        self.push_op(Op::ExitScope);
+                    }
+                    Node::StringLiteral(..) | Node::NumberLiteral(..) => {
+                        self.visit(test);
+                        self.push_op(Op::Eq);
+                        self.push_u32(value.id);
+                        self.jump_if_false(&mut next);
+                        self.visit(consequent);
+                    }
+                    Node::ObjectPattern(patterns) => {
+                        self.push_op(Op::EnterScope);
+                        for (binding, _pattern) in patterns {
+                            self.load_string(binding);
+                            self.push_op(Op::HasProperty);
+                            self.push_u32(value.id);
+                            self.jump_if_false(&mut next);
+                            self.lexical_declaration(binding, false);
+                            self.load_accumulator_with_register(&value);
+                            self.load_named_property(binding);
+                            self.lexical_initialization(binding);
+                        }
+                        self.visit(consequent);
+                        self.push_op(Op::ExitScope);
+                    }
+                    Node::ArrayPattern(_patterns) => unreachable!(),
+                    _ => unreachable!(),
+                }
                 self.jump(&mut end);
                 self.mark(&mut next);
             } else {
