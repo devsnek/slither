@@ -376,6 +376,29 @@ impl ObjectInfo {
         }
     }
 
+    fn has(&self, key: ObjectKey) -> bool {
+        if let ObjectInfo {
+            kind: ObjectKind::Array(values),
+            ..
+        } = self
+        {
+            if let Some(n) = key.to_number() {
+                if n < values.borrow().len() {
+                    return true;
+                }
+            }
+        }
+        if self.properties.borrow().contains_key(&key) {
+            true
+        } else {
+            match &self.prototype {
+                Value::Object(o) => o.has(key),
+                Value::Null => false,
+                _ => unreachable!(),
+            }
+        }
+    }
+
     fn keys(&self) -> Vec<ObjectKey> {
         let mut keys = Vec::new();
         if let ObjectKind::Array(values) = &self.kind {
@@ -666,6 +689,17 @@ impl Value {
             Value::Tuple(vec) => Ok((0..vec.len())
                 .map(ObjectKey::from)
                 .collect::<Vec<ObjectKey>>()),
+            _ => Err(Value::new_error(agent, "base must be an object")),
+        }
+    }
+
+    pub fn has(&self, agent: &Agent, key: ObjectKey) -> Result<bool, Value> {
+        match self {
+            Value::Object(o) => Ok(o.has(key)),
+            Value::Tuple(vec) => match key.to_number() {
+                Some(n) => Ok(vec.len() < n),
+                None => Ok(false),
+            },
             _ => Err(Value::new_error(agent, "base must be an object")),
         }
     }

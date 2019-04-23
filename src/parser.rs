@@ -38,6 +38,7 @@ pub enum Operator {
     NotEqual,
     Typeof,
     Void,
+    Has,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -423,6 +424,7 @@ impl<'a> Lexer<'a> {
                         "match" => Token::Match,
                         "typeof" => Token::Operator(Operator::Typeof),
                         "void" => Token::Operator(Operator::Void),
+                        "has" => Token::Operator(Operator::Has),
                         _ => Token::Identifier(ident),
                     }
                 }
@@ -1133,7 +1135,8 @@ impl<'a> Parser<'a> {
             Operator::LessThan,
             Operator::GreaterThan,
             Operator::LessThanOrEqual,
-            Operator::GreaterThanOrEqual
+            Operator::GreaterThanOrEqual,
+            Operator::Has
         ]
     );
 
@@ -1260,6 +1263,7 @@ impl<'a> Parser<'a> {
             Token::Match if allow_keyword => Ok("match".to_string()),
             Token::Operator(Operator::Typeof) if allow_keyword => Ok("typeof".to_string()),
             Token::Operator(Operator::Void) if allow_keyword => Ok("void".to_string()),
+            Token::Operator(Operator::Has) if allow_keyword => Ok("has".to_string()),
             _ => Err(Error::UnexpectedToken),
         }
     }

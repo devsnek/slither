@@ -111,6 +111,7 @@ macro_rules! OPS {
             (LessThan, AccumulatorUse::ReadWrite, OpArg::Register),
             (GreaterThanOrEqual, AccumulatorUse::ReadWrite, OpArg::Register),
             (LessThanOrEqual, AccumulatorUse::ReadWrite, OpArg::Register),
+            (HasProperty, AccumulatorUse::ReadWrite, OpArg::Register),
             (Eq, AccumulatorUse::ReadWrite, OpArg::Register),
             (Neq, AccumulatorUse::ReadWrite, OpArg::Register),
             (LNOT, AccumulatorUse::ReadWrite),
@@ -902,6 +903,13 @@ impl Interpreter {
                 Op::LessThan => num_binop_bool!(f64::lt),
                 Op::GreaterThanOrEqual => num_binop_bool!(f64::ge),
                 Op::LessThanOrEqual => num_binop_bool!(f64::le),
+                Op::HasProperty => {
+                    let lhsid = read_u32!() as usize;
+                    let target = handle!(self.registers[lhsid].to_object(agent));
+                    let key = handle!(self.accumulator.to_object_key(agent));
+                    let r = handle!(target.has(agent, key));
+                    self.accumulator = Value::from(r);
+                }
                 Op::Eq => {
                     let lhsid = read_u32!() as usize;
                     self.accumulator = Value::from(self.registers[lhsid] == self.accumulator);

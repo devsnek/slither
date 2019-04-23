@@ -542,3 +542,14 @@ test!(
     "#,
     Ok(Value::from(true))
 );
+
+test!(
+    test_has_operator,
+    r#"
+    [1] has 0
+      && !([1] has 1)
+      && { a: 1 } has 'a'
+      && [] has 'sort';
+    "#,
+    Ok(Value::from(true))
+);

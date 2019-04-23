@@ -532,6 +532,7 @@ impl Assembler {
             Operator::LessThanOrEqual => self.push_op(Op::LessThanOrEqual),
             Operator::Equal => self.push_op(Op::Eq),
             Operator::NotEqual => self.push_op(Op::Neq),
+            Operator::Has => self.push_op(Op::HasProperty),
             _ => unreachable!(),
         }
         self.push_u32(lhsr.id);
