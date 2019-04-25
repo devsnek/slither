@@ -95,7 +95,6 @@ enum Token {
     Export,
     Default,
     From,
-    Match,
 
     Operator(Operator),
 
@@ -202,9 +201,6 @@ pub enum Node {
     ThisExpression,
     NewExpression(Box<Node>),
 
-    MatchExpression(Box<Node>, Vec<Node>),
-    MatchArm(Box<Node>, Box<Node>),
-
     MemberExpression(Box<Node>, String),
     ComputedMemberExpression(Box<Node>, Box<Node>),
     CallExpression(Box<Node>, Vec<Node>),
@@ -237,9 +233,6 @@ pub enum Node {
     ExportDeclaration(Box<Node>),
 
     Initializer(Box<Node>, Box<Node>),
-
-    ObjectPattern(IndexMap<String, Node>),
-    ArrayPattern(Vec<Node>),
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -424,7 +417,6 @@ impl<'a> Lexer<'a> {
                         "await" => Token::Await,
                         "gen" => Token::Gen,
                         "yield" => Token::Yield,
-                        "match" => Token::Match,
                         "typeof" => Token::Operator(Operator::Typeof),
                         "void" => Token::Operator(Operator::Void),
                         "has" => Token::Operator(Operator::Has),
@@ -1263,7 +1255,6 @@ impl<'a> Parser<'a> {
             Token::Await if allow_keyword => Ok("await".to_string()),
             Token::Gen if allow_keyword => Ok("gen".to_string()),
             Token::Yield if allow_keyword => Ok("yield".to_string()),
-            Token::Match if allow_keyword => Ok("match".to_string()),
             Token::Operator(Operator::Typeof) if allow_keyword => Ok("typeof".to_string()),
             Token::Operator(Operator::Void) if allow_keyword => Ok("void".to_string()),
             Token::Operator(Operator::Has) if allow_keyword => Ok("has".to_string()),
@@ -1448,90 +1439,7 @@ impl<'a> Parser<'a> {
                 quasis.push(current);
                 Ok(Node::TemplateLiteral(quasis, expressions))
             }
-            Token::Match => {
-                let expr = self.parse_expression()?;
-                self.expect(Token::LeftBrace)?;
-                let mut arms = Vec::new();
-                let mut first = true;
-                while !self.eat(Token::RightBrace) {
-                    if first {
-                        first = false;
-                    } else {
-                        self.expect(Token::Comma)?;
-                        if self.eat(Token::RightBrace) {
-                            break;
-                        }
-                    }
-                    let pattern = self.parse_pattern()?;
-                    self.expect(Token::Arrow)?;
-                    let consequent = if self.peek(Token::LeftBrace) {
-                        self.parse_block(ParseScope::Block)?
-                    } else {
-                        self.parse_expression()?
-                    };
-                    arms.push(Node::MatchArm(Box::new(pattern), Box::new(consequent)));
-                }
-                Ok(Node::MatchExpression(Box::new(expr), arms))
-            }
             _ => Err(Error::UnexpectedToken),
-        }
-    }
-
-    fn parse_pattern(&mut self) -> Result<Node, Error> {
-        match self.lexer.peek()? {
-            // 1
-            // "hi"
-            // a
-            Token::NumberLiteral(..) | Token::StringLiteral(..) | Token::Identifier(..) => {
-                self.parse_expression()
-            }
-            // { a }
-            // { a: b }
-            // { a: { c } }
-            Token::LeftBrace => {
-                self.lexer.next()?;
-                let mut patterns = IndexMap::new();
-                let mut first = true;
-                while !self.eat(Token::RightBrace) {
-                    if first {
-                        first = false;
-                    } else {
-                        self.expect(Token::Comma)?;
-                        if self.eat(Token::RightBrace) {
-                            break;
-                        }
-                    }
-                    let name = self.parse_identifier(false)?;
-                    if self.eat(Token::Colon) {
-                        let pattern = self.parse_pattern()?;
-                        patterns.insert(name, pattern);
-                    } else {
-                        patterns.insert(name.to_string(), Node::Identifier(name));
-                    }
-                }
-                Ok(Node::ObjectPattern(patterns))
-            }
-            // [a]
-            // [{ b }]
-            Token::LeftBracket => {
-                self.lexer.next()?;
-                let mut patterns = Vec::new();
-                let mut first = true;
-                while !self.eat(Token::RightBracket) {
-                    if first {
-                        first = false;
-                    } else {
-                        self.expect(Token::Comma)?;
-                        if self.eat(Token::RightBracket) {
-                            break;
-                        }
-                    }
-                    let pattern = self.parse_pattern()?;
-                    patterns.push(pattern);
-                }
-                Ok(Node::ArrayPattern(patterns))
-            }
-            _ => return Err(Error::UnexpectedToken),
         }
     }
 
