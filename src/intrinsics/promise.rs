@@ -74,6 +74,9 @@ fn reject_promise(agent: &Agent, promise: Value, reason: Value) -> Result<Value,
     promise.set_slot("promise state", Value::from("rejected"));
     promise.set_slot("fulfill reactions", Value::Null);
     promise.set_slot("reject reactions", Value::Null);
+    if promise.has_slot("promise handled") {
+        agent.uncaught_exception(reason.clone());
+    }
     trigger_promise_reactions(agent, reactions, reason)
 }
 

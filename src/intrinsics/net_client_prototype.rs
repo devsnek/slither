@@ -1,8 +1,9 @@
-use crate::agent::{Agent, MioMapType};
+use crate::agent::MioMapType;
 use crate::interpreter::Context;
-use crate::intrinsics::promise::{new_promise_capability, promise_resolve_i};
-use crate::value::{ObjectKey, ObjectKind, Value};
+use crate::intrinsics::promise::new_promise_capability;
+use crate::value::{ObjectKey, ObjectKind};
 use crate::IntoValue;
+use crate::{Agent, Value};
 use num::ToPrimitive;
 use std::io::prelude::*;
 
@@ -13,58 +14,16 @@ fn next(agent: &Agent, _: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
     }
 
     if let Value::List(buffer) = this.get_slot("net client buffer") {
-        let promise = buffer.borrow_mut().pop_front();
-        if promise.is_some() {
-            return Ok(promise.unwrap());
+        if let Some(promise) = buffer.borrow_mut().pop_front() {
+            return Ok(promise);
         }
     }
 
     if let Value::List(queue) = this.get_slot("net client queue") {
         let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
         queue.borrow_mut().push_back(promise.clone());
+        println!("queue.len() = {:?}", queue.borrow().len());
         Ok(promise)
-    } else {
-        unreachable!();
-    }
-}
-
-pub fn get_or_create_resolve(agent: &Agent, target: Value, value: Value, done: bool) {
-    if let Value::List(queue) = target.get_slot("net client queue") {
-        let value = Value::new_iter_result(agent, value, done).unwrap();
-        if let Some(promise) = queue.borrow_mut().pop_front() {
-            promise
-                .get_slot("resolve")
-                .call(agent, Value::Null, vec![value])
-                .unwrap();
-        } else if let Value::List(buffer) = target.get_slot("net client buffer") {
-            buffer.borrow_mut().push_back(
-                promise_resolve_i(agent, agent.intrinsics.promise_prototype.clone(), value)
-                    .unwrap(),
-            );
-        } else {
-            unreachable!();
-        }
-    } else {
-        unreachable!();
-    }
-}
-
-pub fn get_or_create_reject(agent: &Agent, target: Value, value: Value) {
-    if let Value::List(queue) = target.get_slot("net client queue") {
-        if let Some(promise) = queue.borrow_mut().pop_front() {
-            promise
-                .get_slot("reject")
-                .call(agent, Value::Null, vec![value])
-                .unwrap();
-        } else if let Value::List(buffer) = target.get_slot("net client buffer") {
-            let p = new_promise_capability(agent, agent.intrinsics.promise.clone()).unwrap();
-            p.get_slot("reject")
-                .call(agent, Value::Null, vec![value])
-                .unwrap();
-            buffer.borrow_mut().push_back(p);
-        } else {
-            unreachable!();
-        }
     } else {
         unreachable!();
     }

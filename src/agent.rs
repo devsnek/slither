@@ -3,14 +3,14 @@ use crate::intrinsics::{
     create_array_iterator_prototype, create_array_prototype, create_async_iterator_prototype,
     create_boolean_prototype, create_error_prototype, create_function_prototype,
     create_generator_prototype, create_iterator_map_prototype, create_iterator_prototype,
-    create_net_client_prototype, create_number_prototype, create_object_prototype, create_promise,
-    create_promise_prototype, create_regex_prototype, create_string_prototype, create_symbol,
-    create_symbol_prototype,
+    create_net_client_prototype, create_net_server_prototype, create_number_prototype,
+    create_object_prototype, create_promise, create_promise_prototype, create_regex_prototype,
+    create_string_prototype, create_symbol, create_symbol_prototype,
 };
 use crate::module::Module;
 use crate::Value;
 use gc::{Gc, GcCell};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, VecDeque};
 use threadpool::ThreadPool;
 
@@ -32,6 +32,7 @@ pub struct Intrinsics {
     pub generator_prototype: Value,
     pub async_iterator_prototype: Value,
     pub net_client_prototype: Value,
+    pub net_server_prototype: Value,
     pub error_prototype: Value,
 }
 
@@ -70,6 +71,7 @@ pub struct Agent {
     job_queue: GcCell<VecDeque<Job>>,
     pub mio: mio::Poll,
     pub mio_map: RefCell<HashMap<mio::Token, MioMapType>>,
+    mio_token: Cell<usize>,
     pub pool: ThreadPool,
     uncaught_exception_handler: Option<Box<Fn(&Agent, Value) -> ()>>,
     modules: GcCell<HashMap<String, Gc<GcCell<Module>>>>,
@@ -111,6 +113,7 @@ impl Agent {
                 generator_prototype: Value::Null,
                 async_iterator_prototype: Value::Null,
                 net_client_prototype: Value::Null,
+                net_server_prototype: Value::Null,
                 error_prototype: Value::Null,
             },
             builtins: HashMap::new(),
@@ -118,6 +121,7 @@ impl Agent {
             job_queue: GcCell::new(VecDeque::new()),
             mio: mio::Poll::new().expect("create mio poll failed"),
             mio_map: RefCell::new(HashMap::new()),
+            mio_token: Cell::new(0),
             pool: ThreadPool::new(num_cpus::get()),
             uncaught_exception_handler: None,
             modules: GcCell::new(HashMap::new()),
@@ -141,6 +145,7 @@ impl Agent {
         agent.intrinsics.promise = create_promise(&agent);
 
         agent.intrinsics.net_client_prototype = create_net_client_prototype(&agent);
+        agent.intrinsics.net_server_prototype = create_net_server_prototype(&agent);
 
         agent.builtins = crate::builtins::create(&agent);
 
@@ -215,7 +220,7 @@ impl Agent {
     }
 
     pub fn run_jobs(&self) {
-        let mut events = mio::Events::with_capacity(128);
+        let mut events = mio::Events::with_capacity(16);
         loop {
             self.mio
                 .poll(&mut events, Some(std::time::Duration::from_millis(0)))
@@ -258,6 +263,11 @@ impl Agent {
         }
     }
 
+    pub fn mio_token(&self) -> mio::Token {
+        let old = self.mio_token.get();
+        mio::Token(self.mio_token.replace(old + 1))
+    }
+
     pub fn set_uncaught_exception_handler<F: 'static>(&mut self, f: F)
     where
         F: Fn(&Agent, Value) -> (),
@@ -265,7 +275,7 @@ impl Agent {
         self.uncaught_exception_handler = Some(Box::new(f));
     }
 
-    fn uncaught_exception(&self, e: Value) {
+    pub fn uncaught_exception(&self, e: Value) {
         // TODO: add way to handle this from sl
         match &self.uncaught_exception_handler {
             Some(f) => f(self, e),

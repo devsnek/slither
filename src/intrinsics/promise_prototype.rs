@@ -41,6 +41,7 @@ fn promise_proto_then(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<
                 }
                 if let Value::List(reactions) = &this.get_slot("reject reactions") {
                     reactions.borrow_mut().push_back(reject_reaction);
+                    this.set_slot("promise handled", Value::from(true));
                 } else {
                     unreachable!();
                 }

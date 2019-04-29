@@ -101,7 +101,7 @@ fn read_file(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Valu
         let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
 
         let (registration, set_readiness) = Registration::new2();
-        let token = Token(agent.mio_map.borrow().len());
+        let token = agent.mio_token();
 
         agent
             .mio
@@ -141,7 +141,7 @@ fn write_file(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Val
             let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
 
             let (registration, set_readiness) = Registration::new2();
-            let token = Token(agent.mio_map.borrow().len());
+            let token = agent.mio_token();
 
             agent
                 .mio
@@ -184,7 +184,7 @@ fn remove_file(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Va
         let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
 
         let (registration, set_readiness) = Registration::new2();
-        let token = Token(agent.mio_map.borrow().len());
+        let token = agent.mio_token();
 
         agent
             .mio
@@ -223,7 +223,7 @@ fn get_metadata(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, V
         let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
 
         let (registration, set_readiness) = Registration::new2();
-        let token = Token(agent.mio_map.borrow().len());
+        let token = agent.mio_token();
 
         agent
             .mio
@@ -266,7 +266,7 @@ fn copy(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
             let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
 
             let (registration, set_readiness) = Registration::new2();
-            let token = Token(agent.mio_map.borrow().len());
+            let token = agent.mio_token();
 
             agent
                 .mio
@@ -308,7 +308,7 @@ fn move_(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
             let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
 
             let (registration, set_readiness) = Registration::new2();
-            let token = Token(agent.mio_map.borrow().len());
+            let token = agent.mio_token();
 
             agent
                 .mio
@@ -364,7 +364,7 @@ fn create_symlink(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value,
             let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
 
             let (registration, set_readiness) = Registration::new2();
-            let token = Token(agent.mio_map.borrow().len());
+            let token = agent.mio_token();
 
             agent
                 .mio
@@ -405,7 +405,7 @@ fn exists(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> 
         let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
 
         let (registration, set_readiness) = Registration::new2();
-        let token = Token(agent.mio_map.borrow().len());
+        let token = agent.mio_token();
 
         agent
             .mio
@@ -437,7 +437,7 @@ fn create_directory(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Valu
         let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
 
         let (registration, set_readiness) = Registration::new2();
-        let token = Token(agent.mio_map.borrow().len());
+        let token = agent.mio_token();
 
         agent
             .mio
@@ -476,7 +476,7 @@ fn remove_directory(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Valu
         let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
 
         let (registration, set_readiness) = Registration::new2();
-        let token = Token(agent.mio_map.borrow().len());
+        let token = agent.mio_token();
 
         agent
             .mio

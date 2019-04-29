@@ -61,7 +61,7 @@ pub fn on_rejected(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Val
             Err(c) => {
                 context.borrow_mut().interpreter = Some(interpreter);
                 let mut c = c;
-                let value = unsafe { std::mem::replace(&mut c.0, std::mem::uninitialized()) };
+                let value = std::mem::replace(&mut c.0, Value::Null);
                 perform_await(agent, Value::WrappedContext(context, promise), value)?;
             }
         }

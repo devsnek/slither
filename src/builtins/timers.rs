@@ -3,7 +3,7 @@ use crate::interpreter::Context;
 use crate::linked_list::LinkedList;
 use crate::value::Value;
 use lazy_static::lazy_static;
-use mio::{PollOpt, Ready, Registration, SetReadiness, Token};
+use mio::{PollOpt, Ready, Registration, SetReadiness};
 use num::ToPrimitive;
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -71,7 +71,7 @@ fn create_timeout(agent: &Agent, args: Vec<Value>, _ctx: &Context) -> Result<Val
             let end = Instant::now() + Duration::from_millis(n.to_u64().unwrap());
 
             let (registration, set_readiness) = Registration::new2();
-            let token = Token(agent.mio_map.borrow().len());
+            let token = agent.mio_token();
 
             agent
                 .mio

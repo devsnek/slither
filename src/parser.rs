@@ -855,7 +855,11 @@ impl<'a> Parser<'a> {
 
     fn parse_for(&mut self) -> Result<Node, Error> {
         self.expect(Token::For)?;
-        let r#async = self.eat(Token::Await);
+        let r#async = if self.scope(ParseScope::AsyncFunction) {
+            self.eat(Token::Await)
+        } else {
+            false
+        };
         let binding = self.parse_identifier(false)?;
         self.expect(Token::In)?;
         let target = self.parse_assignment_expression()?;
