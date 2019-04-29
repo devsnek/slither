@@ -22,7 +22,6 @@ fn next(agent: &Agent, _: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
     if let Value::List(queue) = this.get_slot("net client queue") {
         let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
         queue.borrow_mut().push_back(promise.clone());
-        println!("queue.len() = {:?}", queue.borrow().len());
         Ok(promise)
     } else {
         unreachable!();

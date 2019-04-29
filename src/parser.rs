@@ -1,7 +1,9 @@
+use crate::num_util::{f64_band, f64_bnot, f64_bor, f64_bxor, f64_shl, f64_shr};
 use crate::{Agent, IntoValue, Value};
 use indexmap::IndexMap;
 use std::collections::VecDeque;
 use std::iter::Peekable;
+use std::ops::{Div, Mul, Rem, Sub};
 use std::str::Chars;
 
 include!(concat!(env!("OUT_DIR"), "/unicode_name_map_gen.rs"));
@@ -621,6 +623,109 @@ impl<'a> Lexer<'a> {
     }
 }
 
+fn constant_fold(op: Operator, left: &Node, right: &Node) -> Option<Node> {
+    macro_rules! num_binop_num {
+        ($fn:expr) => {
+            match left {
+                Node::NumberLiteral(ln) => match right {
+                    Node::NumberLiteral(rn) => Some(Node::NumberLiteral($fn(*ln, *rn))),
+                    _ => None,
+                },
+                _ => None,
+            }
+        };
+    }
+
+    macro_rules! num_binop_bool {
+        ($fn:expr) => {
+            match left {
+                Node::NumberLiteral(ln) => match right {
+                    Node::NumberLiteral(rn) => Some(if $fn(ln, rn) {
+                        Node::TrueLiteral
+                    } else {
+                        Node::FalseLiteral
+                    }),
+                    _ => None,
+                },
+                _ => None,
+            }
+        };
+    }
+
+    match op {
+        Operator::Add => match left {
+            Node::StringLiteral(lhs) => match right {
+                Node::StringLiteral(rhs) => Some(Node::StringLiteral(format!("{}{}", lhs, rhs))),
+                _ => None,
+            },
+            Node::NumberLiteral(lhs) => match right {
+                Node::NumberLiteral(rhs) => Some(Node::NumberLiteral(lhs + rhs)),
+                _ => None,
+            },
+            _ => None,
+        },
+        Operator::Sub => num_binop_num!(f64::sub),
+        Operator::Mul => num_binop_num!(f64::mul),
+        Operator::Div => num_binop_num!(f64::div),
+        Operator::Mod => num_binop_num!(f64::rem),
+        Operator::Pow => num_binop_num!(f64::powf),
+        Operator::BitwiseOR => num_binop_num!(f64_bor),
+        Operator::BitwiseXOR => num_binop_num!(f64_bxor),
+        Operator::BitwiseAND => num_binop_num!(f64_band),
+        Operator::BitwiseNOT => match left {
+            Node::NumberLiteral(n) => Some(Node::NumberLiteral(f64_bnot(*n))),
+            _ => None,
+        },
+        Operator::LeftShift => num_binop_num!(f64_shl),
+        Operator::RightShift => num_binop_num!(f64_shr),
+        Operator::GreaterThan => num_binop_bool!(f64::gt),
+        Operator::LessThan => num_binop_bool!(f64::lt),
+        Operator::GreaterThanOrEqual => num_binop_bool!(f64::ge),
+        Operator::LessThanOrEqual => num_binop_bool!(f64::le),
+        Operator::Not => match left {
+            Node::TrueLiteral => Some(Node::FalseLiteral),
+            Node::FalseLiteral => Some(Node::TrueLiteral),
+            Node::StringLiteral(s) => Some(if s.len() > 0 {
+                Node::TrueLiteral
+            } else {
+                Node::FalseLiteral
+            }),
+            Node::NumberLiteral(n) => Some(if *n != 0.0 {
+                Node::TrueLiteral
+            } else {
+                Node::FalseLiteral
+            }),
+            Node::SymbolLiteral(..) => Some(Node::FalseLiteral),
+            Node::ArrayLiteral(..) | Node::TupleLiteral(..) | Node::ObjectLiteral(..) => {
+                Some(Node::FalseLiteral)
+            }
+            _ => None,
+        },
+        Operator::Equal => None,
+        Operator::NotEqual => match constant_fold(Operator::Equal, left, right) {
+            Some(Node::TrueLiteral) => Some(Node::FalseLiteral),
+            Some(Node::FalseLiteral) => Some(Node::TrueLiteral),
+            None => None,
+            _ => unreachable!(),
+        },
+        Operator::Typeof => match left {
+            Node::NullLiteral => Some(Node::StringLiteral("null".to_string())),
+            Node::TrueLiteral | Node::FalseLiteral => {
+                Some(Node::StringLiteral("boolean".to_string()))
+            }
+            Node::NumberLiteral(..) => Some(Node::StringLiteral("number".to_string())),
+            Node::StringLiteral(..) => Some(Node::StringLiteral("string".to_string())),
+            Node::SymbolLiteral(..) => Some(Node::StringLiteral("symbol".to_string())),
+            Node::TupleLiteral(..) => Some(Node::StringLiteral("tuple".to_string())),
+            Node::ObjectLiteral(..) | Node::ArrayLiteral(..) => {
+                Some(Node::StringLiteral("object".to_string()))
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 macro_rules! binop_production {
     ( $name:ident, $lower:ident, [ $( $op:path ),* ] ) => {
         fn $name(&mut self) -> Result<Node, Error> {
@@ -630,7 +735,7 @@ macro_rules! binop_production {
                     let op = op.clone();
                     self.lexer.next()?;
                     let rhs = self.$name()?;
-                    lhs = Node::BinaryExpression(op, Box::new(lhs), Box::new(rhs));
+                    lhs = self.build_binary(op, lhs, rhs);
                 }
                 _ => {},
             }
@@ -704,6 +809,22 @@ impl<'a> Parser<'a> {
         match self.lexer.next()? {
             ref t if t == &token => Ok(token),
             _ => Err(Error::UnexpectedToken),
+        }
+    }
+
+    fn build_binary(&self, op: Operator, left: Node, right: Node) -> Node {
+        if let Some(node) = constant_fold(op, &left, &right) {
+            node
+        } else {
+            Node::BinaryExpression(op, Box::new(left), Box::new(right))
+        }
+    }
+
+    fn build_unary(&self, op: Operator, node: Node) -> Node {
+        if let Some(node) = constant_fold(op, &node, &Node::NullLiteral) {
+            node
+        } else {
+            Node::UnaryExpression(op, Box::new(node))
         }
     }
 
@@ -1048,7 +1169,7 @@ impl<'a> Parser<'a> {
                 self.lexer.next()?;
                 self.check_assignment_target(&lhs)?;
                 let rhs = self.parse_assignment_expression()?;
-                lhs = Node::BinaryExpression($op, Box::new(lhs), Box::new(rhs));
+                lhs = self.build_binary($op, lhs, rhs);
             }};
         }
 
@@ -1169,32 +1290,32 @@ impl<'a> Parser<'a> {
             Token::Operator(Operator::Add) => {
                 self.lexer.next()?;
                 let expr = self.parse_unary_expression()?;
-                Ok(Node::UnaryExpression(Operator::Add, Box::new(expr)))
+                Ok(self.build_unary(Operator::Add, expr))
             }
             Token::Operator(Operator::Sub) => {
                 self.lexer.next()?;
                 let expr = self.parse_unary_expression()?;
-                Ok(Node::UnaryExpression(Operator::Sub, Box::new(expr)))
+                Ok(self.build_unary(Operator::Sub, expr))
             }
             Token::Operator(Operator::BitwiseNOT) => {
                 self.lexer.next()?;
                 let expr = self.parse_unary_expression()?;
-                Ok(Node::UnaryExpression(Operator::BitwiseNOT, Box::new(expr)))
+                Ok(self.build_unary(Operator::BitwiseNOT, expr))
             }
             Token::Operator(Operator::Not) => {
                 self.lexer.next()?;
                 let expr = self.parse_unary_expression()?;
-                Ok(Node::UnaryExpression(Operator::Not, Box::new(expr)))
+                Ok(self.build_unary(Operator::Not, expr))
             }
             Token::Operator(Operator::Typeof) => {
                 self.lexer.next()?;
                 let expr = self.parse_unary_expression()?;
-                Ok(Node::UnaryExpression(Operator::Typeof, Box::new(expr)))
+                Ok(self.build_unary(Operator::Typeof, expr))
             }
             Token::Operator(Operator::Void) => {
                 self.lexer.next()?;
                 let expr = self.parse_unary_expression()?;
-                Ok(Node::UnaryExpression(Operator::Void, Box::new(expr)))
+                Ok(self.build_unary(Operator::Void, expr))
             }
             Token::Await if self.scope(ParseScope::AsyncFunction) => {
                 self.lexer.next()?;

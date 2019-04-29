@@ -33,12 +33,10 @@ fn get_or_create_resolve(kind: &str, agent: &Agent, target: Value, value: Value,
                 .get_slot("resolve")
                 .call(agent, Value::Null, vec![value])
                 .unwrap();
-            println!("resolved existing");
         } else if let Value::List(buffer) = target.get_slot(&format!("net {} buffer", kind)) {
             buffer.borrow_mut().push_back(
                 promise_resolve_i(agent, agent.intrinsics.promise.clone(), value).unwrap(),
             );
-            println!("added new");
         } else {
             unreachable!();
         }
@@ -49,7 +47,6 @@ fn get_or_create_resolve(kind: &str, agent: &Agent, target: Value, value: Value,
 
 fn get_or_create_reject(kind: &str, agent: &Agent, target: Value, value: Value) {
     if let Value::List(queue) = target.get_slot(&format!("net {} queue", kind)) {
-        println!("reject with queue.len = {}", queue.borrow().len());
         if let Some(promise) = queue.borrow_mut().pop_front() {
             promise
                 .get_slot("reject")
