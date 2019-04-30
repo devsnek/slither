@@ -281,15 +281,54 @@ impl<'a> Lexer<'a> {
         Ok(match self.chars.next() {
             Some(c) => match c {
                 ' ' | '\t' | '\r' | '\n' => self.next()?,
-                '0'...'9' => {
+                '0' => {
+                    let radix = match self.chars.peek() {
+                        Some('b') | Some('B') => Some(2),
+                        Some('o') | Some('O') => Some(8),
+                        Some('x') | Some('X') => Some(16),
+                        _ => None,
+                    };
+                    if let Some(radix) = radix {
+                        self.chars.next();
+                        let mut str = String::new();
+                        while let Some(c) = self.chars.peek() {
+                            match c {
+                                '0' | '1' => str.push(self.chars.next().unwrap()),
+                                '2'...'7' if radix > 7 => str.push(self.chars.next().unwrap()),
+                                '8' | '9' if radix > 15 => str.push(self.chars.next().unwrap()),
+                                'a'...'f' | 'A'...'F' if radix > 15 => {
+                                    str.push(self.chars.next().unwrap())
+                                }
+                                _ => break,
+                            }
+                        }
+                        match u64::from_str_radix(&str, radix) {
+                            Ok(n) => Token::NumberLiteral(n as f64),
+                            Err(_) => return Err(Error::UnexpectedToken),
+                        }
+                    } else {
+                        Token::NumberLiteral(0.0)
+                    }
+                }
+                '1'...'9' => {
                     let mut str = c.to_string();
+                    let mut exp_str = String::new();
                     let mut one_dot = false;
+                    let mut in_exp = false;
                     while let Some(c) = self.chars.peek() {
                         match c {
                             '0'...'9' => {
-                                str.push(self.chars.next().unwrap());
+                                if in_exp {
+                                    exp_str.push(self.chars.next().unwrap());
+                                } else {
+                                    str.push(self.chars.next().unwrap());
+                                }
                             }
-                            '.' => {
+                            'e' if !in_exp => {
+                                self.chars.next().unwrap();
+                                in_exp = true;
+                            }
+                            '.' if !in_exp => {
                                 if !one_dot {
                                     one_dot = true;
                                     str.push(self.chars.next().unwrap());
@@ -301,7 +340,16 @@ impl<'a> Lexer<'a> {
                         }
                     }
                     match str.parse::<f64>() {
-                        Ok(n) => Token::NumberLiteral(n),
+                        Ok(n) => {
+                            if in_exp {
+                                match exp_str.parse::<u32>() {
+                                    Ok(e) => Token::NumberLiteral(n * (10u64.pow(e) as f64)),
+                                    Err(_) => return Err(Error::UnexpectedToken),
+                                }
+                            } else {
+                                Token::NumberLiteral(n)
+                            }
+                        }
                         Err(_) => return Err(Error::UnexpectedToken),
                     }
                 }
@@ -685,7 +733,7 @@ fn constant_fold(op: Operator, left: &Node, right: &Node) -> Option<Node> {
         Operator::Not => match left {
             Node::TrueLiteral => Some(Node::FalseLiteral),
             Node::FalseLiteral => Some(Node::TrueLiteral),
-            Node::StringLiteral(s) => Some(if s.len() > 0 {
+            Node::StringLiteral(s) => Some(if !s.is_empty() {
                 Node::TrueLiteral
             } else {
                 Node::FalseLiteral

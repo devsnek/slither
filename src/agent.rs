@@ -561,3 +561,16 @@ test!(
     "#,
     Ok(Value::from(true))
 );
+
+test!(
+    test_number_parsing,
+    r#"
+    1e3 == 1000
+      && 0b10 == 2
+      && 0o10 == 8
+      && 0x10 == 16
+      && 0o7654321 == 2054353
+      && 0xAbCdEf19 == 2882400025;
+    "#,
+    Ok(Value::from(true))
+);
