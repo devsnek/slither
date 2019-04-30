@@ -700,6 +700,14 @@ fn constant_fold(op: Operator, left: &Node, right: &Node) -> Option<Node> {
         };
     }
 
+    if let Node::ParenthesizedExpression(e) = left {
+        return constant_fold(op, e, right);
+    }
+
+    if let Node::ParenthesizedExpression(e) = right {
+        return constant_fold(op, left, e);
+    }
+
     match op {
         Operator::Add => match left {
             Node::StringLiteral(lhs) => match right {
@@ -730,26 +738,14 @@ fn constant_fold(op: Operator, left: &Node, right: &Node) -> Option<Node> {
         Operator::LessThan => num_binop_bool!(f64::lt),
         Operator::GreaterThanOrEqual => num_binop_bool!(f64::ge),
         Operator::LessThanOrEqual => num_binop_bool!(f64::le),
-        Operator::Not => match left {
-            Node::TrueLiteral => Some(Node::FalseLiteral),
-            Node::FalseLiteral => Some(Node::TrueLiteral),
-            Node::StringLiteral(s) => Some(if !s.is_empty() {
-                Node::TrueLiteral
-            } else {
-                Node::FalseLiteral
-            }),
-            Node::NumberLiteral(n) => Some(if *n != 0.0 {
-                Node::TrueLiteral
-            } else {
-                Node::FalseLiteral
-            }),
-            Node::SymbolLiteral(..) => Some(Node::FalseLiteral),
-            Node::ArrayLiteral(..) | Node::TupleLiteral(..) | Node::ObjectLiteral(..) => {
-                Some(Node::FalseLiteral)
-            }
-            _ => None,
+        Operator::Not => match constant_truthy(left) {
+            Some(true) => Some(Node::FalseLiteral),
+            Some(false) => Some(Node::TrueLiteral),
+            None => None,
         },
-        Operator::Equal => None,
+        // Operator::Equal => {
+        //   every combination of literal needs to be tested here
+        // }
         Operator::NotEqual => match constant_fold(Operator::Equal, left, right) {
             Some(Node::TrueLiteral) => Some(Node::FalseLiteral),
             Some(Node::FalseLiteral) => Some(Node::TrueLiteral),
@@ -770,6 +766,20 @@ fn constant_fold(op: Operator, left: &Node, right: &Node) -> Option<Node> {
             }
             _ => None,
         },
+        _ => None,
+    }
+}
+
+fn constant_truthy(node: &Node) -> Option<bool> {
+    match node {
+        Node::ParenthesizedExpression(e) => constant_truthy(e),
+        Node::NullLiteral => Some(false),
+        Node::TrueLiteral => Some(true),
+        Node::FalseLiteral => Some(false),
+        Node::StringLiteral(s) => Some(!s.is_empty()),
+        Node::NumberLiteral(n) => Some(*n != 0.0),
+        Node::SymbolLiteral(..) => Some(true),
+        Node::ArrayLiteral(..) | Node::TupleLiteral(..) | Node::ObjectLiteral(..) => Some(true),
         _ => None,
     }
 }
@@ -1001,17 +1011,25 @@ impl<'a> Parser<'a> {
             } else {
                 self.parse_block(ParseScope::Block)?
             };
-            Ok(Node::IfStatement(
-                Box::new(test),
-                Box::new(consequent),
-                Some(Box::new(alternative)),
-            ))
+            match constant_truthy(&test) {
+                Some(true) => Ok(consequent),
+                Some(false) => Ok(alternative),
+                None => Ok(Node::IfStatement(
+                    Box::new(test),
+                    Box::new(consequent),
+                    Some(Box::new(alternative)),
+                )),
+            }
         } else {
-            Ok(Node::IfStatement(
-                Box::new(test),
-                Box::new(consequent),
-                None,
-            ))
+            match constant_truthy(&test) {
+                Some(true) => Ok(consequent),
+                Some(false) => Ok(Node::NullLiteral),
+                None => Ok(Node::IfStatement(
+                    Box::new(test),
+                    Box::new(consequent),
+                    None,
+                )),
+            }
         }
     }
 
@@ -1019,7 +1037,10 @@ impl<'a> Parser<'a> {
         self.expect(Token::While)?;
         let test = self.parse_expression()?;
         let body = self.parse_block(ParseScope::Loop)?;
-        Ok(Node::WhileLoop(Box::new(test), Box::new(body)))
+        match constant_truthy(&test) {
+            Some(true) | None => Ok(Node::WhileLoop(Box::new(test), Box::new(body))),
+            Some(false) => Ok(Node::NullLiteral),
+        }
     }
 
     fn parse_for(&mut self) -> Result<Node, Error> {
@@ -1251,11 +1272,17 @@ impl<'a> Parser<'a> {
             let consequent = self.parse_assignment_expression()?;
             self.expect(Token::Colon)?;
             let alternative = self.parse_assignment_expression()?;
-            return Ok(Node::ConditionalExpression(
-                Box::new(lhs),
-                Box::new(consequent),
-                Box::new(alternative),
-            ));
+            match constant_truthy(&lhs) {
+                Some(true) => return Ok(consequent),
+                Some(false) => return Ok(alternative),
+                None => {
+                    return Ok(Node::ConditionalExpression(
+                        Box::new(lhs),
+                        Box::new(consequent),
+                        Box::new(alternative),
+                    ));
+                }
+            }
         }
         Ok(lhs)
     }
