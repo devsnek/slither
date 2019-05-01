@@ -432,7 +432,7 @@ pub enum Value {
 
     // Internal types
     Empty,
-    List(GcCell<VecDeque<Value>>),
+    List(Gc<GcCell<VecDeque<Value>>>),
     WrappedContext(Gc<GcCell<Context>>, Option<Box<Value>>),
     Iterator(Box<Value>, Box<Value>),
 }
@@ -582,7 +582,7 @@ impl Value {
     }
 
     pub fn new_list() -> Value {
-        Value::List(GcCell::new(VecDeque::new()))
+        Value::List(Gc::new(GcCell::new(VecDeque::new())))
     }
 
     pub fn new_tuple() -> Value {

@@ -1,31 +1,18 @@
 import { print } from standard:debug;
 import { listen, connect } from standard:net;
 
-async function handle(conn) {
-  print('owo got connection');
-  for await chunk in conn {
-    conn.write(chunk);
+async function handle(socket) {
+  for await message in socket {
+    print('message in socket', socket);
   }
 }
 
 (async () => {
-  /*
-  const server = listen('0.0.0.0:8080');
-  print('listening', server);
-  for await conn in server {
-    print("owo conn");
-    // handle(conn).catch(print);
+  const listener = listen('127.0.0.1:8080');
+  for await socket in listener {
+    handle(socket)
+      .catch((e) => print('error', e));
   }
-  print('server deded');
-  */
-
-  const c = connect('0.0.0.0:8080');
-  print('got c');
-  const v = c.next();
-  v.catch((e) => { print('e is', e); });
-  print('v is', v);
-  const t = await v;
-  print('t is', t);
 })().catch((e) => {
   print('error', e);
 });
