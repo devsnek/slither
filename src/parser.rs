@@ -1066,6 +1066,8 @@ impl<'a> Parser<'a> {
         self.expect(Token::Return)?;
         if self.eat(Token::Semicolon) {
             Ok(Node::ReturnStatement(None))
+        } else if self.scope(ParseScope::GeneratorFunction) {
+            Err(Error::UnexpectedToken)
         } else {
             let expr = self.parse_expression()?;
             self.expect(Token::Semicolon)?;

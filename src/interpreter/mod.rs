@@ -273,6 +273,7 @@ pub struct Context {
     pub scope: Gc<GcCell<Scope>>,
     pub interpreter: Option<Interpreter>,
     pub function: Option<Value>,
+    try_stack: Vec<usize>,
 }
 
 impl Context {
@@ -281,6 +282,7 @@ impl Context {
             scope,
             interpreter: None,
             function: None,
+            try_stack: Vec::new(),
         }))
     }
 }
@@ -341,7 +343,6 @@ pub struct Interpreter {
     pub accumulator: Value,
     pub exception: Option<Value>,
     pc: usize,
-    try_stack: Vec<usize>,
     context: Vec<Gc<GcCell<Context>>>,
     positions: Vec<usize>,
     registers: Registers,
@@ -353,7 +354,6 @@ impl Interpreter {
             accumulator: Value::Empty,
             exception: None,
             pc,
-            try_stack: Vec::new(),
             context: vec![ctx],
             positions: Vec::new(),
             registers: Registers::new(None),
@@ -439,12 +439,19 @@ impl Interpreter {
         }
 
         if self.exception.is_some() {
-            match self.try_stack.pop() {
-                Some(position) => {
-                    self.pc = position;
+            loop {
+                match self.context.last() {
+                    None => return Ok(Err(self.exception.take().unwrap())),
+                    Some(context) => {
+                        if let Some(pc) = context.borrow_mut().try_stack.pop() {
+                            self.pc = pc;
+                        }
+                    }
                 }
-                None => {
+                if self.context.len() == 1 {
                     return Ok(Err(self.exception.take().unwrap()));
+                } else {
+                    pop_context!();
                 }
             }
         }
@@ -456,13 +463,22 @@ impl Interpreter {
                         Ok(v) => v,
                         Err(e) => {
                             self.exception = Some(e);
-                            match self.try_stack.pop() {
-                                Some(position) => {
-                                    self.pc = position;
-                                    continue 'main;
+                            loop {
+                                match self.context.last() {
+                                    None => {
+                                        break 'main;
+                                    }
+                                    Some(context) => {
+                                        if let Some(pc) = context.borrow_mut().try_stack.pop() {
+                                            self.pc = pc;
+                                            continue 'main;
+                                        }
+                                    }
                                 }
-                                None => {
+                                if self.context.len() == 1 {
                                     break 'main;
+                                } else {
+                                    pop_context!();
                                 }
                             }
                         }
@@ -567,14 +583,15 @@ impl Interpreter {
                     let sid = read_u32!() as usize;
                     let mutable = read_u8!() == 1;
                     let name = &agent.assembler.string_table[sid];
-                    handle!(self
+                    let r = self
                         .context
                         .last()
                         .unwrap()
                         .borrow()
                         .scope
                         .borrow_mut()
-                        .create(agent, name, mutable));
+                        .create(agent, name, mutable);
+                    handle!(r);
                 }
                 Op::LexicalInitialization => {
                     let sid = read_u32!() as usize;
@@ -603,36 +620,39 @@ impl Interpreter {
                 Op::ResolveIdentifier => {
                     let sid = read_u32!() as usize;
                     let name = &agent.assembler.string_table[sid];
-                    self.accumulator = handle!(self
+                    let r = self
                         .context
                         .last()
                         .unwrap()
                         .borrow()
                         .scope
                         .borrow()
-                        .get(agent, name));
+                        .get(agent, name);
+                    self.accumulator = handle!(r);
                 }
                 Op::AssignIdentifier => {
                     let sid = read_u32!() as usize;
                     let name = &agent.assembler.string_table[sid];
-                    handle!(self
+                    let r = self
                         .context
                         .last()
                         .unwrap()
                         .borrow()
                         .scope
                         .borrow_mut()
-                        .set(agent, name, self.accumulator.clone()));
+                        .set(agent, name, self.accumulator.clone());
+                    handle!(r);
                 }
                 Op::GetThis => {
-                    self.accumulator = handle!(self
+                    let r = self
                         .context
                         .last()
                         .unwrap()
                         .borrow()
                         .scope
                         .borrow()
-                        .get_this(agent));
+                        .get_this(agent);
+                    self.accumulator = handle!(r);
                 }
                 Op::Suspend => {
                     return Err(SuspendValue(std::mem::replace(
@@ -785,20 +805,34 @@ impl Interpreter {
                 }
                 Op::PushTry => {
                     let pos = read_u32!() as usize;
-                    self.try_stack.push(pos);
+                    self.context
+                        .last()
+                        .unwrap()
+                        .borrow_mut()
+                        .try_stack
+                        .push(pos);
                 }
                 Op::PopTry => {
-                    self.try_stack.pop();
+                    self.context.last().unwrap().borrow_mut().try_stack.pop();
                 }
                 Op::ThrowDynamic => {
                     debug_assert!(self.exception.is_some());
-                    match self.try_stack.pop() {
-                        Some(position) => {
-                            self.pc = position;
-                            continue 'main;
+                    loop {
+                        match self.context.last() {
+                            None => {
+                                break 'main;
+                            }
+                            Some(context) => {
+                                if let Some(pc) = context.borrow_mut().try_stack.pop() {
+                                    self.pc = pc;
+                                    continue 'main;
+                                }
+                            }
                         }
-                        None => {
+                        if self.context.len() == 1 {
                             break 'main;
+                        } else {
+                            pop_context!();
                         }
                     }
                 }

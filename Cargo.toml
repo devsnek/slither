@@ -12,6 +12,9 @@ path = "src/lib.rs"
 name = "slither"
 path = "src/bin.rs"
 
+[profile.release]
+lto = true
+
 [dependencies.gc]
 path = "rust-gc/gc"
 
