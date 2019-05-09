@@ -95,6 +95,10 @@ pub enum ObjectKey {
 }
 
 impl ObjectKey {
+    pub fn well_known_symbol(name: &str) -> ObjectKey {
+        ObjectKey::Symbol(Symbol::new_registered(name))
+    }
+
     fn to_number(&self) -> Option<usize> {
         match self {
             ObjectKey::Number(n) => Some(*n),
@@ -785,20 +789,14 @@ impl Value {
     }
 
     pub fn to_iterator(&self, agent: &Agent) -> Result<Value, Value> {
-        let iterator = self.get(
-            agent,
-            Value::new_well_known_symbol("iterator").to_object_key(agent)?,
-        )?;
+        let iterator = self.get(agent, ObjectKey::well_known_symbol("iterator"))?;
         let iterator = iterator.call(agent, self.clone(), vec![])?;
         let next = iterator.get(agent, ObjectKey::from("next"))?;
         Ok(Value::Iterator(Box::new(iterator), Box::new(next)))
     }
 
     pub fn to_async_iterator(&self, agent: &Agent) -> Result<Value, Value> {
-        let iterator = self.get(
-            agent,
-            Value::new_well_known_symbol("asyncIterator").to_object_key(agent)?,
-        )?;
+        let iterator = self.get(agent, ObjectKey::well_known_symbol("asyncIterator"))?;
         let iterator = iterator.call(agent, self.clone(), vec![])?;
         let next = iterator.get(agent, ObjectKey::from("next"))?;
         Ok(Value::Iterator(Box::new(iterator), Box::new(next)))
@@ -1124,10 +1122,11 @@ fn inspect(
                 return format!("/{}/", re);
             }
             if o.prototype == agent.intrinsics.error_prototype {
-                if let Ok(Value::String(s)) =
-                    o.get(ObjectKey::from("toString"))
-                        .call(agent, value.clone(), vec![])
-                {
+                if let Ok(Value::String(s)) = o.get(ObjectKey::well_known_symbol("toString")).call(
+                    agent,
+                    value.clone(),
+                    vec![],
+                ) {
                     return s;
                 }
             }

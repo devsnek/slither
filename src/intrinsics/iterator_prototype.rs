@@ -24,9 +24,7 @@ pub fn create_iterator_prototype(agent: &Agent) -> Value {
     proto
         .set(
             agent,
-            Value::new_well_known_symbol("iterator")
-                .to_object_key(agent)
-                .unwrap(),
+            ObjectKey::well_known_symbol("iterator"),
             Value::new_builtin_function(agent, iterator),
         )
         .unwrap();

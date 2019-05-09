@@ -21,7 +21,7 @@ pub fn create_number_prototype(agent: &Agent) -> Value {
     proto
         .set(
             agent,
-            ObjectKey::from("toString"),
+            ObjectKey::well_known_symbol("toString"),
             Value::new_builtin_function(agent, to_string),
         )
         .unwrap();

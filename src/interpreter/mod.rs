@@ -891,7 +891,9 @@ impl Interpreter {
                 }
                 Op::ToString => {
                     if self.accumulator.type_of() != "string" {
-                        let ts = handle!(self.accumulator.get(agent, ObjectKey::from("toString")));
+                        let ts = handle!(self
+                            .accumulator
+                            .get(agent, ObjectKey::well_known_symbol("toString")));
                         if ts.type_of() != "function" {
                             handle!(Err(Value::new_error(
                                 agent,
