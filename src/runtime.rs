@@ -11,9 +11,9 @@ macro_rules! intrinsics {
     };
 }
 
-fn to_string(agent: &Agent, value: Value) -> Result<Value, Value> {
+fn to_string(agent: &Agent, value: &Value) -> Result<Value, Value> {
     if value.type_of() == "string" {
-        Ok(value)
+        Ok(value.clone())
     } else {
         let ts = value.get(agent, ObjectKey::well_known_symbol("toString"))?;
         if ts.type_of() != "function" {
@@ -22,16 +22,16 @@ fn to_string(agent: &Agent, value: Value) -> Result<Value, Value> {
                 "value does not provide a :toString",
             ))
         } else {
-            ts.call(agent, value, vec![])
+            ts.call(agent, value.clone(), vec![])
         }
     }
 }
 
-fn get_iterator(agent: &Agent, value: Value) -> Result<Value, Value> {
+fn get_iterator(agent: &Agent, value: &Value) -> Result<Value, Value> {
     value.to_iterator(agent)
 }
 
-fn get_async_iterator(agent: &Agent, value: Value) -> Result<Value, Value> {
+fn get_async_iterator(agent: &Agent, value: &Value) -> Result<Value, Value> {
     value.to_async_iterator(agent)
 }
 
@@ -54,7 +54,7 @@ impl From<u8> for RuntimeFunction {
 }
 
 impl RuntimeFunction {
-    pub fn get(id: u8) -> fn(&Agent, Value) -> Result<Value, Value> {
+    pub fn get(id: u8) -> fn(&Agent, &Value) -> Result<Value, Value> {
         macro_rules! matcher {
             ( $( ( $name:ident, $fn:ident ), )* ) => (
                 let id: RuntimeFunction = id.into();
@@ -66,7 +66,7 @@ impl RuntimeFunction {
         intrinsics!(matcher);
     }
 
-    pub fn name(&self) -> String {
+    pub fn name(self) -> String {
         macro_rules! matcher {
             ( $( ( $name:ident, $fn:ident ), )* ) => (
                 return match self {
@@ -77,7 +77,7 @@ impl RuntimeFunction {
         intrinsics!(matcher);
     }
 
-    pub fn id(&self) -> u8 {
-        *self as u8
+    pub fn id(self) -> u8 {
+        self as u8
     }
 }

@@ -759,7 +759,7 @@ impl Interpreter {
                 Op::CallRuntime => {
                     let id = read_u8!();
                     let f = RuntimeFunction::get(id);
-                    let r = f(agent, self.accumulator.clone());
+                    let r = f(agent, &self.accumulator);
                     self.accumulator = handle!(r);
                 }
                 Op::IteratorNext => {
