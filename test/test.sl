@@ -3,7 +3,8 @@ import { listen, connect } from standard:net;
 
 async function handle(socket) {
   for await message in socket {
-    print('message in socket', socket);
+    print('message in socket', message);
+    socket.write(message);
   }
 }
 

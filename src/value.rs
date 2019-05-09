@@ -255,6 +255,9 @@ pub enum ObjectKind {
 unsafe impl gc::Trace for ObjectKind {
     custom_trace!(this, {
         match this {
+            ObjectKind::Array(items) => {
+                mark(items);
+            }
             ObjectKind::BytecodeFunction { scope, .. } => {
                 mark(scope);
             }
@@ -308,6 +311,18 @@ impl ObjectInfo {
                 return values.borrow().get(n).unwrap_or(&Value::Null).clone();
             }
         }
+        if let ObjectInfo {
+            kind: ObjectKind::Buffer(values),
+            ..
+        } = self
+        {
+            if ObjectKey::from("length") == property {
+                return Value::from(values.borrow().len() as f64);
+            }
+            if let Some(n) = property.to_number() {
+                return Value::from(f64::from(*values.borrow().get(n).unwrap_or(&0)));
+            }
+        }
         match self.properties.borrow().get(&property) {
             Some(v) => v.clone(),
             _ => {
@@ -352,6 +367,27 @@ impl ObjectInfo {
                 }
                 values[n] = value.clone();
                 return Ok(Value::Null);
+            }
+        }
+        if let ObjectInfo {
+            kind: ObjectKind::Buffer(values),
+            ..
+        } = self
+        {
+            if ObjectKey::from("length") == property {
+                return Ok(Value::Null);
+            }
+            if let Some(n) = property.to_number() {
+                if let Value::Number(v) = value {
+                    let mut values = values.borrow_mut();
+                    if values.len() <= n {
+                        return Err(Value::new_error(agent, "Buffer index out of range"));
+                    }
+                    values[n] = v as u8;
+                    return Ok(Value::Null);
+                } else {
+                    return Err(Value::new_error(agent, "Buffer values must be numbers"));
+                }
             }
         }
         let own = if let ObjectKey::Symbol(Symbol::Unregistered { private: true, .. }) = property {
@@ -410,6 +446,11 @@ impl ObjectInfo {
                 keys.push(ObjectKey::Number(i));
             }
         }
+        if let ObjectKind::Buffer(values) = &self.kind {
+            for i in 0..(values.borrow().len()) {
+                keys.push(ObjectKey::Number(i));
+            }
+        }
         let entries = self.properties.borrow();
         for key in entries.keys() {
             if let ObjectKey::Symbol(Symbol::Unregistered { private: true, .. }) = key {
@@ -419,6 +460,7 @@ impl ObjectInfo {
             }
         }
         keys.sort();
+        keys.dedup();
         keys
     }
 }
@@ -1178,6 +1220,7 @@ fn inspect(
                         )
                     )
                 }
+                inspected.remove(&hash_key);
                 out += &format!("\n{}{}", "  ".repeat(indent), if array { "]" } else { "}" });
                 out
             }

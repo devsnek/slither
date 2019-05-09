@@ -14,6 +14,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, VecDeque};
 use threadpool::ThreadPool;
 
+#[derive(Trace, Finalize)]
 pub struct Intrinsics {
     pub object_prototype: Value,
     pub array_prototype: Value,
@@ -57,7 +58,7 @@ unsafe impl gc::Trace for MioMapType {
     custom_trace!(this, {
         match this {
             MioMapType::Timer(_, v) | MioMapType::FS(_, v) => mark(v),
-            _ => {}
+            MioMapType::Net(v) => mark(v),
         }
     });
 }
@@ -79,10 +80,13 @@ pub struct Agent {
 
 unsafe impl gc::Trace for Agent {
     custom_trace!(this, {
+        mark(&this.intrinsics);
         mark(&this.builtins);
         mark(&this.root_scope);
         mark(&this.job_queue);
-        // mark(&this.mio_map);
+        for v in this.mio_map.borrow().values() {
+            mark(v);
+        }
         mark(&this.modules);
     });
 }
