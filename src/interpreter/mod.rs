@@ -1,6 +1,7 @@
 use crate::module::Module;
 use crate::num_util::{f64_band, f64_bnot, f64_bor, f64_bxor, f64_shl, f64_shr};
 use crate::parser::FunctionKind;
+use crate::runtime::RuntimeFunction;
 use crate::value::{ObjectKey, ObjectKind};
 use crate::{Agent, Value};
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -25,6 +26,7 @@ pub enum OpArg {
     Register,
     Position,
     FunctionInfo,
+    RuntimeFunction,
 }
 
 #[rustfmt::skip]
@@ -64,6 +66,7 @@ macro_rules! OPS {
 
             (Call, AccumulatorUse::ReadWrite, OpArg::Register, OpArg::Register, OpArg::Register, OpArg::U8),
             (TailCall, AccumulatorUse::ReadWrite, OpArg::Register, OpArg::Register, OpArg::Register, OpArg::U8),
+            (CallRuntime, AccumulatorUse::ReadWrite, OpArg::RuntimeFunction),
 
             (Construct, AccumulatorUse::ReadWrite),
             (ConstructWithArgs, AccumulatorUse::ReadWRite, OpArg::Register, OpArg::Register, OpArg::U8),
@@ -86,15 +89,11 @@ macro_rules! OPS {
             (Suspend, AccumulatorUse::Write),
             (Return, AccumulatorUse::Write),
 
-            (GetIterator, AccumulatorUse::ReadWrite),
-            (GetAsyncIterator, AccumulatorUse::ReadWrite),
             (IteratorNext, AccumulatorUse::ReadWrite, OpArg::Register),
             (AsyncIteratorNext, AccumulatorUse::ReadWrite, OpArg::Register),
 
             (LoadAccumulatorFromRegister, AccumulatorUse::Write, OpArg::Register),
             (StoreAccumulatorInRegister, AccumulatorUse::Read, OpArg::Register),
-
-            (ToString, AccumulatorUse::ReadWrite),
 
             (Add, AccumulatorUse::ReadWrite, OpArg::Register),
             (Sub, AccumulatorUse::ReadWrite, OpArg::Register),
@@ -757,12 +756,11 @@ impl Interpreter {
                         break 'main;
                     }
                 },
-                Op::GetIterator | Op::GetAsyncIterator => {
-                    self.accumulator = handle!(if op == Op::GetAsyncIterator {
-                        self.accumulator.to_async_iterator(agent)
-                    } else {
-                        self.accumulator.to_iterator(agent)
-                    });
+                Op::CallRuntime => {
+                    let id = read_u8!();
+                    let f = RuntimeFunction::get(id);
+                    let r = f(agent, self.accumulator.clone());
+                    self.accumulator = handle!(r);
                 }
                 Op::IteratorNext => {
                     let iid = read_u32!() as usize;
@@ -887,21 +885,6 @@ impl Interpreter {
                     ));
                     if self.registers[eid] != Value::Empty {
                         // FIXME: self.registers[cid].set_prototype(self.registers[eid]);
-                    }
-                }
-                Op::ToString => {
-                    if self.accumulator.type_of() != "string" {
-                        let ts = handle!(self
-                            .accumulator
-                            .get(agent, ObjectKey::well_known_symbol("toString")));
-                        if ts.type_of() != "function" {
-                            handle!(Err(Value::new_error(
-                                agent,
-                                "value does not provide a toString method"
-                            )));
-                        }
-                        self.accumulator =
-                            handle!(ts.call(agent, self.accumulator.clone(), vec![]));
                     }
                 }
                 Op::Add => {

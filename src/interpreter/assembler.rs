@@ -1,5 +1,6 @@
 use crate::interpreter::{Op, REGISTER_COUNT};
 use crate::parser::{FunctionKind, Node, Operator, Scope, ScopeKind};
+use crate::runtime::RuntimeFunction;
 use byteorder::{LittleEndian, WriteBytesExt};
 
 struct Register {
@@ -277,7 +278,7 @@ impl Assembler {
             }
 
             self.visit(expr);
-            self.push_op(Op::ToString);
+            self.call_runtime(RuntimeFunction::ToString);
             if last_valid {
                 self.push_op(Op::Add);
                 self.push_u32(last.id);
@@ -286,10 +287,12 @@ impl Assembler {
         }
 
         if let Some(quasi) = quasis.last() {
-            self.store_accumulator_in_register(&last);
-            self.load_string(quasi);
-            self.push_op(Op::Add);
-            self.push_u32(last.id);
+            if quasi != "" {
+                self.store_accumulator_in_register(&last);
+                self.load_string(quasi);
+                self.push_op(Op::Add);
+                self.push_u32(last.id);
+            }
         }
     }
 
@@ -391,10 +394,10 @@ impl Assembler {
 
         let iterator = rscope.register();
         self.visit(target);
-        self.push_op(if r#async {
-            Op::GetAsyncIterator
+        self.call_runtime(if r#async {
+            RuntimeFunction::GetAsyncIterator
         } else {
-            Op::GetIterator
+            RuntimeFunction::GetIterator
         });
         self.store_accumulator_in_register(&iterator);
 
@@ -1101,6 +1104,11 @@ impl Assembler {
         self.push_op(Op::OverwriteBinding);
         let id = self.string_id(name);
         self.push_u32(id);
+    }
+
+    fn call_runtime(&mut self, f: RuntimeFunction) {
+        self.push_op(Op::CallRuntime);
+        self.push_u8(f.id());
     }
 }
 

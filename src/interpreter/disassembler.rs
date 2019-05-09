@@ -1,4 +1,5 @@
 use crate::interpreter::{Assembler, Op, OpArg};
+use crate::runtime::RuntimeFunction;
 use byteorder::{LittleEndian, ReadBytesExt};
 
 const ANSI_RED: &str = "\x1b[31m";
@@ -60,6 +61,16 @@ pub fn disassemble(assembler: &Assembler, mut pc: usize, n_instructions: usize) 
                             .read_u32::<LittleEndian>()
                             .unwrap();
                         format!("{}r{}{}", ANSI_RED, r, ANSI_RESET)
+                    }
+                    OpArg::RuntimeFunction => {
+                        *pc += 1;
+                        let n = assembler.code[*pc - 1];
+                        format!(
+                            "{}{}{}",
+                            ANSI_RED,
+                            RuntimeFunction::from(n).name(),
+                            ANSI_RESET
+                        )
                     }
                     OpArg::FunctionInfo => {
                         *pc += 4;
