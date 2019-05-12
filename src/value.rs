@@ -237,7 +237,7 @@ pub enum ObjectKind {
     Ordinary,
     Array(GcCell<Vec<Value>>),
     Boolean(bool),
-    String(String),
+    String(Vec<char>),
     Number(f64),
     Symbol(Symbol),
     Regex(Regex),
@@ -275,7 +275,7 @@ impl std::fmt::Debug for ObjectKind {
             ObjectKind::Ordinary => "Ordinary".to_string(),
             ObjectKind::Array(..) => "Array".to_string(),
             ObjectKind::Boolean(b) => format!("Boolean({})", b),
-            ObjectKind::String(s) => format!("String({})", s),
+            ObjectKind::String(s) => format!("String({:?})", s),
             ObjectKind::Number(i) => format!("Number({})", i),
             ObjectKind::Regex(r) => format!("Regex({})", r),
             ObjectKind::Symbol(s) => format!("Symbol({:?})", s),
@@ -321,6 +321,20 @@ impl ObjectInfo {
             }
             if let Some(n) = property.to_number() {
                 return Value::from(f64::from(*values.borrow().get(n).unwrap_or(&0)));
+            }
+        }
+        if let ObjectInfo {
+            kind: ObjectKind::String(string),
+            ..
+        } = self
+        {
+            if ObjectKey::from("length") == property {
+                return Value::from(string.len() as f64);
+            }
+            if let Some(n) = property.to_number() {
+                return string
+                    .get(n)
+                    .map_or(Value::Null, |x| Value::from(x.to_string()));
             }
         }
         match self.properties.borrow().get(&property) {
@@ -807,7 +821,7 @@ impl Value {
                 prototype: agent.intrinsics.number_prototype.clone(),
             }))),
             Value::String(s) => Ok(Value::Object(Gc::new(ObjectInfo {
-                kind: ObjectKind::String(s.to_string()),
+                kind: ObjectKind::String(s.chars().collect()),
                 properties: GcCell::new(IndexMap::new()),
                 prototype: agent.intrinsics.string_prototype.clone(),
             }))),

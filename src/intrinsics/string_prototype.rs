@@ -8,10 +8,10 @@ fn normalize(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Va
         if let ObjectKind::String(s) = &o.kind {
             match args.get(0).unwrap_or(&Value::Null) {
                 Value::String(form) => Ok(Value::from(match form.as_str() {
-                    "NFC" => s.nfc().collect::<String>(),
-                    "NFD" => s.nfd().collect::<String>(),
-                    "NFKC" => s.nfkc().collect::<String>(),
-                    "NFKD" => s.nfkd().collect::<String>(),
+                    "NFC" => s.iter().cloned().nfc().collect::<String>(),
+                    "NFD" => s.iter().cloned().nfd().collect::<String>(),
+                    "NFKC" => s.iter().cloned().nfkc().collect::<String>(),
+                    "NFKD" => s.iter().cloned().nfkd().collect::<String>(),
                     _ => {
                         return Err(Value::new_error(
                             agent,
@@ -19,7 +19,7 @@ fn normalize(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Va
                         ));
                     }
                 })),
-                Value::Null => Ok(Value::from(s.nfc().collect::<String>())),
+                Value::Null => Ok(Value::from(s.iter().cloned().nfc().collect::<String>())),
                 _ => {
                     return Err(Value::new_error(
                         agent,
