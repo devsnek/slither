@@ -94,7 +94,6 @@ unsafe impl gc::Trace for Agent {
 impl Agent {
     pub fn new() -> Agent {
         let object_prototype = create_object_prototype();
-        let function_prototype = create_function_prototype(object_prototype.clone());
         let symbol_prototype = create_symbol_prototype(object_prototype.clone());
 
         let mut agent = Agent {
@@ -103,7 +102,7 @@ impl Agent {
                 object_prototype: object_prototype.clone(),
                 array_prototype: Value::Null,
                 array_iterator_prototype: Value::Null,
-                function_prototype,
+                function_prototype: Value::Null,
                 boolean_prototype: Value::Null,
                 number_prototype: Value::Null,
                 string_prototype: Value::Null,
@@ -131,6 +130,7 @@ impl Agent {
             modules: GcCell::new(HashMap::new()),
         };
 
+        create_function_prototype(&mut agent);
         agent.intrinsics.boolean_prototype = create_boolean_prototype(&agent);
         agent.intrinsics.number_prototype = create_number_prototype(&agent);
         agent.intrinsics.string_prototype = create_string_prototype(&agent);
