@@ -293,6 +293,12 @@ impl<'a> Lexer<'a> {
                         let mut str = String::new();
                         while let Some(c) = self.chars.peek() {
                             match c {
+                                '_' => {
+                                    self.chars.next().unwrap();
+                                    if self.chars.peek() == Some(&'_') {
+                                        return Err(Error::UnexpectedToken);
+                                    }
+                                }
                                 '0' | '1' => str.push(self.chars.next().unwrap()),
                                 '2'...'7' if radix > 7 => str.push(self.chars.next().unwrap()),
                                 '8' | '9' if radix > 15 => str.push(self.chars.next().unwrap()),
@@ -317,6 +323,13 @@ impl<'a> Lexer<'a> {
                     let mut in_exp = false;
                     while let Some(c) = self.chars.peek() {
                         match c {
+                            '_' => {
+                                self.chars.next().unwrap();
+                                if self.chars.peek() == Some(&'_') {
+                                    return Err(Error::UnexpectedToken);
+                                }
+                                continue;
+                            }
                             '0'...'9' => {
                                 if in_exp {
                                     exp_str.push(self.chars.next().unwrap());
@@ -332,6 +345,9 @@ impl<'a> Lexer<'a> {
                                 if !one_dot {
                                     one_dot = true;
                                     str.push(self.chars.next().unwrap());
+                                    if self.chars.peek() == Some(&'_') {
+                                        return Err(Error::UnexpectedToken);
+                                    }
                                 } else {
                                     break;
                                 }

@@ -29,14 +29,16 @@ gen function genfib() {
     fn2 = current + fn1;
     let reset = yield current;
     if (reset) {
-        fn1 = 0;
-        fn2 = 1;
+      fn1 = 0;
+      fn2 = 1;
     }
   }
 }
 
+/*
 for i in genfib() {
   print(i);
 }
+*/
 
-print('fib 22 =', fibTail(22));
+print('fib 22 =', fibTail(50));
