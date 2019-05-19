@@ -7,32 +7,67 @@ macro_rules! intrinsics {
             (ToString, to_string),
             (GetIterator, get_iterator),
             (GetAsyncIterator, get_async_iterator),
+            (ObjectKeys, object_keys),
+            (ListLength, list_length),
+            (ListPopFront, list_pop_front),
         );
     };
 }
 
-fn to_string(agent: &Agent, value: &Value) -> Result<Value, Value> {
-    if value.type_of() == "string" {
-        Ok(value.clone())
+fn to_string(agent: &Agent, accumulator: &mut Value) -> Result<(), Value> {
+    if accumulator.type_of() == "string" {
+        Ok(())
     } else {
-        let ts = value.get(agent, ObjectKey::well_known_symbol("toString"))?;
+        let ts = accumulator.get(agent, ObjectKey::well_known_symbol("toString"))?;
         if ts.type_of() != "function" {
             Err(Value::new_error(
                 agent,
                 "value does not provide a :toString",
             ))
         } else {
-            ts.call(agent, value.clone(), vec![])
+            *accumulator = ts.call(agent, accumulator.clone(), vec![])?;
+            Ok(())
         }
     }
 }
 
-fn get_iterator(agent: &Agent, value: &Value) -> Result<Value, Value> {
-    value.to_iterator(agent)
+fn get_iterator(agent: &Agent, accumulator: &mut Value) -> Result<(), Value> {
+    *accumulator = accumulator.to_iterator(agent)?;
+    Ok(())
 }
 
-fn get_async_iterator(agent: &Agent, value: &Value) -> Result<Value, Value> {
-    value.to_async_iterator(agent)
+fn get_async_iterator(agent: &Agent, accumulator: &mut Value) -> Result<(), Value> {
+    *accumulator = accumulator.to_async_iterator(agent)?;
+    Ok(())
+}
+
+fn object_keys(agent: &Agent, accumulator: &mut Value) -> Result<(), Value> {
+    let keys = accumulator.keys(agent)?;
+    *accumulator = Value::new_list_from_iter(keys.iter().map(Value::from));
+    Ok(())
+}
+
+fn list_length(_agent: &Agent, accumulator: &mut Value) -> Result<(), Value> {
+    if let Value::List(list) = accumulator {
+        let len = list.borrow().len() as f64;
+        *accumulator = Value::from(len);
+    } else {
+        unreachable!();
+    }
+    Ok(())
+}
+
+fn list_pop_front(_agent: &Agent, accumulator: &mut Value) -> Result<(), Value> {
+    if let Value::List(list) = accumulator {
+        let item = list.borrow_mut().pop_front();
+        *accumulator = match item {
+            None => Value::Empty,
+            Some(v) => v,
+        };
+    } else {
+        unreachable!();
+    }
+    Ok(())
 }
 
 macro_rules! declare_enum {
@@ -54,7 +89,7 @@ impl From<u8> for RuntimeFunction {
 }
 
 impl RuntimeFunction {
-    pub fn get(id: u8) -> fn(&Agent, &Value) -> Result<Value, Value> {
+    pub fn get(id: u8) -> fn(&Agent, &mut Value) -> Result<(), Value> {
         macro_rules! matcher {
             ( $( ( $name:ident, $fn:ident ), )* ) => (
                 let id: RuntimeFunction = id.into();

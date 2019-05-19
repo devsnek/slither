@@ -159,6 +159,7 @@ impl Assembler {
             Node::TryStatement(tryc, binding, catch, finally) => {
                 self.visit_try(tryc, binding, catch, finally)
             }
+            Node::MatchExpression(expr, arms) => self.visit_match(expr, arms),
             Node::ImportDeclaration(..)
             | Node::ImportNamedDeclaration(..)
             | Node::ImportDefaultDeclaration(..)
@@ -167,6 +168,8 @@ impl Assembler {
             }
             Node::ExportDeclaration(decl) => self.visit_export(decl),
             Node::Initializer(..) => unreachable!(),
+            Node::MatchArm(..) => unreachable!(),
+            Node::ObjectPattern(..) | Node::ArrayPattern(..) => unreachable!(),
         }
     }
 
@@ -944,6 +947,98 @@ impl Assembler {
         }
     }
 
+    fn visit_match(&mut self, expr: &Node, arms: &[Node]) {
+        let mut end = self.label();
+
+        let rscope = RegisterScope::new(self);
+        let value = rscope.register();
+
+        self.visit(expr);
+        self.store_accumulator_in_register(&value);
+
+        for arm in arms {
+            if let Node::MatchArm(test, consequent) = arm {
+                let mut next = self.label();
+                match &**test {
+                    Node::Identifier(binding) => {
+                        self.push_op(Op::EnterScope);
+                        self.lexical_declaration(binding, false);
+                        self.load_accumulator_with_register(&value);
+                        self.lexical_initialization(binding);
+                        self.visit(consequent);
+                        self.push_op(Op::ExitScope);
+                    }
+                    Node::StringLiteral(..) | Node::NumberLiteral(..) => {
+                        self.visit(test);
+                        self.push_op(Op::Eq);
+                        self.push_u32(value.id);
+                        self.jump_if_false(&mut next);
+                        self.visit(consequent);
+                    }
+                    Node::ObjectPattern(patterns, wildcard) => {
+                        self.push_op(Op::EnterScope);
+                        if *wildcard {
+                            for (binding, _pattern) in patterns {
+                                self.load_string(binding);
+                                self.push_op(Op::HasProperty); // TODO: replace with equality for pattern
+                                self.push_u32(value.id);
+                                self.jump_if_false(&mut next);
+                                self.lexical_declaration(binding, false);
+                                self.load_accumulator_with_register(&value);
+                                self.load_named_property(binding);
+                                self.lexical_initialization(binding);
+                            }
+                        } else {
+                            let mut head = self.label();
+
+                            self.load_accumulator_with_register(&value);
+                            self.call_runtime(RuntimeFunction::ObjectKeys);
+                            let keys = rscope.register();
+                            self.store_accumulator_in_register(&keys);
+
+                            let keys_length = rscope.register();
+                            self.call_runtime(RuntimeFunction::ListLength);
+                            self.store_accumulator_in_register(&keys_length);
+
+                            self.load_f64(patterns.len() as f64);
+                            self.push_op(Op::Eq);
+                            self.push_u32(keys_length.id);
+                            self.jump_if_false(&mut next);
+
+                            self.mark(&mut head);
+
+                            self.load_accumulator_with_register(&keys);
+                            self.call_runtime(RuntimeFunction::ListPopFront);
+                            self.jump_if_empty(&mut next);
+
+                            self.push_op(Op::HasProperty); // TODO: replace with equality for pattern
+                            self.push_u32(value.id);
+                            self.jump_if_false(&mut next);
+                            /*
+                            self.lexical_declaration(binding, false);
+                            self.load_accumulator_with_register(&value);
+                            self.load_named_property(binding);
+                            self.lexical_initialization(binding);
+                            */
+                            self.jump(&mut head);
+                        }
+                        self.visit(consequent);
+                        self.push_op(Op::ExitScope);
+                    }
+                    Node::ArrayPattern(_patterns, _wildcard) => unreachable!(),
+                    _ => unreachable!(),
+                }
+                self.jump(&mut end);
+                self.mark(&mut next);
+            } else {
+                unreachable!();
+            }
+        }
+
+        self.load_null();
+        self.mark(&mut end);
+    }
+
     fn visit_export(&mut self, decl: &Node) {
         self.visit(decl);
     }
@@ -1000,6 +1095,11 @@ impl Assembler {
 
     fn jump_if_false(&mut self, label: &mut Label) {
         self.push_op(Op::JumpIfFalse);
+        self.jmp(label);
+    }
+
+    fn jump_if_empty(&mut self, label: &mut Label) {
+        self.push_op(Op::JumpIfEmpty);
         self.jmp(label);
     }
 

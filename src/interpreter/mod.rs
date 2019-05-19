@@ -77,6 +77,7 @@ macro_rules! OPS {
             (Jump, AccumulatorUse::None, OpArg::Position),
             (JumpIfTrue, AccumulatorUse::Read, OpArg::Position),
             (JumpIfFalse, AccumulatorUse::Read, OpArg::Position),
+            (JumpIfEmpty, AccumulatorUse::Read, OpArg::Position),
             (JumpIfNotEmpty, AccumulatorUse::Read, OpArg::Position),
 
             (PushTry, AccumulatorUse::None,OpArg::Position),
@@ -759,8 +760,7 @@ impl Interpreter {
                 Op::CallRuntime => {
                     let id = read_u8!();
                     let f = RuntimeFunction::get(id);
-                    let r = f(agent, &self.accumulator);
-                    self.accumulator = handle!(r);
+                    handle!(f(agent, &mut self.accumulator));
                 }
                 Op::IteratorNext => {
                     let iid = read_u32!() as usize;
@@ -792,6 +792,12 @@ impl Interpreter {
                 Op::JumpIfFalse => {
                     let position = read_u32!() as usize;
                     if !self.accumulator.to_bool() {
+                        self.pc = position;
+                    }
+                }
+                Op::JumpIfEmpty => {
+                    let position = read_u32!() as usize;
+                    if self.accumulator == Value::Empty {
                         self.pc = position;
                     }
                 }

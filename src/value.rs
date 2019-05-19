@@ -7,6 +7,7 @@ use indexmap::IndexMap;
 use regex::Regex;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{Hash, Hasher};
+use std::iter::FromIterator;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 type BuiltinFunction = fn(&Agent, Vec<Value>, &Context) -> Result<Value, Value>;
@@ -645,6 +646,13 @@ impl Value {
         Value::List(Gc::new(GcCell::new(VecDeque::new())))
     }
 
+    pub fn new_list_from_iter<T>(iter: T) -> Value
+    where
+        T: IntoIterator<Item = Value>,
+    {
+        Value::List(Gc::new(GcCell::new(VecDeque::from_iter(iter))))
+    }
+
     pub fn new_tuple() -> Value {
         Value::Tuple(Vec::new())
     }
@@ -1138,6 +1146,16 @@ impl From<bool> for Value {
             Value::True
         } else {
             Value::False
+        }
+    }
+}
+
+impl From<&ObjectKey> for Value {
+    fn from(k: &ObjectKey) -> Self {
+        match k {
+            ObjectKey::Number(n) => Value::from(n.to_string()),
+            ObjectKey::String(s) => Value::from(s.to_string()),
+            ObjectKey::Symbol(s) => Value::Symbol(s.clone()),
         }
     }
 }
