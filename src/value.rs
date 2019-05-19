@@ -734,7 +734,7 @@ impl Value {
 }
 
 impl Value {
-    pub(crate) fn type_of(&self) -> &str {
+    pub fn type_of(&self) -> &str {
         match &self {
             Value::Null => "null",
             Value::Boolean(..) => "boolean",
@@ -751,7 +751,7 @@ impl Value {
         }
     }
 
-    pub(crate) fn to_bool(&self) -> bool {
+    pub fn to_bool(&self) -> bool {
         match &self {
             Value::Null => false,
             Value::Boolean(b) => *b,
@@ -764,7 +764,7 @@ impl Value {
         }
     }
 
-    pub(crate) fn get(&self, agent: &Agent, key: ObjectKey) -> Result<Value, Value> {
+    pub fn get(&self, agent: &Agent, key: ObjectKey) -> Result<Value, Value> {
         match self {
             Value::Object(o) => Ok(o.get(key)),
             Value::Tuple(t, ..) => {
@@ -780,14 +780,14 @@ impl Value {
         }
     }
 
-    pub(crate) fn set(&self, agent: &Agent, key: ObjectKey, value: Value) -> Result<Value, Value> {
+    pub fn set(&self, agent: &Agent, key: ObjectKey, value: Value) -> Result<Value, Value> {
         match self {
             Value::Object(o) => o.set(agent, key, value, o.clone()),
             _ => Err(Value::new_error(agent, "base must be an object")),
         }
     }
 
-    pub(crate) fn keys(&self, agent: &Agent) -> Result<Vec<ObjectKey>, Value> {
+    pub fn keys(&self, agent: &Agent) -> Result<Vec<ObjectKey>, Value> {
         match self {
             Value::Object(o) => Ok(o.keys()),
             Value::Tuple(vec) => Ok((0..vec.len())
@@ -797,7 +797,7 @@ impl Value {
         }
     }
 
-    pub(crate) fn has(&self, agent: &Agent, key: ObjectKey) -> Result<bool, Value> {
+    pub fn has(&self, agent: &Agent, key: ObjectKey) -> Result<bool, Value> {
         match self {
             Value::Object(o) => Ok(o.has(key)),
             Value::Tuple(vec) => match key.to_number() {
@@ -850,7 +850,7 @@ impl Value {
         }
     }
 
-    pub(crate) fn to_object(&self, agent: &Agent) -> Result<Value, Value> {
+    pub fn to_object(&self, agent: &Agent) -> Result<Value, Value> {
         match self {
             Value::Null => Err(Value::new_error(agent, "cannot convert null to object")),
             Value::Boolean(b) => Ok(Value::Object(Gc::new(ObjectInfo {
@@ -879,7 +879,7 @@ impl Value {
         }
     }
 
-    pub(crate) fn to_object_key(&self, agent: &Agent) -> Result<ObjectKey, Value> {
+    pub fn to_object_key(&self, agent: &Agent) -> Result<ObjectKey, Value> {
         match self {
             Value::Symbol(s) => Ok(ObjectKey::Symbol(s.clone())),
             Value::String(s) => Ok(ObjectKey::from(s.to_string())),
@@ -888,14 +888,14 @@ impl Value {
         }
     }
 
-    pub(crate) fn to_iterator(&self, agent: &Agent) -> Result<Value, Value> {
+    pub fn to_iterator(&self, agent: &Agent) -> Result<Value, Value> {
         let iterator = self.get(agent, ObjectKey::well_known_symbol("iterator"))?;
         let iterator = iterator.call(agent, self.clone(), vec![])?;
         let next = iterator.get(agent, ObjectKey::from("next"))?;
         Ok(Value::Iterator(Box::new(iterator), Box::new(next)))
     }
 
-    pub(crate) fn to_async_iterator(&self, agent: &Agent) -> Result<Value, Value> {
+    pub fn to_async_iterator(&self, agent: &Agent) -> Result<Value, Value> {
         let iterator = self.get(agent, ObjectKey::well_known_symbol("asyncIterator"))?;
         let iterator = iterator.call(agent, self.clone(), vec![])?;
         let next = iterator.get(agent, ObjectKey::from("next"))?;
