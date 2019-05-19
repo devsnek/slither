@@ -86,7 +86,7 @@ fn close(args: Args) -> Result<Value, Value> {
     }
 }
 
-pub fn create_net_client_prototype(agent: &Agent) -> Value {
+pub(crate) fn create_net_client_prototype(agent: &Agent) -> Value {
     let proto = Value::new_object(agent.intrinsics.async_iterator_prototype.clone());
 
     proto

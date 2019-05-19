@@ -14,14 +14,14 @@ enum ModuleStatus {
 }
 
 #[derive(Debug, Finalize)]
-pub struct Module {
-    pub filename: String,
+pub(crate) struct Module {
+    pub(crate) filename: String,
     imports: HashSet<String>,
-    pub context: Gc<GcCell<Context>>,
+    pub(crate) context: Gc<GcCell<Context>>,
     status: ModuleStatus,
     dfs_index: u32,
     dfs_ancestor_index: u32,
-    pub bytecode_position: usize,
+    pub(crate) bytecode_position: usize,
 }
 
 unsafe impl gc::Trace for Module {
@@ -31,7 +31,7 @@ unsafe impl gc::Trace for Module {
 }
 
 impl Module {
-    pub fn new(filename: &str, source: &str, agent: &mut Agent) -> Result<Module, Value> {
+    pub(crate) fn new(filename: &str, source: &str, agent: &mut Agent) -> Result<Module, Value> {
         let ast = match Parser::parse(&source) {
             Ok(v) => v,
             Err(e) => return Err(e.into_value(agent)),
@@ -103,12 +103,12 @@ impl Module {
         Ok(module)
     }
 
-    pub fn instantiate(agent: &mut Agent, module: Gc<GcCell<Module>>) -> Result<(), Value> {
+    pub(crate) fn instantiate(agent: &mut Agent, module: Gc<GcCell<Module>>) -> Result<(), Value> {
         inner_module_instantiation(agent, module, &mut Vec::new(), 0)?;
         Ok(())
     }
 
-    pub fn evaluate(agent: &mut Agent, module: Gc<GcCell<Module>>) -> Result<(), Value> {
+    pub(crate) fn evaluate(agent: &mut Agent, module: Gc<GcCell<Module>>) -> Result<(), Value> {
         inner_module_evaluation(agent, module, &mut Vec::new(), 0)?;
         Ok(())
     }

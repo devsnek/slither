@@ -15,26 +15,26 @@ use std::collections::{HashMap, VecDeque};
 use threadpool::ThreadPool;
 
 #[derive(Trace, Finalize)]
-pub struct Intrinsics {
-    pub object_prototype: Value,
-    pub array_prototype: Value,
-    pub array_iterator_prototype: Value,
-    pub function_prototype: Value,
-    pub boolean_prototype: Value,
-    pub string_prototype: Value,
-    pub number_prototype: Value,
-    pub promise_prototype: Value,
-    pub promise: Value,
-    pub symbol_prototype: Value,
-    pub symbol: Value,
-    pub regex_prototype: Value,
-    pub iterator_prototype: Value,
-    pub iterator_map_prototype: Value,
-    pub generator_prototype: Value,
-    pub async_iterator_prototype: Value,
-    pub net_client_prototype: Value,
-    pub net_server_prototype: Value,
-    pub error_prototype: Value,
+pub(crate) struct Intrinsics {
+    pub(crate) object_prototype: Value,
+    pub(crate) array_prototype: Value,
+    pub(crate) array_iterator_prototype: Value,
+    pub(crate) function_prototype: Value,
+    pub(crate) boolean_prototype: Value,
+    pub(crate) string_prototype: Value,
+    pub(crate) number_prototype: Value,
+    pub(crate) promise_prototype: Value,
+    pub(crate) promise: Value,
+    pub(crate) symbol_prototype: Value,
+    pub(crate) symbol: Value,
+    pub(crate) regex_prototype: Value,
+    pub(crate) iterator_prototype: Value,
+    pub(crate) iterator_map_prototype: Value,
+    pub(crate) generator_prototype: Value,
+    pub(crate) async_iterator_prototype: Value,
+    pub(crate) net_client_prototype: Value,
+    pub(crate) net_server_prototype: Value,
+    pub(crate) error_prototype: Value,
 }
 
 type JobFn = fn(&Agent, Vec<Value>) -> Result<(), Value>;
@@ -48,7 +48,7 @@ unsafe impl gc::Trace for Job {
 }
 
 #[derive(Debug, Finalize)]
-pub enum MioMapType {
+pub(crate) enum MioMapType {
     Timer(mio::Registration, Value),
     FS(mio::Registration, Value),
     Net(crate::builtins::net::Net),
@@ -66,14 +66,14 @@ unsafe impl gc::Trace for MioMapType {
 #[derive(Finalize)]
 pub struct Agent {
     pub assembler: Assembler,
-    pub intrinsics: Intrinsics,
-    pub builtins: HashMap<String, HashMap<String, Value>>,
+    pub(crate) intrinsics: Intrinsics,
+    pub(crate) builtins: HashMap<String, HashMap<String, Value>>,
     pub root_scope: Gc<GcCell<Scope>>,
     job_queue: GcCell<VecDeque<Job>>,
-    pub mio: mio::Poll,
-    pub mio_map: RefCell<HashMap<mio::Token, MioMapType>>,
+    pub(crate) mio: mio::Poll,
+    pub(crate) mio_map: RefCell<HashMap<mio::Token, MioMapType>>,
     mio_token: Cell<usize>,
-    pub pool: ThreadPool,
+    pub(crate) pool: ThreadPool,
     uncaught_exception_handler: Option<Box<Fn(&Agent, Value) -> ()>>,
     modules: GcCell<HashMap<String, Gc<GcCell<Module>>>>,
 }
@@ -170,7 +170,11 @@ impl Agent {
         Ok(Value::Null)
     }
 
-    pub fn load(&mut self, specifier: &str, referrer: &str) -> Result<Gc<GcCell<Module>>, Value> {
+    pub(crate) fn load(
+        &mut self,
+        specifier: &str,
+        referrer: &str,
+    ) -> Result<Gc<GcCell<Module>>, Value> {
         let filename = self.resolve(specifier, referrer).unwrap();
         if !self.modules.borrow().contains_key(&filename) {
             let source = std::fs::read_to_string(&filename).expect("no such file");
@@ -219,7 +223,7 @@ impl Agent {
         }
     }
 
-    pub fn enqueue_job(&self, f: JobFn, args: Vec<Value>) {
+    pub(crate) fn enqueue_job(&self, f: JobFn, args: Vec<Value>) {
         self.job_queue.borrow_mut().push_back(Job(f, args));
     }
 
@@ -267,7 +271,7 @@ impl Agent {
         }
     }
 
-    pub fn mio_token(&self) -> mio::Token {
+    pub(crate) fn mio_token(&self) -> mio::Token {
         let old = self.mio_token.get();
         mio::Token(self.mio_token.replace(old + 1))
     }
@@ -279,7 +283,7 @@ impl Agent {
         self.uncaught_exception_handler = Some(Box::new(f));
     }
 
-    pub fn uncaught_exception(&self, e: Value) {
+    pub(crate) fn uncaught_exception(&self, e: Value) {
         // TODO: add way to handle this from sl
         match &self.uncaught_exception_handler {
             Some(f) => f(self, e),

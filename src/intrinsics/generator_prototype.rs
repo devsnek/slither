@@ -53,7 +53,7 @@ fn throw(args: Args) -> Result<Value, Value> {
     }
 }
 
-pub fn create_generator_prototype(agent: &Agent) -> Value {
+pub(crate) fn create_generator_prototype(agent: &Agent) -> Value {
     let proto = Value::new_object(agent.intrinsics.iterator_prototype.clone());
 
     proto

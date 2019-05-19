@@ -134,15 +134,15 @@ impl std::ops::BitOr for FunctionKind {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum ScopeKind {
+pub(crate) enum ScopeKind {
     TopLevel,
     Block,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Scope {
-    pub kind: ScopeKind,
-    pub bindings: IndexMap<String, bool>,
+    pub(crate) kind: ScopeKind,
+    pub(crate) bindings: IndexMap<String, bool>,
 }
 
 impl Scope {
@@ -660,7 +660,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn peek(&mut self) -> Result<&Token, Error> {
+    pub(crate) fn peek(&mut self) -> Result<&Token, Error> {
         if self.peeked.is_none() {
             self.peeked = Some(self.next());
         }
@@ -671,7 +671,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn peek_immutable(&self) -> Result<&Token, Error> {
+    pub(crate) fn peek_immutable(&self) -> Result<&Token, Error> {
         match self.peeked {
             Some(Ok(ref value)) => Ok(value),
             Some(Err(e)) => Err(e),

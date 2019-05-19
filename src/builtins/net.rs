@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::io::prelude::*;
 
 #[derive(Debug, Finalize)]
-pub enum Net {
+pub(crate) enum Net {
     Client(TcpStream, Value),
     Server(TcpListener, Value),
 }
@@ -85,7 +85,7 @@ fn create_client(agent: &Agent, stream: TcpStream) -> Result<Value, Value> {
     }
 }
 
-pub fn handle(agent: &Agent, token: Token, net: Net) {
+pub(crate) fn handle(agent: &Agent, token: Token, net: Net) {
     match net {
         Net::Client(mut stream, client) => match stream.take_error() {
             Ok(Some(e)) | Err(e) => {
@@ -201,7 +201,7 @@ fn listen(args: Args) -> Result<Value, Value> {
     }
 }
 
-pub fn create(agent: &Agent) -> HashMap<String, Value> {
+pub(crate) fn create(agent: &Agent) -> HashMap<String, Value> {
     let mut module = HashMap::new();
     module.insert(
         "connect".to_string(),

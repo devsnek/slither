@@ -25,7 +25,7 @@ fn trigger_promise_reactions(
     Ok(Value::Null)
 }
 
-pub fn promise_reaction_job(agent: &Agent, args: Vec<Value>) -> Result<(), Value> {
+pub(crate) fn promise_reaction_job(agent: &Agent, args: Vec<Value>) -> Result<(), Value> {
     let reaction = args[0].clone();
     let argument = args[1].clone();
 
@@ -180,7 +180,7 @@ fn get_capabilities_executor(args: Args) -> Result<Value, Value> {
     Ok(Value::Null)
 }
 
-pub fn new_promise_capability(agent: &Agent, constructor: Value) -> Result<Value, Value> {
+pub(crate) fn new_promise_capability(agent: &Agent, constructor: Value) -> Result<Value, Value> {
     let executor = Value::new_builtin_function(agent, get_capabilities_executor);
     executor.set_slot("resolve", Value::Null);
     executor.set_slot("reject", Value::Null);
@@ -192,7 +192,7 @@ pub fn new_promise_capability(agent: &Agent, constructor: Value) -> Result<Value
     Ok(promise)
 }
 
-pub fn promise_resolve_i(agent: &Agent, c: Value, x: Value) -> Result<Value, Value> {
+pub(crate) fn promise_resolve_i(agent: &Agent, c: Value, x: Value) -> Result<Value, Value> {
     if x.has_slot("promise state") {
         let x_constructor = x.get(agent, ObjectKey::from("constructor"))?;
         if x_constructor == c {
@@ -226,7 +226,7 @@ fn promise_reject(args: Args) -> Result<Value, Value> {
     Ok(capability)
 }
 
-pub fn create_promise(agent: &Agent) -> Value {
+pub(crate) fn create_promise(agent: &Agent) -> Value {
     let p = Value::new_builtin_function(agent, promise);
 
     p.set(

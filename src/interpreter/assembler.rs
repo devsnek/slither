@@ -58,17 +58,17 @@ impl Drop for Label {
     }
 }
 
-pub struct AssemblerFunctionInfo {
-    pub kind: FunctionKind,
-    pub name: Option<String>,
-    pub parameters: Vec<String>,
-    pub position: usize,
+pub(crate) struct AssemblerFunctionInfo {
+    pub(crate) kind: FunctionKind,
+    pub(crate) name: Option<String>,
+    pub(crate) parameters: Vec<String>,
+    pub(crate) position: usize,
 }
 
 pub struct Assembler {
-    pub code: Vec<u8>,
-    pub string_table: Vec<String>,
-    pub function_info: Vec<AssemblerFunctionInfo>,
+    pub(crate) code: Vec<u8>,
+    pub(crate) string_table: Vec<String>,
+    pub(crate) function_info: Vec<AssemblerFunctionInfo>,
     register_index: u32,
     register_max: u32,
     break_label: Option<*mut Label>,

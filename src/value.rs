@@ -10,7 +10,7 @@ use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-pub struct BuiltinFunctionArgs<'a> {
+pub(crate) struct BuiltinFunctionArgs<'a> {
     agent: &'a Agent,
     context: &'a mut Context,
     arguments: Vec<Value>,
@@ -18,19 +18,19 @@ pub struct BuiltinFunctionArgs<'a> {
 }
 
 impl<'a> BuiltinFunctionArgs<'a> {
-    pub fn agent(&self) -> &'a Agent {
+    pub(crate) fn agent(&self) -> &'a Agent {
         self.agent
     }
 
-    pub fn args(&self) -> &Vec<Value> {
+    pub(crate) fn args(&self) -> &Vec<Value> {
         &self.arguments
     }
 
-    pub fn this(&self) -> Value {
+    pub(crate) fn this(&self) -> Value {
         self.this.clone()
     }
 
-    pub fn function(&self) -> Value {
+    pub(crate) fn function(&self) -> Value {
         self.context.function.as_ref().unwrap().clone()
     }
 }
@@ -46,7 +46,7 @@ impl<'a> std::ops::Index<usize> for BuiltinFunctionArgs<'a> {
 }
 
 type BuiltinFunction = fn(BuiltinFunctionArgs) -> Result<Value, Value>;
-pub use BuiltinFunctionArgs as Args;
+pub(crate) use BuiltinFunctionArgs as Args;
 
 static SYMBOL_COUNTER: AtomicUsize = AtomicUsize::new(0);
 #[derive(Debug, Clone, Trace, Finalize, Eq)]
@@ -109,7 +109,7 @@ impl std::fmt::Display for Symbol {
 }
 
 impl Symbol {
-    pub fn new_unregistered(private: bool, description: Option<String>) -> Symbol {
+    pub(crate) fn new_unregistered(private: bool, description: Option<String>) -> Symbol {
         let id = SYMBOL_COUNTER.load(Ordering::Relaxed);
         SYMBOL_COUNTER.fetch_add(1, Ordering::Relaxed);
         Symbol::Unregistered {
@@ -119,20 +119,20 @@ impl Symbol {
         }
     }
 
-    pub fn new_registered(description: &str) -> Symbol {
+    pub(crate) fn new_registered(description: &str) -> Symbol {
         Symbol::Registered(description.to_string())
     }
 }
 
 #[derive(Trace, Finalize, Debug, Eq, Clone)]
-pub enum ObjectKey {
+pub(crate) enum ObjectKey {
     Number(usize),
     String(String),
     Symbol(Symbol),
 }
 
 impl ObjectKey {
-    pub fn well_known_symbol(name: &str) -> ObjectKey {
+    pub(crate) fn well_known_symbol(name: &str) -> ObjectKey {
         ObjectKey::Symbol(Symbol::new_registered(name))
     }
 
@@ -270,7 +270,7 @@ impl From<f64> for ObjectKey {
 }
 
 #[derive(Finalize)]
-pub enum ObjectKind {
+pub(crate) enum ObjectKind {
     Ordinary,
     Array(GcCell<Vec<Value>>),
     Boolean(bool),
@@ -329,7 +329,7 @@ impl std::fmt::Debug for ObjectKind {
 
 #[derive(Debug, Trace, Finalize)]
 pub struct ObjectInfo {
-    pub kind: ObjectKind,
+    pub(crate) kind: ObjectKind,
     properties: GcCell<IndexMap<ObjectKey, Value>>,
     prototype: Value,
 }
@@ -391,7 +391,7 @@ impl ObjectInfo {
         }
     }
 
-    pub fn set(
+    pub(crate) fn set(
         &self,
         agent: &Agent,
         property: ObjectKey,
@@ -537,8 +537,8 @@ pub enum Value {
 #[allow(non_upper_case_globals)]
 #[allow(clippy::declare_interior_mutable_const)]
 impl Value {
-    pub const True: Value = Value::Boolean(true);
-    pub const False: Value = Value::Boolean(false);
+    pub(crate) const True: Value = Value::Boolean(true);
+    pub(crate) const False: Value = Value::Boolean(false);
 }
 
 unsafe impl gc::Trace for Value {
@@ -599,19 +599,19 @@ impl PartialOrd for Value {
 }
 
 impl Value {
-    pub fn new_symbol(desc: Option<String>) -> Value {
+    pub(crate) fn new_symbol(desc: Option<String>) -> Value {
         Value::Symbol(Symbol::new_unregistered(false, desc))
     }
 
-    pub fn new_private_symbol(desc: Option<String>) -> Value {
+    pub(crate) fn new_private_symbol(desc: Option<String>) -> Value {
         Value::Symbol(Symbol::new_unregistered(true, desc))
     }
 
-    pub fn new_well_known_symbol(desc: &str) -> Value {
+    pub(crate) fn new_well_known_symbol(desc: &str) -> Value {
         Value::Symbol(Symbol::new_registered(desc))
     }
 
-    pub fn new_object(prototype: Value) -> Value {
+    pub(crate) fn new_object(prototype: Value) -> Value {
         Value::Object(Gc::new(ObjectInfo {
             kind: ObjectKind::Ordinary,
             properties: GcCell::new(IndexMap::new()),
@@ -619,7 +619,7 @@ impl Value {
         }))
     }
 
-    pub fn new_custom_object(prototype: Value) -> Value {
+    pub(crate) fn new_custom_object(prototype: Value) -> Value {
         Value::Object(Gc::new(ObjectInfo {
             kind: ObjectKind::Custom(GcCell::new(HashMap::new())),
             properties: GcCell::new(IndexMap::new()),
@@ -627,7 +627,7 @@ impl Value {
         }))
     }
 
-    pub fn new_error(agent: &Agent, message: &str) -> Value {
+    pub(crate) fn new_error(agent: &Agent, message: &str) -> Value {
         let mut properties = IndexMap::new();
         properties.insert(
             ObjectKey::from("message"),
@@ -640,7 +640,7 @@ impl Value {
         }))
     }
 
-    pub fn new_array(agent: &Agent) -> Value {
+    pub(crate) fn new_array(agent: &Agent) -> Value {
         Value::Object(Gc::new(ObjectInfo {
             kind: ObjectKind::Array(GcCell::new(Vec::new())),
             properties: GcCell::new(IndexMap::new()),
@@ -648,7 +648,7 @@ impl Value {
         }))
     }
 
-    pub fn new_array_from_vec(agent: &Agent, values: Vec<Value>) -> Value {
+    pub(crate) fn new_array_from_vec(agent: &Agent, values: Vec<Value>) -> Value {
         Value::Object(Gc::new(ObjectInfo {
             kind: ObjectKind::Array(GcCell::new(values)),
             properties: GcCell::new(IndexMap::new()),
@@ -656,7 +656,7 @@ impl Value {
         }))
     }
 
-    pub fn new_regex_object(agent: &Agent, r: &str) -> Result<Value, Value> {
+    pub(crate) fn new_regex_object(agent: &Agent, r: &str) -> Result<Value, Value> {
         let re = match Regex::new(r) {
             Ok(r) => r,
             Err(e) => {
@@ -670,7 +670,7 @@ impl Value {
         })))
     }
 
-    pub fn new_buffer_from_vec(agent: &Agent, vec: Vec<u8>) -> Value {
+    pub(crate) fn new_buffer_from_vec(agent: &Agent, vec: Vec<u8>) -> Value {
         Value::Object(Gc::new(ObjectInfo {
             kind: ObjectKind::Buffer(GcCell::new(vec)),
             properties: GcCell::new(IndexMap::new()),
@@ -678,22 +678,22 @@ impl Value {
         }))
     }
 
-    pub fn new_list() -> Value {
+    pub(crate) fn new_list() -> Value {
         Value::List(Gc::new(GcCell::new(VecDeque::new())))
     }
 
-    pub fn new_list_from_iter<T>(iter: T) -> Value
+    pub(crate) fn new_list_from_iter<T>(iter: T) -> Value
     where
         T: IntoIterator<Item = Value>,
     {
         Value::List(Gc::new(GcCell::new(VecDeque::from_iter(iter))))
     }
 
-    pub fn new_tuple() -> Value {
+    pub(crate) fn new_tuple() -> Value {
         Value::Tuple(Vec::new())
     }
 
-    pub fn new_bytecode_function(
+    pub(crate) fn new_bytecode_function(
         agent: &Agent,
         info: &AssemblerFunctionInfo,
         scope: Gc<GcCell<Scope>>,
@@ -710,7 +710,7 @@ impl Value {
         }))
     }
 
-    pub fn new_builtin_function(agent: &Agent, f: BuiltinFunction) -> Value {
+    pub(crate) fn new_builtin_function(agent: &Agent, f: BuiltinFunction) -> Value {
         Value::Object(Gc::new(ObjectInfo {
             kind: ObjectKind::BuiltinFunction(f, GcCell::new(HashMap::new())),
             properties: GcCell::new(IndexMap::new()),
@@ -718,7 +718,7 @@ impl Value {
         }))
     }
 
-    pub fn new_iter_result(agent: &Agent, value: Value, done: bool) -> Result<Value, Value> {
+    pub(crate) fn new_iter_result(agent: &Agent, value: Value, done: bool) -> Result<Value, Value> {
         let o = Value::new_object(agent.intrinsics.object_prototype.clone());
         o.set(agent, ObjectKey::from("value"), value)?;
         o.set(agent, ObjectKey::from("done"), Value::from(done))?;
@@ -734,7 +734,7 @@ impl Value {
 }
 
 impl Value {
-    pub fn type_of(&self) -> &str {
+    pub(crate) fn type_of(&self) -> &str {
         match &self {
             Value::Null => "null",
             Value::Boolean(..) => "boolean",
@@ -751,7 +751,7 @@ impl Value {
         }
     }
 
-    pub fn to_bool(&self) -> bool {
+    pub(crate) fn to_bool(&self) -> bool {
         match &self {
             Value::Null => false,
             Value::Boolean(b) => *b,
@@ -764,7 +764,7 @@ impl Value {
         }
     }
 
-    pub fn get(&self, agent: &Agent, key: ObjectKey) -> Result<Value, Value> {
+    pub(crate) fn get(&self, agent: &Agent, key: ObjectKey) -> Result<Value, Value> {
         match self {
             Value::Object(o) => Ok(o.get(key)),
             Value::Tuple(t, ..) => {
@@ -780,14 +780,14 @@ impl Value {
         }
     }
 
-    pub fn set(&self, agent: &Agent, key: ObjectKey, value: Value) -> Result<Value, Value> {
+    pub(crate) fn set(&self, agent: &Agent, key: ObjectKey, value: Value) -> Result<Value, Value> {
         match self {
             Value::Object(o) => o.set(agent, key, value, o.clone()),
             _ => Err(Value::new_error(agent, "base must be an object")),
         }
     }
 
-    pub fn keys(&self, agent: &Agent) -> Result<Vec<ObjectKey>, Value> {
+    pub(crate) fn keys(&self, agent: &Agent) -> Result<Vec<ObjectKey>, Value> {
         match self {
             Value::Object(o) => Ok(o.keys()),
             Value::Tuple(vec) => Ok((0..vec.len())
@@ -797,7 +797,7 @@ impl Value {
         }
     }
 
-    pub fn has(&self, agent: &Agent, key: ObjectKey) -> Result<bool, Value> {
+    pub(crate) fn has(&self, agent: &Agent, key: ObjectKey) -> Result<bool, Value> {
         match self {
             Value::Object(o) => Ok(o.has(key)),
             Value::Tuple(vec) => match key.to_number() {
@@ -808,7 +808,7 @@ impl Value {
         }
     }
 
-    pub fn get_slot(&self, key: &str) -> Value {
+    pub(crate) fn get_slot(&self, key: &str) -> Value {
         if let Value::Object(o) = self {
             match &o.kind {
                 ObjectKind::Custom(slots) | ObjectKind::BuiltinFunction(_, slots) => {
@@ -824,7 +824,7 @@ impl Value {
         }
     }
 
-    pub fn set_slot(&self, key: &str, value: Value) {
+    pub(crate) fn set_slot(&self, key: &str, value: Value) {
         if let Value::Object(o) = self {
             match &o.kind {
                 ObjectKind::Custom(slots) | ObjectKind::BuiltinFunction(_, slots) => {
@@ -837,7 +837,7 @@ impl Value {
         }
     }
 
-    pub fn has_slot(&self, property: &str) -> bool {
+    pub(crate) fn has_slot(&self, property: &str) -> bool {
         if let Value::Object(o) = self {
             match &o.kind {
                 ObjectKind::Custom(slots) | ObjectKind::BuiltinFunction(_, slots) => {
@@ -850,7 +850,7 @@ impl Value {
         }
     }
 
-    pub fn to_object(&self, agent: &Agent) -> Result<Value, Value> {
+    pub(crate) fn to_object(&self, agent: &Agent) -> Result<Value, Value> {
         match self {
             Value::Null => Err(Value::new_error(agent, "cannot convert null to object")),
             Value::Boolean(b) => Ok(Value::Object(Gc::new(ObjectInfo {
@@ -879,7 +879,7 @@ impl Value {
         }
     }
 
-    pub fn to_object_key(&self, agent: &Agent) -> Result<ObjectKey, Value> {
+    pub(crate) fn to_object_key(&self, agent: &Agent) -> Result<ObjectKey, Value> {
         match self {
             Value::Symbol(s) => Ok(ObjectKey::Symbol(s.clone())),
             Value::String(s) => Ok(ObjectKey::from(s.to_string())),
@@ -888,21 +888,26 @@ impl Value {
         }
     }
 
-    pub fn to_iterator(&self, agent: &Agent) -> Result<Value, Value> {
+    pub(crate) fn to_iterator(&self, agent: &Agent) -> Result<Value, Value> {
         let iterator = self.get(agent, ObjectKey::well_known_symbol("iterator"))?;
         let iterator = iterator.call(agent, self.clone(), vec![])?;
         let next = iterator.get(agent, ObjectKey::from("next"))?;
         Ok(Value::Iterator(Box::new(iterator), Box::new(next)))
     }
 
-    pub fn to_async_iterator(&self, agent: &Agent) -> Result<Value, Value> {
+    pub(crate) fn to_async_iterator(&self, agent: &Agent) -> Result<Value, Value> {
         let iterator = self.get(agent, ObjectKey::well_known_symbol("asyncIterator"))?;
         let iterator = iterator.call(agent, self.clone(), vec![])?;
         let next = iterator.get(agent, ObjectKey::from("next"))?;
         Ok(Value::Iterator(Box::new(iterator), Box::new(next)))
     }
 
-    pub fn call(&self, agent: &Agent, this: Value, args: Vec<Value>) -> Result<Value, Value> {
+    pub(crate) fn call(
+        &self,
+        agent: &Agent,
+        this: Value,
+        args: Vec<Value>,
+    ) -> Result<Value, Value> {
         match self {
             Value::Object(o) => match &o.kind {
                 ObjectKind::BytecodeFunction {
@@ -947,7 +952,7 @@ impl Value {
         }
     }
 
-    pub fn construct(
+    pub(crate) fn construct(
         &self,
         agent: &Agent,
         args: Vec<Value>,
@@ -1077,7 +1082,7 @@ fn evaluate_body(
 }
 
 #[inline]
-pub fn ref_eq<T>(thing: &T, other: &T) -> bool {
+pub(crate) fn ref_eq<T>(thing: &T, other: &T) -> bool {
     (thing as *const T) == (other as *const T)
 }
 

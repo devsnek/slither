@@ -4,12 +4,12 @@ use std::collections::HashMap;
 
 mod r#async;
 mod debug;
-pub mod fs;
+pub(crate) mod fs;
 mod math;
-pub mod net;
+pub(crate) mod net;
 mod timers;
 
-pub fn create(agent: &Agent) -> HashMap<String, HashMap<String, Value>> {
+pub(crate) fn create(agent: &Agent) -> HashMap<String, HashMap<String, Value>> {
     let mut builtins = HashMap::new();
 
     builtins.insert("debug".to_string(), debug::create(agent));

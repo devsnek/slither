@@ -2,7 +2,7 @@ use crate::value::ObjectKey;
 use crate::{Agent, Value};
 
 #[derive(Debug)]
-pub struct Error;
+pub(crate) struct Error;
 impl std::fmt::Display for Error {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(fmt, "Error")
@@ -20,11 +20,11 @@ impl serde::ser::Error for Error {
 
 type SerializerResult = Result<Value, Error>;
 
-pub struct Serializer<'a> {
+pub(crate) struct Serializer<'a> {
     agent: &'a Agent,
 }
 
-pub fn serialize<T>(agent: &Agent, v: &T) -> SerializerResult
+pub(crate) fn serialize<T>(agent: &Agent, v: &T) -> SerializerResult
 where
     T: ?Sized + serde::Serialize,
 {
@@ -204,7 +204,7 @@ impl<'a> serde::Serializer for Serializer<'a> {
     }
 }
 
-pub struct SequenceSerializer<'a> {
+pub(crate) struct SequenceSerializer<'a> {
     agent: &'a Agent,
     values: Vec<Value>,
 }
@@ -236,7 +236,7 @@ impl<'a> serde::ser::SerializeSeq for SequenceSerializer<'a> {
     }
 }
 
-pub struct TupleSerializer<'a> {
+pub(crate) struct TupleSerializer<'a> {
     agent: &'a Agent,
     values: Vec<Value>,
 }
@@ -300,7 +300,7 @@ impl<'a> serde::ser::SerializeTupleVariant for TupleSerializer<'a> {
     }
 }
 
-pub struct MapSerializer<'a> {
+pub(crate) struct MapSerializer<'a> {
     agent: &'a Agent,
     object: Value,
     key: Option<ObjectKey>,

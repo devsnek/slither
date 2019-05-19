@@ -93,7 +93,7 @@ fn create_timeout(args: Args) -> Result<Value, Value> {
     }
 }
 
-pub fn create(agent: &Agent) -> HashMap<String, Value> {
+pub(crate) fn create(agent: &Agent) -> HashMap<String, Value> {
     let mut module = HashMap::new();
     module.insert(
         "createTimeout".to_string(),

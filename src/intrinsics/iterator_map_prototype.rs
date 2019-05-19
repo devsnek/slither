@@ -21,7 +21,7 @@ fn next(args: Args) -> Result<Value, Value> {
     Value::new_iter_result(args.agent(), mapped, false)
 }
 
-pub fn create_iterator_map_prototype(agent: &Agent) -> Value {
+pub(crate) fn create_iterator_map_prototype(agent: &Agent) -> Value {
     let proto = Value::new_object(agent.intrinsics.iterator_prototype.clone());
 
     proto

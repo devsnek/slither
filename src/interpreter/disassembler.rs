@@ -9,7 +9,7 @@ const ANSI_RESET: &str = "\x1b[39m";
 const ANSI_GREY: &str = "\x1b[90m";
 const ANSI_BLUE: &str = "\x1b[94m";
 
-pub fn disassemble(assembler: &Assembler, mut pc: usize, n_instructions: usize) {
+pub(crate) fn disassemble(assembler: &Assembler, mut pc: usize, n_instructions: usize) {
     let format_args = |pc: &mut usize, args: Vec<OpArg>| -> String {
         args.iter()
             .map(|arg: &OpArg| -> String {

@@ -1,4 +1,4 @@
-pub static UNICODE_NAME_LIST: &[(&'static str, char)] = &[
+pub(crate) static UNICODE_NAME_LIST: &[(&'static str, char)] = &[
     ("SPACE", '\u{20}'),
     ("EXCLAMATION_MARK", '\u{21}'),
     ("QUOTATION_MARK", '\u{22}'),

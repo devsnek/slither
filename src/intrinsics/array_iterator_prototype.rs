@@ -35,7 +35,7 @@ fn next(args: Args) -> Result<Value, Value> {
     Value::new_iter_result(args.agent(), value, false)
 }
 
-pub fn create_array_iterator_prototype(agent: &Agent) -> Value {
+pub(crate) fn create_array_iterator_prototype(agent: &Agent) -> Value {
     let proto = Value::new_object(agent.intrinsics.iterator_prototype.clone());
 
     proto

@@ -74,7 +74,7 @@ macro_rules! declare_enum {
     ( $( ( $name:ident, $fn:ident ), )* ) => (
         #[derive(Debug, PartialEq, Clone, Copy)]
         #[repr(u8)]
-        pub enum RuntimeFunction {
+        pub(crate) enum RuntimeFunction {
             $( $name , )*
         }
     );
@@ -89,7 +89,7 @@ impl From<u8> for RuntimeFunction {
 }
 
 impl RuntimeFunction {
-    pub fn get(id: u8) -> fn(&Agent, &mut Value) -> Result<(), Value> {
+    pub(crate) fn get(id: u8) -> fn(&Agent, &mut Value) -> Result<(), Value> {
         macro_rules! matcher {
             ( $( ( $name:ident, $fn:ident ), )* ) => (
                 let id: RuntimeFunction = id.into();
@@ -101,7 +101,7 @@ impl RuntimeFunction {
         intrinsics!(matcher);
     }
 
-    pub fn name(self) -> String {
+    pub(crate) fn name(self) -> String {
         macro_rules! matcher {
             ( $( ( $name:ident, $fn:ident ), )* ) => (
                 return match self {
@@ -112,7 +112,7 @@ impl RuntimeFunction {
         intrinsics!(matcher);
     }
 
-    pub fn id(self) -> u8 {
+    pub(crate) fn id(self) -> u8 {
         self as u8
     }
 }

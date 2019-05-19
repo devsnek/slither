@@ -148,7 +148,7 @@ fn promise_proto_finally(args: Args) -> Result<Value, Value> {
     )
 }
 
-pub fn create_promise_prototype(agent: &Agent) -> Value {
+pub(crate) fn create_promise_prototype(agent: &Agent) -> Value {
     let p = Value::new_object(agent.intrinsics.object_prototype.clone());
 
     p.set(

@@ -2,7 +2,7 @@ use crate::intrinsics::promise::promise_resolve_i;
 use crate::value::{Args, ObjectKey};
 use crate::{Agent, Value};
 
-pub fn on_fulfilled(args: Args) -> Result<Value, Value> {
+pub(crate) fn on_fulfilled(args: Args) -> Result<Value, Value> {
     let f = args.function();
     if let Value::WrappedContext(context, promise) = f.get_slot("async context") {
         let mut interpreter = context.borrow_mut().interpreter.take().unwrap();
@@ -36,7 +36,7 @@ pub fn on_fulfilled(args: Args) -> Result<Value, Value> {
     }
 }
 
-pub fn on_rejected(args: Args) -> Result<Value, Value> {
+pub(crate) fn on_rejected(args: Args) -> Result<Value, Value> {
     let f = args.function();
     if let Value::WrappedContext(context, promise) = f.get_slot("async context") {
         let mut interpreter = context.borrow_mut().interpreter.take().unwrap();
@@ -70,7 +70,7 @@ pub fn on_rejected(args: Args) -> Result<Value, Value> {
     }
 }
 
-pub fn perform_await(agent: &Agent, ctx: Value, value: Value) -> Result<(), Value> {
+pub(crate) fn perform_await(agent: &Agent, ctx: Value, value: Value) -> Result<(), Value> {
     let promise = promise_resolve_i(agent, agent.intrinsics.promise.clone(), value)?;
 
     let on_fulfilled = Value::new_builtin_function(agent, on_fulfilled);

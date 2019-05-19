@@ -8,7 +8,7 @@ fn call(args: Args) -> Result<Value, Value> {
     args.this().call(args.agent(), this, vargs)
 }
 
-pub fn create_function_prototype(agent: &mut Agent) {
+pub(crate) fn create_function_prototype(agent: &mut Agent) {
     let proto = Value::new_object(agent.intrinsics.object_prototype.clone());
     agent.intrinsics.function_prototype = proto.clone();
 

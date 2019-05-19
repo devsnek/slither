@@ -40,7 +40,7 @@ fn max(args: Args) -> Result<Value, Value> {
     Ok(Value::from(numbers[0]))
 }
 
-pub fn create(agent: &Agent) -> HashMap<String, Value> {
+pub(crate) fn create(agent: &Agent) -> HashMap<String, Value> {
     let mut module = HashMap::new();
 
     module.insert("min".to_string(), Value::new_builtin_function(agent, min));

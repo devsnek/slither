@@ -10,14 +10,14 @@ use indexmap::IndexMap;
 use std::ops::{Div, Mul, Rem, Sub};
 
 #[allow(dead_code)]
-pub enum AccumulatorUse {
+pub(crate) enum AccumulatorUse {
     None,
     Read,
     Write,
     ReadWrite,
 }
 
-pub enum OpArg {
+pub(crate) enum OpArg {
     U8,
     U32,
     F64,
@@ -130,7 +130,7 @@ macro_rules! define_op_enum {
 
         #[derive(Debug, PartialEq)]
         #[repr(u8)]
-        pub enum Op {
+        pub(crate) enum Op {
             $( $name , )*
         }
 
@@ -145,13 +145,13 @@ macro_rules! define_op_enum {
 
 OPS!(define_op_enum);
 
-pub const REGISTER_COUNT: usize = 16;
+pub(crate) const REGISTER_COUNT: usize = 16;
 
 mod assembler;
 mod disassembler;
 
-pub use assembler::{Assembler, AssemblerFunctionInfo};
-pub use disassembler::disassemble;
+pub(crate) use assembler::{Assembler, AssemblerFunctionInfo};
+pub(crate) use disassembler::disassemble;
 
 #[derive(Trace, Finalize, Debug)]
 struct Binding {
@@ -164,7 +164,7 @@ struct Binding {
 pub struct Scope {
     parent: Option<Gc<GcCell<Scope>>>,
     bindings: IndexMap<String, Binding>,
-    pub this: Option<Value>,
+    pub(crate) this: Option<Value>,
 }
 
 impl Scope {
@@ -176,7 +176,7 @@ impl Scope {
         }))
     }
 
-    pub fn create(&mut self, agent: &Agent, name: &str, mutable: bool) -> Result<(), Value> {
+    pub(crate) fn create(&mut self, agent: &Agent, name: &str, mutable: bool) -> Result<(), Value> {
         if self.bindings.contains_key(name) {
             Err(Value::new_error(
                 agent,
@@ -195,7 +195,7 @@ impl Scope {
         }
     }
 
-    pub fn create_import(&mut self, name: &str, module: Gc<GcCell<Module>>) {
+    pub(crate) fn create_import(&mut self, name: &str, module: Gc<GcCell<Module>>) {
         debug_assert!(!self.bindings.contains_key(name));
         self.bindings.insert(
             name.to_string(),
@@ -207,7 +207,7 @@ impl Scope {
         );
     }
 
-    pub fn initialize(&mut self, name: &str, value: Value) {
+    pub(crate) fn initialize(&mut self, name: &str, value: Value) {
         match self.bindings.get_mut(name) {
             Some(b) => {
                 debug_assert!(!b.value.is_some());
@@ -220,7 +220,7 @@ impl Scope {
         }
     }
 
-    pub fn overwrite(&mut self, name: &str, value: Value) {
+    pub(crate) fn overwrite(&mut self, name: &str, value: Value) {
         self.bindings.get_mut(name).unwrap().value = Some(value);
     }
 
@@ -257,7 +257,7 @@ impl Scope {
         }
     }
 
-    pub fn get_this(&self, agent: &Agent) -> Result<Value, Value> {
+    pub(crate) fn get_this(&self, agent: &Agent) -> Result<Value, Value> {
         match self.this {
             Some(ref t) => Ok(t.clone()),
             None => match &self.parent {
@@ -270,9 +270,9 @@ impl Scope {
 
 #[derive(Trace, Finalize, Debug)]
 pub struct Context {
-    pub scope: Gc<GcCell<Scope>>,
-    pub interpreter: Option<Interpreter>,
-    pub function: Option<Value>,
+    pub(crate) scope: Gc<GcCell<Scope>>,
+    pub(crate) interpreter: Option<Interpreter>,
+    pub(crate) function: Option<Value>,
     try_stack: Vec<usize>,
 }
 
@@ -288,7 +288,7 @@ impl Context {
 }
 
 #[derive(Debug, Trace, Finalize)]
-pub struct SuspendValue(pub Value);
+pub struct SuspendValue(pub(crate) Value);
 
 #[derive(Debug, Trace, Finalize)]
 struct Registers {
@@ -340,8 +340,8 @@ impl std::ops::IndexMut<usize> for Registers {
 
 #[derive(Debug, Trace, Finalize)]
 pub struct Interpreter {
-    pub accumulator: Value,
-    pub exception: Option<Value>,
+    pub(crate) accumulator: Value,
+    pub(crate) exception: Option<Value>,
     pc: usize,
     context: Vec<Gc<GcCell<Context>>>,
     positions: Vec<usize>,
@@ -876,7 +876,11 @@ impl Interpreter {
                         Some(c) => Some(c.borrow().scope.clone()),
                         None => None,
                     });
-                    self.accumulator = Value::new_bytecode_function(agent, info, scope);
+                    let f = Value::new_bytecode_function(agent, info, scope);
+                    if let Some(name) = &info.name {
+                        handle!(f.set(agent, ObjectKey::from("name"), Value::from(name.as_str())));
+                    }
+                    self.accumulator = f;
                 }
                 Op::FinishClass => {
                     let cid = read_u32!() as usize;

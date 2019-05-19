@@ -10,7 +10,7 @@ lazy_static! {
     static ref RESPONSES: Mutex<HashMap<Token, FsResponse>> = Mutex::new(HashMap::new());
 }
 
-pub enum FsResponse {
+pub(crate) enum FsResponse {
     Read(String),
     Metadata(std::fs::Metadata),
     Exists(bool),
@@ -18,7 +18,7 @@ pub enum FsResponse {
     Error(String),
 }
 
-pub fn handle(agent: &Agent, token: Token, promise: Value) {
+pub(crate) fn handle(agent: &Agent, token: Token, promise: Value) {
     let fsr = RESPONSES.lock().unwrap().remove(&token).unwrap();
     match fsr {
         FsResponse::Read(s) => {
@@ -523,7 +523,7 @@ fn remove_directory(args: Args) -> Result<Value, Value> {
     }
 }
 
-pub fn create(agent: &Agent) -> HashMap<String, Value> {
+pub(crate) fn create(agent: &Agent) -> HashMap<String, Value> {
     let mut module = HashMap::new();
 
     macro_rules! method {
