@@ -10,7 +10,7 @@ use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-pub(crate) struct BuiltinFunctionArgs<'a> {
+pub struct BuiltinFunctionArgs<'a> {
     agent: &'a Agent,
     context: &'a mut Context,
     arguments: Vec<Value>,
@@ -125,7 +125,7 @@ impl Symbol {
 }
 
 #[derive(Trace, Finalize, Debug, Eq, Clone)]
-pub(crate) enum ObjectKey {
+pub enum ObjectKey {
     Number(usize),
     String(String),
     Symbol(Symbol),
@@ -710,7 +710,7 @@ impl Value {
         }))
     }
 
-    pub(crate) fn new_builtin_function(agent: &Agent, f: BuiltinFunction) -> Value {
+    pub fn new_builtin_function(agent: &Agent, f: BuiltinFunction) -> Value {
         Value::Object(Gc::new(ObjectInfo {
             kind: ObjectKind::BuiltinFunction(f, GcCell::new(HashMap::new())),
             properties: GcCell::new(IndexMap::new()),
