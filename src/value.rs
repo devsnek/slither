@@ -18,19 +18,19 @@ pub struct BuiltinFunctionArgs<'a> {
 }
 
 impl<'a> BuiltinFunctionArgs<'a> {
-    pub(crate) fn agent(&self) -> &'a Agent {
+    pub fn agent(&self) -> &'a Agent {
         self.agent
     }
 
-    pub(crate) fn args(&self) -> &Vec<Value> {
+    pub fn args(&self) -> &Vec<Value> {
         &self.arguments
     }
 
-    pub(crate) fn this(&self) -> Value {
+    pub fn this(&self) -> Value {
         self.this.clone()
     }
 
-    pub(crate) fn function(&self) -> Value {
+    pub fn function(&self) -> Value {
         self.context.function.as_ref().unwrap().clone()
     }
 }
@@ -902,7 +902,7 @@ impl Value {
         Ok(Value::Iterator(Box::new(iterator), Box::new(next)))
     }
 
-    pub(crate) fn call(
+    pub fn call(
         &self,
         agent: &Agent,
         this: Value,
@@ -952,7 +952,7 @@ impl Value {
         }
     }
 
-    pub(crate) fn construct(
+    pub fn construct(
         &self,
         agent: &Agent,
         args: Vec<Value>,
