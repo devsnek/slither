@@ -1,19 +1,17 @@
 use crate::agent::Agent;
-use crate::interpreter::Context;
-use crate::value::{ObjectKey, Value};
+use crate::value::{Args, ObjectKey, Value};
 
-fn iterator(agent: &Agent, _: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    ctx.scope.borrow().get_this(agent)
+fn iterator(args: Args) -> Result<Value, Value> {
+    Ok(args.this())
 }
 
-fn map(agent: &Agent, mut args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let iterated = ctx.scope.borrow().get_this(agent)?.to_iterator(agent)?;
-    let mapper = args.pop().unwrap_or(Value::Null);
-    if mapper.type_of() != "function" {
-        return Err(Value::new_error(agent, "mapper is not a function"));
+fn map(args: Args) -> Result<Value, Value> {
+    let iterated = args.this().to_iterator(args.agent())?;
+    if args[0].type_of() != "function" {
+        return Err(Value::new_error(args.agent(), "mapper is not a function"));
     }
-    let iterator = Value::new_custom_object(agent.intrinsics.iterator_map_prototype.clone());
-    iterator.set_slot("mapper", mapper);
+    let iterator = Value::new_custom_object(args.agent().intrinsics.iterator_map_prototype.clone());
+    iterator.set_slot("mapper", args[0].clone());
     iterator.set_slot("iterated", iterated);
     Ok(iterator)
 }

@@ -1,16 +1,15 @@
 use crate::agent::MioMapType;
-use crate::interpreter::Context;
 use crate::intrinsics::promise::new_promise_capability;
-use crate::value::{ObjectKey, ObjectKind};
+use crate::value::{Args, ObjectKey, ObjectKind};
 use crate::IntoValue;
 use crate::{Agent, Value};
 use num::ToPrimitive;
 use std::io::prelude::*;
 
-fn next(agent: &Agent, _: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let this = ctx.scope.borrow().get_this(agent)?;
+fn next(args: Args) -> Result<Value, Value> {
+    let this = args.this();
     if !this.has_slot("net client queue") {
-        return Err(Value::new_error(agent, "invalid receiver"));
+        return Err(Value::new_error(args.agent(), "invalid receiver"));
     }
 
     if let Value::List(buffer) = this.get_slot("net client buffer") {
@@ -20,7 +19,8 @@ fn next(agent: &Agent, _: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
     }
 
     if let Value::List(queue) = this.get_slot("net client queue") {
-        let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
+        let promise =
+            new_promise_capability(args.agent(), args.agent().intrinsics.promise.clone())?;
         queue.borrow_mut().push_back(promise.clone());
         Ok(promise)
     } else {
@@ -28,40 +28,40 @@ fn next(agent: &Agent, _: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
     }
 }
 
-fn write(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let this = ctx.scope.borrow().get_this(agent)?;
+fn write(args: Args) -> Result<Value, Value> {
+    let this = args.this();
     if !this.has_slot("net client token") {
-        return Err(Value::new_error(agent, "invalid receiver"));
+        return Err(Value::new_error(args.agent(), "invalid receiver"));
     }
     if let Value::Number(t) = this.get_slot("net client token") {
         let token = mio::Token(t.to_usize().unwrap());
-        let map = agent.mio_map.borrow_mut();
+        let map = args.agent().mio_map.borrow_mut();
         if let MioMapType::Net(crate::builtins::net::Net::Client(s, ..)) =
             map.get(&token).expect("socket missing in mio_map")
         {
             let mut s = s;
-            match args.get(0) {
-                Some(Value::String(str)) => {
-                    match s.write_all(str.as_bytes()) {
-                        Ok(_) => Ok(Value::Null),
-                        Err(e) => Err(e.into_value(agent)),
-                    }
-                    // s.write_all(str.as_bytes())?;
-                    // Ok(Value::Null)
-                }
-                Some(Value::Object(o)) => {
+            match &args[0] {
+                Value::String(str) => match s.write_all(str.as_bytes()) {
+                    Ok(_) => Ok(Value::Null),
+                    Err(e) => Err(e.into_value(args.agent())),
+                },
+                Value::Object(o) => {
                     if let ObjectKind::Buffer(b) = &o.kind {
                         match s.write_all(&b.borrow()) {
                             Ok(_) => Ok(Value::Null),
-                            Err(e) => Err(e.into_value(agent)),
+                            Err(e) => Err(e.into_value(args.agent())),
                         }
-                    // s.write_all(&b.borrow())?;
-                    // Ok(Value::Null)
                     } else {
-                        Err(Value::new_error(agent, "data must be a string or buffer"))
+                        Err(Value::new_error(
+                            args.agent(),
+                            "data must be a string or buffer",
+                        ))
                     }
                 }
-                _ => Err(Value::new_error(agent, "data must be a string or buffer")),
+                _ => Err(Value::new_error(
+                    args.agent(),
+                    "data must be a string or buffer",
+                )),
             }
         } else {
             unreachable!();
@@ -71,15 +71,15 @@ fn write(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value>
     }
 }
 
-fn close(agent: &Agent, _: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let this = ctx.scope.borrow().get_this(agent)?;
+fn close(args: Args) -> Result<Value, Value> {
+    let this = args.this();
     if !this.has_slot("net client token") {
-        return Err(Value::new_error(agent, "invalid receiver"));
+        return Err(Value::new_error(args.agent(), "invalid receiver"));
     }
 
     if let Value::Number(t) = this.get_slot("net client token") {
         let token = mio::Token(t.to_usize().unwrap());
-        agent.mio_map.borrow_mut().remove(&token);
+        args.agent().mio_map.borrow_mut().remove(&token);
         Ok(Value::Null)
     } else {
         unreachable!();

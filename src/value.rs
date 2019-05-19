@@ -10,7 +10,43 @@ use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-type BuiltinFunction = fn(&Agent, Vec<Value>, &Context) -> Result<Value, Value>;
+pub struct BuiltinFunctionArgs<'a> {
+    agent: &'a Agent,
+    context: &'a mut Context,
+    arguments: Vec<Value>,
+    this: Value,
+}
+
+impl<'a> BuiltinFunctionArgs<'a> {
+    pub fn agent(&self) -> &'a Agent {
+        self.agent
+    }
+
+    pub fn args(&self) -> &Vec<Value> {
+        &self.arguments
+    }
+
+    pub fn this(&self) -> Value {
+        self.this.clone()
+    }
+
+    pub fn function(&self) -> Value {
+        self.context.function.as_ref().unwrap().clone()
+    }
+}
+
+impl<'a> std::ops::Index<usize> for BuiltinFunctionArgs<'a> {
+    type Output = Value;
+    fn index(&self, idx: usize) -> &Value {
+        match self.arguments.get(idx) {
+            None => &Value::Null,
+            Some(v) => v,
+        }
+    }
+}
+
+type BuiltinFunction = fn(BuiltinFunctionArgs) -> Result<Value, Value>;
+pub use BuiltinFunctionArgs as Args;
 
 static SYMBOL_COUNTER: AtomicUsize = AtomicUsize::new(0);
 #[derive(Debug, Clone, Trace, Finalize, Eq)]
@@ -892,13 +928,18 @@ impl Value {
                 ObjectKind::BuiltinFunction(f, ..) => {
                     let c = Context::new(Scope::new(None));
                     let mut b = c.borrow_mut();
-                    b.scope.borrow_mut().this = Some(if this == Value::Null {
-                        Value::Null
-                    } else {
-                        this.to_object(agent)?
-                    });
                     b.function = Some(self.clone());
-                    f(agent, args, &b)
+                    let args = BuiltinFunctionArgs {
+                        agent,
+                        context: &mut *b,
+                        arguments: args,
+                        this: if this == Value::Null {
+                            Value::Null
+                        } else {
+                            this.to_object(agent)?
+                        },
+                    };
+                    f(args)
                 }
                 _ => Err(Value::new_error(agent, "value is not a function")),
             },
@@ -950,9 +991,14 @@ impl Value {
                     let this = Value::new_object(prototype);
                     let c = Context::new(Scope::new(None));
                     let mut cb = c.borrow_mut();
-                    cb.scope.borrow_mut().this = Some(this.clone());
                     cb.function = Some(self.clone());
-                    let r = f(agent, args, &cb)?;
+                    let args = BuiltinFunctionArgs {
+                        agent,
+                        context: &mut *cb,
+                        arguments: args,
+                        this: this.clone(),
+                    };
+                    let r = f(args)?;
                     if r.type_of() == "object" {
                         Ok(r)
                     } else {

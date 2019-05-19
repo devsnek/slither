@@ -1,18 +1,17 @@
 use crate::agent::Agent;
-use crate::interpreter::Context;
-use crate::value::{ObjectKey, Value};
+use crate::value::{Args, ObjectKey, Value};
 
-fn to_string(agent: &Agent, _: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let this = ctx.scope.borrow().get_this(agent)?;
+fn to_string(args: Args) -> Result<Value, Value> {
+    let this = args.this();
 
-    let name = match this.get(agent, ObjectKey::from("name"))? {
+    let name = match this.get(args.agent(), ObjectKey::from("name"))? {
         Value::String(s) => s,
-        _ => return Err(Value::new_error(agent, "Invalid error object")),
+        _ => return Err(Value::new_error(args.agent(), "Invalid error object")),
     };
-    let message = match this.get(agent, ObjectKey::from("message"))? {
+    let message = match this.get(args.agent(), ObjectKey::from("message"))? {
         Value::String(s) => format!(": {}", s),
         Value::Null => "".to_string(),
-        _ => return Err(Value::new_error(agent, "Invalid error object")),
+        _ => return Err(Value::new_error(args.agent(), "Invalid error object")),
     };
 
     Ok(Value::from(format!("{}{}", name, message)))

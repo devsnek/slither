@@ -1,19 +1,18 @@
 use crate::agent::Agent;
-use crate::interpreter::Context;
-use crate::value::Value;
+use crate::value::{Args, Value};
 use std::collections::HashMap;
 
-fn min(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
-    if args.is_empty() {
-        return Err(Value::new_error(agent, "argument must be a number"));
+fn min(args: Args) -> Result<Value, Value> {
+    if args.args().is_empty() {
+        return Err(Value::new_error(args.agent(), "argument must be a number"));
     }
 
     let mut numbers = Vec::new();
-    for arg in args {
+    for arg in args.args() {
         if let Value::Number(n) = arg {
-            numbers.push(n);
+            numbers.push(*n);
         } else {
-            return Err(Value::new_error(agent, "argument must be a number"));
+            return Err(Value::new_error(args.agent(), "argument must be a number"));
         }
     }
 
@@ -22,17 +21,17 @@ fn min(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
     Ok(Value::from(numbers[0]))
 }
 
-fn max(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
-    if args.is_empty() {
-        return Err(Value::new_error(agent, "argument must be a number"));
+fn max(args: Args) -> Result<Value, Value> {
+    if args.args().is_empty() {
+        return Err(Value::new_error(args.agent(), "argument must be a number"));
     }
 
     let mut numbers = Vec::new();
-    for arg in args {
+    for arg in args.args() {
         if let Value::Number(n) = arg {
-            numbers.push(n);
+            numbers.push(*n);
         } else {
-            return Err(Value::new_error(agent, "argument must be a number"));
+            return Err(Value::new_error(args.agent(), "argument must be a number"));
         }
     }
 

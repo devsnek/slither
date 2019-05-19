@@ -1,7 +1,6 @@
 use crate::agent::{Agent, MioMapType};
-use crate::interpreter::Context;
 use crate::intrinsics::promise::{new_promise_capability, promise_resolve_i};
-use crate::value::Value;
+use crate::value::{Args, Value};
 use crate::IntoValue;
 use mio::{
     net::{TcpListener, TcpStream},
@@ -149,54 +148,56 @@ pub fn handle(agent: &Agent, token: Token, net: Net) {
     }
 }
 
-fn connect(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
-    match args.get(0).unwrap_or(&Value::Null) {
+fn connect(args: Args) -> Result<Value, Value> {
+    match &args[0] {
         Value::String(addr) => {
             let addr: std::net::SocketAddr = match addr.parse() {
                 Ok(v) => v,
-                Err(e) => return Err(e.into_value(agent)),
+                Err(e) => return Err(e.into_value(args.agent())),
             };
             match TcpStream::connect(&addr) {
-                Ok(v) => create_client(agent, v),
-                Err(e) => Err(e.into_value(agent)),
+                Ok(v) => create_client(args.agent(), v),
+                Err(e) => Err(e.into_value(args.agent())),
             }
         }
-        _ => Err(Value::new_error(agent, "address must be a string")),
+        _ => Err(Value::new_error(args.agent(), "address must be a string")),
     }
 }
 
-fn listen(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
-    match args.get(0).unwrap_or(&Value::Null) {
+fn listen(args: Args) -> Result<Value, Value> {
+    match &args[0] {
         Value::String(addr) => {
             let addr: std::net::SocketAddr = match addr.parse() {
                 Ok(v) => v,
-                Err(e) => return Err(e.into_value(agent)),
+                Err(e) => return Err(e.into_value(args.agent())),
             };
             let listener = match TcpListener::bind(&addr) {
                 Ok(v) => v,
-                Err(e) => return Err(e.into_value(agent)),
+                Err(e) => return Err(e.into_value(args.agent())),
             };
-            let token = agent.mio_token();
-            match agent
+            let token = args.agent().mio_token();
+            match args
+                .agent()
                 .mio
                 .register(&listener, token, Ready::all(), PollOpt::edge())
             {
                 Ok(_) => {
-                    let server =
-                        Value::new_custom_object(agent.intrinsics.net_server_prototype.clone());
+                    let server = Value::new_custom_object(
+                        args.agent().intrinsics.net_server_prototype.clone(),
+                    );
                     server.set_slot("net server buffer", Value::new_list());
                     server.set_slot("net server queue", Value::new_list());
                     server.set_slot("net server token", Value::from(token.0 as f64));
-                    agent.mio_map.borrow_mut().insert(
+                    args.agent().mio_map.borrow_mut().insert(
                         token,
                         MioMapType::Net(Net::Server(listener, server.clone())),
                     );
                     Ok(server)
                 }
-                Err(e) => Err(e.into_value(agent)),
+                Err(e) => Err(e.into_value(args.agent())),
             }
         }
-        _ => Err(Value::new_error(agent, "address must be a string")),
+        _ => Err(Value::new_error(args.agent(), "address must be a string")),
     }
 }
 

@@ -1,7 +1,6 @@
 use crate::agent::{Agent, MioMapType};
-use crate::interpreter::Context;
 use crate::intrinsics::promise::new_promise_capability;
-use crate::value::{ObjectKey, Value};
+use crate::value::{Args, ObjectKey, Value};
 use lazy_static::lazy_static;
 use mio::{PollOpt, Ready, Registration, Token};
 use std::collections::HashMap;
@@ -96,24 +95,25 @@ pub fn handle(agent: &Agent, token: Token, promise: Value) {
     }
 }
 
-fn read_file(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
-    if let Some(Value::String(filename)) = args.get(0) {
-        let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
+fn read_file(args: Args) -> Result<Value, Value> {
+    if let Value::String(filename) = &args[0] {
+        let promise =
+            new_promise_capability(args.agent(), args.agent().intrinsics.promise.clone())?;
 
         let (registration, set_readiness) = Registration::new2();
-        let token = agent.mio_token();
+        let token = args.agent().mio_token();
 
-        agent
+        args.agent()
             .mio
             .register(&registration, token, Ready::readable(), PollOpt::edge())
             .unwrap();
-        agent
+        args.agent()
             .mio_map
             .borrow_mut()
             .insert(token, MioMapType::FS(registration, promise.clone()));
 
         let filename = filename.to_string();
-        agent
+        args.agent()
             .pool
             .execute(move || match std::fs::read_to_string(filename) {
                 Ok(s) => {
@@ -131,30 +131,31 @@ fn read_file(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Valu
 
         Ok(promise)
     } else {
-        Err(Value::new_error(agent, "filename must be a string"))
+        Err(Value::new_error(args.agent(), "filename must be a string"))
     }
 }
 
-fn write_file(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
-    if let Some(Value::String(filename)) = args.get(0) {
-        if let Some(Value::String(contents)) = args.get(1) {
-            let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
+fn write_file(args: Args) -> Result<Value, Value> {
+    if let Value::String(filename) = &args[0] {
+        if let Value::String(contents) = &args[1] {
+            let promise =
+                new_promise_capability(args.agent(), args.agent().intrinsics.promise.clone())?;
 
             let (registration, set_readiness) = Registration::new2();
-            let token = agent.mio_token();
+            let token = args.agent().mio_token();
 
-            agent
+            args.agent()
                 .mio
                 .register(&registration, token, Ready::readable(), PollOpt::edge())
                 .unwrap();
-            agent
+            args.agent()
                 .mio_map
                 .borrow_mut()
                 .insert(token, MioMapType::FS(registration, promise.clone()));
 
             let filename = filename.to_string();
             let contents = contents.to_string();
-            agent
+            args.agent()
                 .pool
                 .execute(move || match std::fs::write(filename, contents) {
                     Ok(()) => {
@@ -172,31 +173,32 @@ fn write_file(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Val
 
             Ok(promise)
         } else {
-            Err(Value::new_error(agent, "contents must be a string"))
+            Err(Value::new_error(args.agent(), "contents must be a string"))
         }
     } else {
-        Err(Value::new_error(agent, "filename must be a string"))
+        Err(Value::new_error(args.agent(), "filename must be a string"))
     }
 }
 
-fn remove_file(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
-    if let Some(Value::String(filename)) = args.get(0) {
-        let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
+fn remove_file(args: Args) -> Result<Value, Value> {
+    if let Value::String(filename) = &args[0] {
+        let promise =
+            new_promise_capability(args.agent(), args.agent().intrinsics.promise.clone())?;
 
         let (registration, set_readiness) = Registration::new2();
-        let token = agent.mio_token();
+        let token = args.agent().mio_token();
 
-        agent
+        args.agent()
             .mio
             .register(&registration, token, Ready::readable(), PollOpt::edge())
             .unwrap();
-        agent
+        args.agent()
             .mio_map
             .borrow_mut()
             .insert(token, MioMapType::FS(registration, promise.clone()));
 
         let filename = filename.to_string();
-        agent
+        args.agent()
             .pool
             .execute(move || match std::fs::remove_file(filename) {
                 Ok(()) => {
@@ -214,28 +216,29 @@ fn remove_file(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Va
 
         Ok(promise)
     } else {
-        Err(Value::new_error(agent, "filename must be a string"))
+        Err(Value::new_error(args.agent(), "filename must be a string"))
     }
 }
 
-fn get_metadata(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
-    if let Some(Value::String(filename)) = args.get(0) {
-        let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
+fn get_metadata(args: Args) -> Result<Value, Value> {
+    if let Value::String(filename) = &args[0] {
+        let promise =
+            new_promise_capability(args.agent(), args.agent().intrinsics.promise.clone())?;
 
         let (registration, set_readiness) = Registration::new2();
-        let token = agent.mio_token();
+        let token = args.agent().mio_token();
 
-        agent
+        args.agent()
             .mio
             .register(&registration, token, Ready::readable(), PollOpt::edge())
             .unwrap();
-        agent
+        args.agent()
             .mio_map
             .borrow_mut()
             .insert(token, MioMapType::FS(registration, promise.clone()));
 
         let filename = filename.to_string();
-        agent
+        args.agent()
             .pool
             .execute(move || match std::fs::metadata(filename) {
                 Ok(metadata) => {
@@ -256,91 +259,97 @@ fn get_metadata(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, V
 
         Ok(promise)
     } else {
-        Err(Value::new_error(agent, "filename must be a string"))
+        Err(Value::new_error(args.agent(), "filename must be a string"))
     }
 }
 
-fn copy(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
-    if let Some(Value::String(from)) = args.get(0) {
-        if let Some(Value::String(to)) = args.get(1) {
-            let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
+fn copy(args: Args) -> Result<Value, Value> {
+    if let Value::String(from) = &args[0] {
+        if let Value::String(to) = &args[1] {
+            let promise =
+                new_promise_capability(args.agent(), args.agent().intrinsics.promise.clone())?;
 
             let (registration, set_readiness) = Registration::new2();
-            let token = agent.mio_token();
+            let token = args.agent().mio_token();
 
-            agent
+            args.agent()
                 .mio
                 .register(&registration, token, Ready::readable(), PollOpt::edge())
                 .unwrap();
-            agent
+            args.agent()
                 .mio_map
                 .borrow_mut()
                 .insert(token, MioMapType::FS(registration, promise.clone()));
 
             let from = from.to_string();
             let to = to.to_string();
-            agent.pool.execute(move || match std::fs::copy(from, to) {
-                Ok(_) => {
-                    RESPONSES.lock().unwrap().insert(token, FsResponse::Success);
-                    set_readiness.set_readiness(Ready::readable()).unwrap();
-                }
-                Err(e) => {
-                    RESPONSES
-                        .lock()
-                        .unwrap()
-                        .insert(token, FsResponse::Error(format!("{}", e)));
-                    set_readiness.set_readiness(Ready::readable()).unwrap();
-                }
-            });
+            args.agent()
+                .pool
+                .execute(move || match std::fs::copy(from, to) {
+                    Ok(_) => {
+                        RESPONSES.lock().unwrap().insert(token, FsResponse::Success);
+                        set_readiness.set_readiness(Ready::readable()).unwrap();
+                    }
+                    Err(e) => {
+                        RESPONSES
+                            .lock()
+                            .unwrap()
+                            .insert(token, FsResponse::Error(format!("{}", e)));
+                        set_readiness.set_readiness(Ready::readable()).unwrap();
+                    }
+                });
 
             Ok(promise)
         } else {
-            Err(Value::new_error(agent, "to must be a string"))
+            Err(Value::new_error(args.agent(), "to must be a string"))
         }
     } else {
-        Err(Value::new_error(agent, "from must be a string"))
+        Err(Value::new_error(args.agent(), "from must be a string"))
     }
 }
 
-fn move_(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
-    if let Some(Value::String(from)) = args.get(0) {
-        if let Some(Value::String(to)) = args.get(1) {
-            let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
+fn move_(args: Args) -> Result<Value, Value> {
+    if let Value::String(from) = &args[0] {
+        if let Value::String(to) = &args[1] {
+            let promise =
+                new_promise_capability(args.agent(), args.agent().intrinsics.promise.clone())?;
 
             let (registration, set_readiness) = Registration::new2();
-            let token = agent.mio_token();
+            let token = args.agent().mio_token();
 
-            agent
+            args.agent()
                 .mio
                 .register(&registration, token, Ready::readable(), PollOpt::edge())
                 .unwrap();
-            agent
+            args.agent()
                 .mio_map
                 .borrow_mut()
                 .insert(token, MioMapType::FS(registration, promise.clone()));
 
             let from = from.to_string();
             let to = to.to_string();
-            agent.pool.execute(move || match std::fs::rename(from, to) {
-                Ok(_) => {
-                    RESPONSES.lock().unwrap().insert(token, FsResponse::Success);
-                    set_readiness.set_readiness(Ready::readable()).unwrap();
-                }
-                Err(e) => {
-                    RESPONSES
-                        .lock()
-                        .unwrap()
-                        .insert(token, FsResponse::Error(format!("{}", e)));
-                    set_readiness.set_readiness(Ready::readable()).unwrap();
-                }
-            });
+            args.agent()
+                .pool
+                .execute(move || match std::fs::rename(from, to) {
+                    Ok(_) => {
+                        RESPONSES.lock().unwrap().insert(token, FsResponse::Success);
+                        set_readiness.set_readiness(Ready::readable()).unwrap();
+                    }
+                    Err(e) => {
+                        RESPONSES
+                            .lock()
+                            .unwrap()
+                            .insert(token, FsResponse::Error(format!("{}", e)));
+                        set_readiness.set_readiness(Ready::readable()).unwrap();
+                    }
+                });
 
             Ok(promise)
         } else {
-            Err(Value::new_error(agent, "to must be a string"))
+            Err(Value::new_error(args.agent(), "to must be a string"))
         }
     } else {
-        Err(Value::new_error(agent, "from must be a string"))
+        Err(Value::new_error(args.agent(), "from must be a string"))
     }
 }
 
@@ -358,26 +367,27 @@ fn symlink(from: String, to: String) -> std::io::Result<()> {
     std::os::unix::fs::symlink(from, to)
 }
 
-fn create_symlink(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
-    if let Some(Value::String(from)) = args.get(0) {
-        if let Some(Value::String(to)) = args.get(1) {
-            let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
+fn create_symlink(args: Args) -> Result<Value, Value> {
+    if let Value::String(from) = &args[0] {
+        if let Value::String(to) = &args[1] {
+            let promise =
+                new_promise_capability(args.agent(), args.agent().intrinsics.promise.clone())?;
 
             let (registration, set_readiness) = Registration::new2();
-            let token = agent.mio_token();
+            let token = args.agent().mio_token();
 
-            agent
+            args.agent()
                 .mio
                 .register(&registration, token, Ready::readable(), PollOpt::edge())
                 .unwrap();
-            agent
+            args.agent()
                 .mio_map
                 .borrow_mut()
                 .insert(token, MioMapType::FS(registration, promise.clone()));
 
             let from = from.to_string();
             let to = to.to_string();
-            agent.pool.execute(move || match symlink(from, to) {
+            args.agent().pool.execute(move || match symlink(from, to) {
                 Ok(()) => {
                     RESPONSES.lock().unwrap().insert(token, FsResponse::Success);
                     set_readiness.set_readiness(Ready::readable()).unwrap();
@@ -393,31 +403,32 @@ fn create_symlink(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value,
 
             Ok(promise)
         } else {
-            Err(Value::new_error(agent, "to must be a string"))
+            Err(Value::new_error(args.agent(), "to must be a string"))
         }
     } else {
-        Err(Value::new_error(agent, "from must be a string"))
+        Err(Value::new_error(args.agent(), "from must be a string"))
     }
 }
 
-fn exists(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
-    if let Some(Value::String(filename)) = args.get(0) {
-        let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
+fn exists(args: Args) -> Result<Value, Value> {
+    if let Value::String(filename) = &args[0] {
+        let promise =
+            new_promise_capability(args.agent(), args.agent().intrinsics.promise.clone())?;
 
         let (registration, set_readiness) = Registration::new2();
-        let token = agent.mio_token();
+        let token = args.agent().mio_token();
 
-        agent
+        args.agent()
             .mio
             .register(&registration, token, Ready::readable(), PollOpt::edge())
             .unwrap();
-        agent
+        args.agent()
             .mio_map
             .borrow_mut()
             .insert(token, MioMapType::FS(registration, promise.clone()));
 
         let filename = filename.to_string();
-        agent.pool.execute(move || {
+        args.agent().pool.execute(move || {
             let exists = std::path::Path::new(filename.as_str()).exists();
             RESPONSES
                 .lock()
@@ -428,28 +439,29 @@ fn exists(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> 
 
         Ok(promise)
     } else {
-        Err(Value::new_error(agent, "filename must be a string"))
+        Err(Value::new_error(args.agent(), "filename must be a string"))
     }
 }
 
-fn create_directory(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
-    if let Some(Value::String(filename)) = args.get(0) {
-        let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
+fn create_directory(args: Args) -> Result<Value, Value> {
+    if let Value::String(filename) = &args[0] {
+        let promise =
+            new_promise_capability(args.agent(), args.agent().intrinsics.promise.clone())?;
 
         let (registration, set_readiness) = Registration::new2();
-        let token = agent.mio_token();
+        let token = args.agent().mio_token();
 
-        agent
+        args.agent()
             .mio
             .register(&registration, token, Ready::readable(), PollOpt::edge())
             .unwrap();
-        agent
+        args.agent()
             .mio_map
             .borrow_mut()
             .insert(token, MioMapType::FS(registration, promise.clone()));
 
         let filename = filename.to_string();
-        agent
+        args.agent()
             .pool
             .execute(move || match std::fs::create_dir(filename) {
                 Ok(()) => {
@@ -467,28 +479,29 @@ fn create_directory(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Valu
 
         Ok(promise)
     } else {
-        Err(Value::new_error(agent, "filename must be a string"))
+        Err(Value::new_error(args.agent(), "filename must be a string"))
     }
 }
 
-fn remove_directory(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Value, Value> {
-    if let Some(Value::String(filename)) = args.get(0) {
-        let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
+fn remove_directory(args: Args) -> Result<Value, Value> {
+    if let Value::String(filename) = &args[0] {
+        let promise =
+            new_promise_capability(args.agent(), args.agent().intrinsics.promise.clone())?;
 
         let (registration, set_readiness) = Registration::new2();
-        let token = agent.mio_token();
+        let token = args.agent().mio_token();
 
-        agent
+        args.agent()
             .mio
             .register(&registration, token, Ready::readable(), PollOpt::edge())
             .unwrap();
-        agent
+        args.agent()
             .mio_map
             .borrow_mut()
             .insert(token, MioMapType::FS(registration, promise.clone()));
 
         let filename = filename.to_string();
-        agent
+        args.agent()
             .pool
             .execute(move || match std::fs::remove_dir(filename) {
                 Ok(()) => {
@@ -506,7 +519,7 @@ fn remove_directory(agent: &Agent, args: Vec<Value>, _: &Context) -> Result<Valu
 
         Ok(promise)
     } else {
-        Err(Value::new_error(agent, "filename must be a string"))
+        Err(Value::new_error(args.agent(), "filename must be a string"))
     }
 }
 

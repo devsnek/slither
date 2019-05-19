@@ -1,6 +1,5 @@
-use crate::interpreter::Context;
 use crate::sort::merge_sort;
-use crate::value::{ObjectKey, ObjectKind};
+use crate::value::{Args, ObjectKey, ObjectKind};
 use crate::{Agent, Value};
 
 fn user_sort(agent: &Agent, f: &Value, a: &Value, b: &Value) -> Result<std::cmp::Ordering, Value> {
@@ -27,32 +26,32 @@ fn builtin_sort(agent: &Agent, a: &Value, b: &Value) -> Result<std::cmp::Orderin
     }
 }
 
-fn sort(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    match ctx.scope.borrow().get_this(agent)? {
+fn sort(args: Args) -> Result<Value, Value> {
+    match args.this() {
         Value::Object(o) => match &o.kind {
             ObjectKind::Array(values) => {
-                match args.get(0).unwrap_or(&Value::Null) {
+                match &args[0] {
                     Value::Null => {
                         merge_sort(&mut values.borrow_mut(), |a, b| -> Result<bool, Value> {
-                            Ok(builtin_sort(agent, a, b)? == std::cmp::Ordering::Less)
+                            Ok(builtin_sort(args.agent(), a, b)? == std::cmp::Ordering::Less)
                         })?
                     }
                     v => merge_sort(&mut values.borrow_mut(), |a, b| -> Result<bool, Value> {
-                        Ok(user_sort(agent, v, a, b)? == std::cmp::Ordering::Less)
+                        Ok(user_sort(args.agent(), v, a, b)? == std::cmp::Ordering::Less)
                     })?,
                 };
-                Ok(ctx.scope.borrow().get_this(agent)?)
+                Ok(args.this())
             }
-            _ => Err(Value::new_error(agent, "invalid receiver")),
+            _ => Err(Value::new_error(args.agent(), "invalid receiver")),
         },
-        _ => Err(Value::new_error(agent, "invalid receiver")),
+        _ => Err(Value::new_error(args.agent(), "invalid receiver")),
     }
 }
 
-fn iterator(agent: &Agent, _args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let it = Value::new_custom_object(agent.intrinsics.array_iterator_prototype.clone());
+fn iterator(args: Args) -> Result<Value, Value> {
+    let it = Value::new_custom_object(args.agent().intrinsics.array_iterator_prototype.clone());
     it.set_slot("array iterator next index", Value::from(0));
-    it.set_slot("iterated object", ctx.scope.borrow().get_this(agent)?);
+    it.set_slot("iterated object", args.this());
     Ok(it)
 }
 

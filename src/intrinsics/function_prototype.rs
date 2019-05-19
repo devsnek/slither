@@ -1,11 +1,11 @@
-use crate::interpreter::Context;
-use crate::value::ObjectKey;
+use crate::value::{Args, ObjectKey};
 use crate::{Agent, Value};
 
 // TODO: figure out how to make this a tail call
-fn call(agent: &Agent, mut args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let this = args.remove(0);
-    ctx.scope.borrow().get_this(agent)?.call(agent, this, args)
+fn call(args: Args) -> Result<Value, Value> {
+    let mut vargs = args.args().clone();
+    let this = vargs.remove(0);
+    args.this().call(args.agent(), this, vargs)
 }
 
 pub fn create_function_prototype(agent: &mut Agent) {

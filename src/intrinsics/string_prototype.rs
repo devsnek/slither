@@ -1,12 +1,11 @@
-use crate::interpreter::Context;
-use crate::value::{ObjectKey, ObjectKind};
+use crate::value::{Args, ObjectKey, ObjectKind};
 use crate::{Agent, Value};
 use unic::normal::StrNormalForm;
 
-fn normalize(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    if let Value::Object(o) = ctx.scope.borrow().get_this(agent)? {
+fn normalize(args: Args) -> Result<Value, Value> {
+    if let Value::Object(o) = args.this() {
         if let ObjectKind::String(s) = &o.kind {
-            match args.get(0).unwrap_or(&Value::Null) {
+            match &args[0] {
                 Value::String(form) => Ok(Value::from(match form.as_str() {
                     "NFC" => s.iter().cloned().nfc().collect::<String>(),
                     "NFD" => s.iter().cloned().nfd().collect::<String>(),
@@ -14,7 +13,7 @@ fn normalize(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Va
                     "NFKD" => s.iter().cloned().nfkd().collect::<String>(),
                     _ => {
                         return Err(Value::new_error(
-                            agent,
+                            args.agent(),
                             "The normalization form should be one of NFC, NFD, NFKC, NFKD.",
                         ));
                     }
@@ -22,16 +21,16 @@ fn normalize(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Va
                 Value::Null => Ok(Value::from(s.iter().cloned().nfc().collect::<String>())),
                 _ => {
                     return Err(Value::new_error(
-                        agent,
+                        args.agent(),
                         "The normalization form should be one of NFC, NFD, NFKC, NFKD.",
                     ));
                 }
             }
         } else {
-            Err(Value::new_error(agent, "invalid receiver"))
+            Err(Value::new_error(args.agent(), "invalid receiver"))
         }
     } else {
-        Err(Value::new_error(agent, "invalid receiver"))
+        Err(Value::new_error(args.agent(), "invalid receiver"))
     }
 }
 

@@ -1,7 +1,6 @@
 use crate::agent::{Agent, MioMapType};
-use crate::interpreter::Context;
 use crate::linked_list::LinkedList;
-use crate::value::Value;
+use crate::value::{Args, Value};
 use lazy_static::lazy_static;
 use mio::{PollOpt, Ready, Registration, SetReadiness};
 use num::ToPrimitive;
@@ -61,26 +60,28 @@ fn insert(instant: Instant, timer: SetReadiness) {
     timers.push_back(TimerList::new(instant, timer));
 }
 
-fn create_timeout(agent: &Agent, args: Vec<Value>, _ctx: &Context) -> Result<Value, Value> {
-    let callback = args.get(0).unwrap_or(&Value::Null);
-    if callback.type_of() != "function" {
-        return Err(Value::new_error(agent, "callback must be a function"));
+fn create_timeout(args: Args) -> Result<Value, Value> {
+    if args[0].type_of() != "function" {
+        return Err(Value::new_error(
+            args.agent(),
+            "callback must be a function",
+        ));
     }
-    match args.get(1).unwrap_or(&Value::Null) {
+    match args[1] {
         Value::Number(n) => {
             let end = Instant::now() + Duration::from_millis(n.to_u64().unwrap());
 
             let (registration, set_readiness) = Registration::new2();
-            let token = agent.mio_token();
+            let token = args.agent().mio_token();
 
-            agent
+            args.agent()
                 .mio
                 .register(&registration, token, Ready::readable(), PollOpt::edge())
                 .unwrap();
-            agent
+            args.agent()
                 .mio_map
                 .borrow_mut()
-                .insert(token, MioMapType::Timer(registration, callback.clone()));
+                .insert(token, MioMapType::Timer(registration, args[0].clone()));
 
             insert(end, set_readiness);
             THREAD.thread().unpark();
@@ -88,7 +89,7 @@ fn create_timeout(agent: &Agent, args: Vec<Value>, _ctx: &Context) -> Result<Val
             // TODO: return object with cancel()
             Ok(Value::Null)
         }
-        _ => Err(Value::new_error(agent, "duration must be a number")),
+        _ => Err(Value::new_error(args.agent(), "duration must be a number")),
     }
 }
 

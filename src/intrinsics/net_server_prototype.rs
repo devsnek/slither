@@ -1,13 +1,12 @@
-use crate::interpreter::Context;
 use crate::intrinsics::promise::new_promise_capability;
-use crate::value::ObjectKey;
+use crate::value::{Args, ObjectKey};
 use crate::{Agent, Value};
 use num::ToPrimitive;
 
-fn next(agent: &Agent, _: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let this = ctx.scope.borrow().get_this(agent)?;
+fn next(args: Args) -> Result<Value, Value> {
+    let this = args.this();
     if !this.has_slot("net server queue") {
-        return Err(Value::new_error(agent, "invalid receiver"));
+        return Err(Value::new_error(args.agent(), "invalid receiver"));
     }
 
     if let Value::List(buffer) = this.get_slot("net server buffer") {
@@ -17,7 +16,8 @@ fn next(agent: &Agent, _: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
     }
 
     if let Value::List(queue) = this.get_slot("net server queue") {
-        let promise = new_promise_capability(agent, agent.intrinsics.promise.clone())?;
+        let promise =
+            new_promise_capability(args.agent(), args.agent().intrinsics.promise.clone())?;
         queue.borrow_mut().push_back(promise.clone());
         Ok(promise)
     } else {
@@ -25,15 +25,15 @@ fn next(agent: &Agent, _: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
     }
 }
 
-fn close(agent: &Agent, _: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let this = ctx.scope.borrow().get_this(agent)?;
+fn close(args: Args) -> Result<Value, Value> {
+    let this = args.this();
     if !this.has_slot("net server token") {
-        return Err(Value::new_error(agent, "invalid receiver"));
+        return Err(Value::new_error(args.agent(), "invalid receiver"));
     }
 
     if let Value::Number(t) = this.get_slot("net server token") {
         let token = mio::Token(t.to_usize().unwrap());
-        agent.mio_map.borrow_mut().remove(&token);
+        args.agent().mio_map.borrow_mut().remove(&token);
         Ok(Value::Null)
     } else {
         unreachable!();

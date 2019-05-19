@@ -1,9 +1,8 @@
 use crate::agent::Agent;
-use crate::interpreter::Context;
-use crate::value::{ObjectKey, Value};
+use crate::value::{Args, ObjectKey, Value};
 
-fn iterator(agent: &Agent, _: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    ctx.scope.borrow().get_this(agent)
+fn iterator(args: Args) -> Result<Value, Value> {
+    Ok(args.this())
 }
 
 pub fn create_async_iterator_prototype(agent: &Agent) -> Value {

@@ -1,6 +1,5 @@
 use crate::agent::Agent;
-use crate::interpreter::Context;
-use crate::value::{ObjectKey, Value};
+use crate::value::{Args, ObjectKey, Value};
 
 fn trigger_promise_reactions(
     agent: &Agent,
@@ -100,98 +99,83 @@ fn create_resolving_functions(agent: &Agent, promise: &Value) -> ResolvingFuncti
     ResolvingFunctions { resolve, reject }
 }
 
-fn promise_resolve_function(
-    agent: &Agent,
-    args: Vec<Value>,
-    ctx: &Context,
-) -> Result<Value, Value> {
-    let f = ctx.function.clone().unwrap();
-
-    let already_resolved = f.get_slot("already resolved");
+fn promise_resolve_function(args: Args) -> Result<Value, Value> {
+    let already_resolved = args.function().get_slot("already resolved");
     if already_resolved.get_slot("resolved") == Value::from(true) {
         return Ok(Value::Null);
     } else {
         already_resolved.set_slot("resolved", Value::from(true));
     }
 
-    let promise = f.get_slot("promise");
-    let resolution = args.get(0).unwrap_or(&Value::Null).clone();
-    if promise == resolution {
+    let promise = args.function().get_slot("promise");
+    if promise == args[0] {
         reject_promise(
-            agent,
+            args.agent(),
             promise,
-            Value::new_error(agent, "cannot resolve a promise with itself"),
+            Value::new_error(args.agent(), "cannot resolve a promise with itself"),
         )
-    } else if resolution.has_slot("promise state") {
-        let ResolvingFunctions { resolve, reject } = create_resolving_functions(agent, &promise);
-        let then_call_result = resolution.get(agent, ObjectKey::from("then"))?.call(
-            agent,
-            resolution,
+    } else if args[0].has_slot("promise state") {
+        let ResolvingFunctions { resolve, reject } =
+            create_resolving_functions(args.agent(), &promise);
+        let then_call_result = args[0].get(args.agent(), ObjectKey::from("then"))?.call(
+            args.agent(),
+            args[0].clone(),
             vec![resolve, reject.clone()],
         );
         match then_call_result {
             Ok(v) => Ok(v),
-            Err(e) => reject.call(agent, Value::Null, vec![e]),
+            Err(e) => reject.call(args.agent(), Value::Null, vec![e]),
         }
     } else {
-        fulfill_promise(agent, promise, resolution)
+        fulfill_promise(args.agent(), promise, args[0].clone())
     }
 }
 
-fn promise_reject_function(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let f = ctx.function.clone().unwrap();
-
-    let already_resolved = f.get_slot("already resolved");
+fn promise_reject_function(args: Args) -> Result<Value, Value> {
+    let already_resolved = args.function().get_slot("already resolved");
     if already_resolved.get_slot("resolved") == Value::from(true) {
         return Ok(Value::Null);
     } else {
         already_resolved.set_slot("resolved", Value::from(true));
     }
 
-    let promise = f.get_slot("promise");
-    let resolution = args.get(0).unwrap_or(&Value::Null).clone();
-    reject_promise(agent, promise, resolution)
+    let promise = args.function().get_slot("promise");
+    reject_promise(args.agent(), promise, args[0].clone())
 }
 
-fn promise(agent: &Agent, args: Vec<Value>, _ctx: &Context) -> Result<Value, Value> {
-    let executor = args[0].clone();
-
-    if executor.type_of() != "function" {
-        return Err(Value::new_error(agent, "executor must be a function"));
+fn promise(args: Args) -> Result<Value, Value> {
+    if args[0].type_of() != "function" {
+        return Err(Value::new_error(
+            args.agent(),
+            "executor must be a function",
+        ));
     }
 
-    let promise = Value::new_custom_object(agent.intrinsics.promise_prototype.clone());
+    let promise = Value::new_custom_object(args.agent().intrinsics.promise_prototype.clone());
     promise.set_slot("promise state", Value::from("pending"));
     promise.set_slot("fulfill reactions", Value::new_list());
     promise.set_slot("reject reactions", Value::new_list());
 
-    let ResolvingFunctions { resolve, reject } = create_resolving_functions(agent, &promise);
+    let ResolvingFunctions { resolve, reject } = create_resolving_functions(args.agent(), &promise);
 
-    let result = executor.call(agent, Value::Null, vec![resolve, reject.clone()]);
+    let result = args[0].call(args.agent(), Value::Null, vec![resolve, reject.clone()]);
 
     if let Err(e) = result {
-        reject.call(agent, Value::Null, vec![e])?;
+        reject.call(args.agent(), Value::Null, vec![e])?;
     }
 
     Ok(promise)
 }
 
-fn get_capabilities_executor(
-    agent: &Agent,
-    args: Vec<Value>,
-    ctx: &Context,
-) -> Result<Value, Value> {
-    let f = ctx.function.clone().unwrap();
-
-    let resolve = args.get(0).unwrap_or(&Value::Null).clone();
-    let reject = args.get(1).unwrap_or(&Value::Null).clone();
+fn get_capabilities_executor(args: Args) -> Result<Value, Value> {
+    let f = args.function();
 
     if f.get_slot("resolve") != Value::Null || f.get_slot("reject") != Value::Null {
-        return Err(Value::new_error(agent, "type error"));
+        return Err(Value::new_error(args.agent(), "type error"));
     }
 
-    f.set_slot("resolve", resolve);
-    f.set_slot("reject", reject);
+    f.set_slot("resolve", args[0].clone());
+    f.set_slot("reject", args[1].clone());
 
     Ok(Value::Null)
 }
@@ -222,25 +206,23 @@ pub fn promise_resolve_i(agent: &Agent, c: Value, x: Value) -> Result<Value, Val
     Ok(capability)
 }
 
-fn promise_resolve(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let c = ctx.scope.borrow().get_this(agent)?;
+fn promise_resolve(args: Args) -> Result<Value, Value> {
+    let c = args.this();
     if c.type_of() != "object" && c.type_of() != "function" {
-        return Err(Value::new_error(agent, "this must be an object"));
+        return Err(Value::new_error(args.agent(), "this must be an object"));
     }
-    let x = args.get(0).unwrap_or(&Value::Null).clone();
-    promise_resolve_i(agent, c, x)
+    promise_resolve_i(args.agent(), c, args[0].clone())
 }
 
-fn promise_reject(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let x = args.get(0).unwrap_or(&Value::Null);
-    let c = ctx.scope.borrow().get_this(agent)?;
+fn promise_reject(args: Args) -> Result<Value, Value> {
+    let c = args.this();
     if c.type_of() != "object" && c.type_of() != "function" {
-        return Err(Value::new_error(agent, "this must be an object"));
+        return Err(Value::new_error(args.agent(), "this must be an object"));
     }
-    let capability = new_promise_capability(agent, c)?;
+    let capability = new_promise_capability(args.agent(), c)?;
     capability
         .get_slot("reject")
-        .call(agent, Value::Null, vec![x.clone()])?;
+        .call(args.agent(), Value::Null, vec![args[0].clone()])?;
     Ok(capability)
 }
 

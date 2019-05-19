@@ -1,21 +1,20 @@
 use crate::agent::Agent;
-use crate::interpreter::Context;
-use crate::value::{ObjectKey, Value};
+use crate::value::{Args, ObjectKey, Value};
 
-fn symbol(agent: &Agent, args: Vec<Value>, _ctx: &Context) -> Result<Value, Value> {
-    let desc = match args.get(0) {
-        Some(Value::String(s)) => Ok(Some(s.clone())),
-        Some(_) => Err(Value::new_error(agent, "invalid description")),
-        None => Ok(None),
+fn symbol(args: Args) -> Result<Value, Value> {
+    let desc = match &args[0] {
+        Value::String(s) => Ok(Some(s.clone())),
+        Value::Null => Ok(None),
+        _ => Err(Value::new_error(args.agent(), "invalid description")),
     }?;
     Ok(Value::new_symbol(desc))
 }
 
-fn private(agent: &Agent, args: Vec<Value>, _ctx: &Context) -> Result<Value, Value> {
-    let desc = match args.get(0) {
-        Some(Value::String(s)) => Ok(Some(s.clone())),
-        Some(_) => Err(Value::new_error(agent, "invalid description")),
-        None => Ok(None),
+fn private(args: Args) -> Result<Value, Value> {
+    let desc = match &args[0] {
+        Value::String(s) => Ok(Some(s.clone())),
+        Value::Null => Ok(None),
+        _ => Err(Value::new_error(args.agent(), "invalid description")),
     }?;
     Ok(Value::new_private_symbol(desc))
 }

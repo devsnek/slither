@@ -1,29 +1,26 @@
 use crate::agent::Agent;
-use crate::interpreter::Context;
-use crate::value::{ObjectKey, ObjectKind, Value};
+use crate::value::{Args, ObjectKey, ObjectKind, Value};
 
-fn match_(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let this = ctx.scope.borrow().get_this(agent)?;
-    match this {
+fn match_(args: Args) -> Result<Value, Value> {
+    match args.this() {
         Value::Object(o) => {
             if let ObjectKind::Regex(re) = &o.kind {
-                let mut args = args;
-                if let Some(Value::String(s)) = args.pop() {
+                if let Value::String(s) = &args[0] {
                     if let Some(captures) = re.captures(s.as_str()) {
-                        let o = Value::new_array(agent);
+                        let o = Value::new_array(args.agent());
                         let mut i = 0;
                         for name in re.capture_names() {
                             match name {
                                 Some(s) => {
                                     o.set(
-                                        agent,
+                                        args.agent(),
                                         ObjectKey::from(s),
                                         Value::from(captures.name(s).unwrap().as_str()),
                                     )?;
                                 }
                                 None => {
                                     o.set(
-                                        agent,
+                                        args.agent(),
                                         ObjectKey::from(i),
                                         Value::from(captures.get(i).unwrap().as_str()),
                                     )?;
@@ -36,31 +33,29 @@ fn match_(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value
                         Ok(Value::Null)
                     }
                 } else {
-                    Err(Value::new_error(agent, "input must be a string"))
+                    Err(Value::new_error(args.agent(), "input must be a string"))
                 }
             } else {
-                Err(Value::new_error(agent, "invalid receiver"))
+                Err(Value::new_error(args.agent(), "invalid receiver"))
             }
         }
-        _ => Err(Value::new_error(agent, "invalid receiver")),
+        _ => Err(Value::new_error(args.agent(), "invalid receiver")),
     }
 }
 
-fn test(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let this = ctx.scope.borrow().get_this(agent)?;
-    match this {
+fn test(args: Args) -> Result<Value, Value> {
+    match args.this() {
         Value::Object(o) => {
             if let ObjectKind::Regex(re) = &o.kind {
-                let mut args = args;
-                match args.pop().unwrap_or(Value::Null) {
+                match &args[0] {
                     Value::String(s) => Ok(Value::from(re.is_match(s.as_str()))),
-                    _ => Err(Value::new_error(agent, "input must be a string")),
+                    _ => Err(Value::new_error(args.agent(), "input must be a string")),
                 }
             } else {
-                Err(Value::new_error(agent, "invalid receiver"))
+                Err(Value::new_error(args.agent(), "invalid receiver"))
             }
         }
-        _ => Err(Value::new_error(agent, "invalid receiver")),
+        _ => Err(Value::new_error(args.agent(), "invalid receiver")),
     }
 }
 

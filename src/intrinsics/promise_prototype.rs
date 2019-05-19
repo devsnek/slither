@@ -1,24 +1,25 @@
 use crate::agent::Agent;
-use crate::interpreter::Context;
 use crate::intrinsics::promise::{new_promise_capability, promise_reaction_job, promise_resolve_i};
-use crate::value::{ObjectKey, Value};
+use crate::value::{Args, ObjectKey, Value};
 
-fn promise_proto_then(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let mut on_fulfilled = args.get(0).unwrap_or(&Value::Null).clone();
-    let mut on_rejected = args.get(1).unwrap_or(&Value::Null).clone();
+fn promise_proto_then(args: Args) -> Result<Value, Value> {
+    let constructor = args
+        .this()
+        .get(args.agent(), ObjectKey::from("constructor"))?;
 
-    let this = ctx.scope.borrow().get_this(agent)?;
+    let on_fulfilled = if args[0].type_of() == "function" {
+        args[0].clone()
+    } else {
+        Value::Null
+    };
 
-    let constructor = this.get(agent, ObjectKey::from("constructor"))?;
+    let on_rejected = if args[1].type_of() == "function" {
+        args[1].clone()
+    } else {
+        Value::Null
+    };
 
-    let promise = new_promise_capability(agent, constructor)?;
-
-    if on_fulfilled.type_of() != "function" {
-        on_fulfilled = Value::Null;
-    }
-    if on_rejected.type_of() != "function" {
-        on_rejected = Value::Null;
-    }
+    let promise = new_promise_capability(args.agent(), constructor)?;
 
     let fulfill_reaction = Value::new_custom_object(Value::Null);
     fulfill_reaction.set_slot("kind", Value::from("resolve"));
@@ -30,29 +31,31 @@ fn promise_proto_then(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<
     reject_reaction.set_slot("promise", promise.clone());
     reject_reaction.set_slot("handler", on_rejected);
 
-    let state = this.get_slot("promise state");
+    let state = args.this().get_slot("promise state");
     if let Value::String(s) = &state {
         match s.as_str() {
             "pending" => {
-                if let Value::List(reactions) = &this.get_slot("fulfill reactions") {
+                if let Value::List(reactions) = &args.this().get_slot("fulfill reactions") {
                     reactions.borrow_mut().push_back(fulfill_reaction);
                 } else {
                     unreachable!();
                 }
-                if let Value::List(reactions) = &this.get_slot("reject reactions") {
+                if let Value::List(reactions) = &args.this().get_slot("reject reactions") {
                     reactions.borrow_mut().push_back(reject_reaction);
-                    this.set_slot("promise handled", Value::from(true));
+                    args.this().set_slot("promise handled", Value::from(true));
                 } else {
                     unreachable!();
                 }
             }
             "fulfilled" => {
-                let value = this.get_slot("result");
-                agent.enqueue_job(promise_reaction_job, vec![fulfill_reaction, value]);
+                let value = args.this().get_slot("result");
+                args.agent()
+                    .enqueue_job(promise_reaction_job, vec![fulfill_reaction, value]);
             }
             "rejected" => {
-                let reason = this.get_slot("result");
-                agent.enqueue_job(promise_reaction_job, vec![reject_reaction, reason]);
+                let reason = args.this().get_slot("result");
+                args.agent()
+                    .enqueue_job(promise_reaction_job, vec![reject_reaction, reason]);
             }
             _ => unreachable!(),
         }
@@ -63,81 +66,83 @@ fn promise_proto_then(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<
     Ok(promise)
 }
 
-fn promise_proto_catch(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let on_rejected = args.get(0).unwrap_or(&Value::Null).clone();
-    let this = ctx.scope.borrow().get_this(agent)?;
-    let then = this.get(agent, ObjectKey::from("then"))?;
-    then.call(agent, this.clone(), vec![Value::Null, on_rejected])
+fn promise_proto_catch(args: Args) -> Result<Value, Value> {
+    let then = args.this().get(args.agent(), ObjectKey::from("then"))?;
+    then.call(
+        args.agent(),
+        args.this(),
+        vec![Value::Null, args[0].clone()],
+    )
 }
 
-fn value_thunk(_a: &Agent, _args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let f = ctx.function.clone().unwrap();
-    Ok(f.get_slot("value"))
+fn value_thunk(args: Args) -> Result<Value, Value> {
+    Ok(args.function().get_slot("value"))
 }
 
-fn value_thrower(_a: &Agent, _args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let f = ctx.function.clone().unwrap();
-    Err(f.get_slot("value"))
+fn value_thrower(args: Args) -> Result<Value, Value> {
+    Err(args.function().get_slot("value"))
 }
 
-fn then_finally_function(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let f = ctx.function.clone().unwrap();
+fn then_finally_function(args: Args) -> Result<Value, Value> {
+    let result = args
+        .function()
+        .get_slot("on_finally")
+        .call(args.agent(), Value::Null, vec![])?;
+    let promise = promise_resolve_i(
+        args.agent(),
+        args.function().get_slot("constructor"),
+        result,
+    )?;
+    let value_thunk = Value::new_builtin_function(args.agent(), value_thunk);
+    value_thunk.set_slot("value", args[0].clone());
+    promise.get(args.agent(), ObjectKey::from("then"))?.call(
+        args.agent(),
+        promise,
+        vec![value_thunk],
+    )
+}
+
+fn catch_finally_function(args: Args) -> Result<Value, Value> {
+    let f = args.this();
     let on_finally = f.get_slot("on finally");
-    let result = on_finally.call(agent, Value::Null, vec![])?;
+    let result = on_finally.call(args.agent(), Value::Null, vec![])?;
     let c = f.get_slot("constructor");
-    let promise = promise_resolve_i(agent, c, result)?;
-    let value = args.get(0).unwrap_or(&Value::Null).clone();
-    let value_thunk = Value::new_builtin_function(agent, value_thunk);
-    value_thunk.set_slot("value", value);
+    let promise = promise_resolve_i(args.agent(), c, result)?;
+    let thrower = Value::new_builtin_function(args.agent(), value_thrower);
+    thrower.set_slot("value", args[0].clone());
     promise
-        .get(agent, ObjectKey::from("then"))?
-        .call(agent, promise, vec![value_thunk])
+        .get(args.agent(), ObjectKey::from("then"))?
+        .call(args.agent(), promise, vec![thrower])
 }
 
-fn catch_finally_function(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let f = ctx.function.clone().unwrap();
-    let on_finally = f.get_slot("on finally");
-    let result = on_finally.call(agent, Value::Null, vec![])?;
-    let c = f.get_slot("constructor");
-    let promise = promise_resolve_i(agent, c, result)?;
-    let value = args.get(0).unwrap_or(&Value::Null).clone();
-    let thrower = Value::new_builtin_function(agent, value_thrower);
-    thrower.set_slot("value", value);
-    promise
-        .get(agent, ObjectKey::from("then"))?
-        .call(agent, promise, vec![thrower])
-}
-
-fn promise_proto_finally(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let promise = ctx.scope.borrow().get_this(agent)?;
+fn promise_proto_finally(args: Args) -> Result<Value, Value> {
+    let promise = args.this();
     if promise.type_of() != "object" && promise.type_of() != "function" {
-        return Err(Value::new_error(agent, "invalid this"));
+        return Err(Value::new_error(args.agent(), "invalid this"));
     }
 
-    let c = promise.get(agent, ObjectKey::from("constructor"))?;
+    let c = promise.get(args.agent(), ObjectKey::from("constructor"))?;
     if c.type_of() != "object" && c.type_of() != "function" {
         return Err(Value::new_error(
-            agent,
+            args.agent(),
             "this does not derive a valid constructor",
         ));
     }
 
-    let on_finally = args.get(0).unwrap_or(&Value::Null).clone();
-
-    let (then_finally, catch_finally) = if on_finally.type_of() == "function" {
-        let then_finally = Value::new_builtin_function(agent, then_finally_function);
+    let (then_finally, catch_finally) = if args[0].type_of() == "function" {
+        let then_finally = Value::new_builtin_function(args.agent(), then_finally_function);
         then_finally.set_slot("constructor", c.clone());
-        then_finally.set_slot("on finally", on_finally.clone());
-        let catch_finally = Value::new_builtin_function(agent, catch_finally_function);
+        then_finally.set_slot("on finally", args[0].clone());
+        let catch_finally = Value::new_builtin_function(args.agent(), catch_finally_function);
         catch_finally.set_slot("constructor", c);
-        catch_finally.set_slot("on finally", on_finally);
+        catch_finally.set_slot("on finally", args[0].clone());
         (then_finally, catch_finally)
     } else {
-        (on_finally.clone(), on_finally)
+        (args[0].clone(), args[0].clone())
     };
 
-    promise.get(agent, ObjectKey::from("then"))?.call(
-        agent,
+    promise.get(args.agent(), ObjectKey::from("then"))?.call(
+        args.agent(),
         promise,
         vec![then_finally, catch_finally],
     )

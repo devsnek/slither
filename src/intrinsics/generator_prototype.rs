@@ -1,26 +1,24 @@
 use crate::agent::Agent;
-use crate::interpreter::Context;
-use crate::value::{ObjectKey, Value};
+use crate::value::{Args, ObjectKey, Value};
 
-fn next(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let this = ctx.scope.borrow().get_this(agent)?;
+fn next(args: Args) -> Result<Value, Value> {
+    let this = args.this();
     if let Value::WrappedContext(context, _) = this.get_slot("generator context") {
-        let mut args = args;
         if context.borrow_mut().interpreter.is_none() {
-            Value::new_iter_result(agent, Value::Null, true)
+            Value::new_iter_result(args.agent(), Value::Null, true)
         } else {
             let mut interpreter = context.borrow_mut().interpreter.take().unwrap();
-            interpreter.accumulator = args.pop().unwrap_or(Value::Null);
-            match interpreter.run(agent) {
+            interpreter.accumulator = args[0].clone();
+            match interpreter.run(args.agent()) {
                 Ok(r) => match r {
-                    Ok(v) => Value::new_iter_result(agent, v, true),
+                    Ok(v) => Value::new_iter_result(args.agent(), v, true),
                     Err(e) => Err(e),
                 },
                 Err(c) => {
                     context.borrow_mut().interpreter = Some(interpreter);
                     let mut c = c;
                     let value = std::mem::replace(&mut c.0, Value::Null);
-                    Value::new_iter_result(agent, value, false)
+                    Value::new_iter_result(args.agent(), value, false)
                 }
             }
         }
@@ -29,25 +27,24 @@ fn next(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> 
     }
 }
 
-fn throw(agent: &Agent, args: Vec<Value>, ctx: &Context) -> Result<Value, Value> {
-    let this = ctx.scope.borrow().get_this(agent)?;
+fn throw(args: Args) -> Result<Value, Value> {
+    let this = args.this();
     if let Value::WrappedContext(context, _) = this.get_slot("generator context") {
-        let mut args = args;
         if context.borrow_mut().interpreter.is_none() {
-            Value::new_iter_result(agent, Value::Null, true)
+            Value::new_iter_result(args.agent(), Value::Null, true)
         } else {
             let mut interpreter = context.borrow_mut().interpreter.take().unwrap();
-            interpreter.exception = Some(args.pop().unwrap_or(Value::Null));
-            match interpreter.run(agent) {
+            interpreter.exception = Some(args[0].clone());
+            match interpreter.run(args.agent()) {
                 Ok(r) => match r {
-                    Ok(v) => Value::new_iter_result(agent, v, true),
+                    Ok(v) => Value::new_iter_result(args.agent(), v, true),
                     Err(e) => Err(e),
                 },
                 Err(c) => {
                     context.borrow_mut().interpreter = Some(interpreter);
                     let mut c = c;
                     let value = std::mem::replace(&mut c.0, Value::Null);
-                    Value::new_iter_result(agent, value, false)
+                    Value::new_iter_result(args.agent(), value, false)
                 }
             }
         }
