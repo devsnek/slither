@@ -57,7 +57,7 @@ mod parser;
 mod runtime;
 mod serde;
 mod sort;
-mod value;
+pub mod value;
 
 pub trait IntoValue: Sized {
     fn into_value(&self, _: &agent::Agent) -> value::Value;
