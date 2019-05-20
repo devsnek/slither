@@ -67,12 +67,13 @@ fn call_timer_job(agent: &Agent, args: Vec<Value>) -> Result<(), Value> {
     Ok(())
 }
 
-pub(crate) fn handle(agent: &Agent, token: mio::Token, timer: Timer) {
+pub(crate) fn handle(agent: &Agent, _token: mio::Token, timer: &Timer) -> bool {
     match timer {
         Timer::Once(_, callback) => {
-            agent.enqueue_job(call_timer_job, vec![callback]);
+            agent.enqueue_job(call_timer_job, vec![callback.clone()]);
+            false
         }
-        Timer::Repeat(reg, iter) => {
+        Timer::Repeat(_, iter) => {
             if let Value::List(queue) = iter.get_slot("timer queue") {
                 let value = Value::new_iter_result(agent, Value::Null, false).unwrap();
                 if let Some(promise) = queue.borrow_mut().pop_front() {
@@ -90,10 +91,7 @@ pub(crate) fn handle(agent: &Agent, token: mio::Token, timer: Timer) {
             } else {
                 unreachable!();
             }
-            agent
-                .mio_map
-                .borrow_mut()
-                .insert(token, MioMapType::Timer(Timer::Repeat(reg, iter)));
+            true
         }
     }
 }

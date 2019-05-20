@@ -18,8 +18,9 @@ pub(crate) enum FsResponse {
     Error(String),
 }
 
-pub(crate) fn handle(agent: &Agent, token: Token, promise: Value) {
+pub(crate) fn handle(agent: &Agent, token: Token, promise: &Value) -> bool {
     let fsr = RESPONSES.lock().unwrap().remove(&token).unwrap();
+    let promise = promise.clone();
     match fsr {
         FsResponse::Read(s) => {
             promise
@@ -92,7 +93,8 @@ pub(crate) fn handle(agent: &Agent, token: Token, promise: Value) {
                 .call(agent, promise, vec![Value::new_error(agent, s.as_str())])
                 .unwrap();
         }
-    }
+    };
+    false
 }
 
 fn read_file(args: Args) -> Result<Value, Value> {

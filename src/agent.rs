@@ -240,21 +240,17 @@ impl Agent {
                 .poll(&mut events, Some(std::time::Duration::from_millis(0)))
                 .expect("mio poll failed");
             for event in events.iter() {
-                let entry = self
-                    .mio_map
-                    .borrow_mut()
-                    .remove(&event.token())
-                    .expect("mio map was missing entry for event");
-                match entry {
-                    MioMapType::Timer(t) => {
-                        crate::builtins::timers::handle(self, event.token(), t);
-                    }
+                let mut map = self.mio_map.borrow_mut();
+                let entry = map.get_mut(&event.token()).unwrap();
+                let keep = match entry {
+                    MioMapType::Timer(t) => crate::builtins::timers::handle(self, event.token(), t),
                     MioMapType::FS(_, promise) => {
-                        crate::builtins::fs::handle(self, event.token(), promise);
+                        crate::builtins::fs::handle(self, event.token(), promise)
                     }
-                    MioMapType::Net(n) => {
-                        crate::builtins::net::handle(self, event.token(), n);
-                    }
+                    MioMapType::Net(n) => crate::builtins::net::handle(self, event.token(), n),
+                };
+                if !keep {
+                    map.remove(&event.token()).unwrap();
                 }
             }
 

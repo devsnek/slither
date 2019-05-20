@@ -85,19 +85,20 @@ fn create_client(agent: &Agent, stream: TcpStream) -> Result<Value, Value> {
     }
 }
 
-pub(crate) fn handle(agent: &Agent, token: Token, net: Net) {
+pub(crate) fn handle(agent: &Agent, _token: Token, net: &mut Net) -> bool {
     match net {
-        Net::Client(mut stream, client) => match stream.take_error() {
+        Net::Client(stream, client) => match stream.take_error() {
             Ok(Some(e)) | Err(e) => {
                 let e = Value::new_error(agent, &format!("{}", e));
-                get_or_create_reject("client", agent, client, e);
+                get_or_create_reject("client", agent, client.clone(), e);
+                false
             }
             Ok(None) => {
                 let mut buf = Vec::new();
                 match stream.read_to_end(&mut buf) {
                     Ok(size) if size == 0 => {
-                        get_or_create_resolve("client", agent, client, Value::Null, true);
-                        return;
+                        get_or_create_resolve("client", agent, client.clone(), Value::Null, true);
+                        return false;
                     }
                     Ok(_) => {
                         let r = Value::new_buffer_from_vec(agent, buf);
@@ -110,18 +111,17 @@ pub(crate) fn handle(agent: &Agent, token: Token, net: Net) {
                     Err(e) => {
                         let e = Value::new_error(agent, &format!("{}", e));
                         get_or_create_reject("client", agent, client.clone(), e);
+                        return false;
                     }
                 }
-                agent
-                    .mio_map
-                    .borrow_mut()
-                    .insert(token, MioMapType::Net(Net::Client(stream, client)));
+                true
             }
         },
         Net::Server(listener, server) => match listener.take_error() {
             Ok(Some(e)) | Err(e) => {
                 let e = Value::new_error(agent, &format!("{}", e));
-                get_or_create_reject("server", agent, server, e);
+                get_or_create_reject("server", agent, server.clone(), e);
+                false
             }
             Ok(None) => {
                 match listener.accept() {
@@ -131,18 +131,17 @@ pub(crate) fn handle(agent: &Agent, token: Token, net: Net) {
                         }
                         Err(e) => {
                             get_or_create_reject("server", agent, server.clone(), e);
+                            return false;
                         }
                     },
                     Err(ref e) if e.kind() != std::io::ErrorKind::WouldBlock => {
                         let e = Value::new_error(agent, &format!("{}", e));
                         get_or_create_reject("server", agent, server.clone(), e);
+                        return false;
                     }
                     _ => {}
                 }
-                agent
-                    .mio_map
-                    .borrow_mut()
-                    .insert(token, MioMapType::Net(Net::Server(listener, server)));
+                true
             }
         },
     }
