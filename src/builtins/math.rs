@@ -9,11 +9,7 @@ fn min(args: Args) -> Result<Value, Value> {
 
     let mut numbers = Vec::new();
     for arg in args.args() {
-        if let Value::Number(n) = arg {
-            numbers.push(*n);
-        } else {
-            return Err(Value::new_error(args.agent(), "argument must be a number"));
-        }
+        numbers.push(arg.as_f64(args.agent())?);
     }
 
     numbers.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -28,11 +24,7 @@ fn max(args: Args) -> Result<Value, Value> {
 
     let mut numbers = Vec::new();
     for arg in args.args() {
-        if let Value::Number(n) = arg {
-            numbers.push(*n);
-        } else {
-            return Err(Value::new_error(args.agent(), "argument must be a number"));
-        }
+        numbers.push(arg.as_f64(args.agent())?);
     }
 
     numbers.sort_by(|a, b| b.partial_cmp(a).unwrap());

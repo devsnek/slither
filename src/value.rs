@@ -764,6 +764,27 @@ impl Value {
         }
     }
 
+    pub fn as_f64(&self, agent: &Agent) -> Result<f64, Value> {
+        match self {
+            Value::Number(n) => Ok(*n),
+            _ => Err(Value::new_error(agent, "value is not a number")),
+        }
+    }
+
+    pub fn as_string(&self, agent: &Agent) -> Result<String, Value> {
+        match self {
+            Value::String(s) => Ok(s.to_string()),
+            _ => Err(Value::new_error(agent, "value is not a string")),
+        }
+    }
+
+    pub fn as_boolean(&self, agent: &Agent) -> Result<bool, Value> {
+        match self {
+            Value::Boolean(b) => Ok(*b),
+            _ => Err(Value::new_error(agent, "value is not a string")),
+        }
+    }
+
     pub fn get(&self, agent: &Agent, key: ObjectKey) -> Result<Value, Value> {
         match self {
             Value::Object(o) => Ok(o.get(key)),
@@ -902,12 +923,7 @@ impl Value {
         Ok(Value::Iterator(Box::new(iterator), Box::new(next)))
     }
 
-    pub fn call(
-        &self,
-        agent: &Agent,
-        this: Value,
-        args: Vec<Value>,
-    ) -> Result<Value, Value> {
+    pub fn call(&self, agent: &Agent, this: Value, args: Vec<Value>) -> Result<Value, Value> {
         match self {
             Value::Object(o) => match &o.kind {
                 ObjectKind::BytecodeFunction {
