@@ -9,6 +9,7 @@ use crate::intrinsics::{
     create_timer_iterator_prototype,
 };
 use crate::module::Module;
+use crate::value::Args;
 use crate::Value;
 use gc::{Gc, GcCell};
 use std::cell::{Cell, RefCell};
@@ -94,6 +95,16 @@ unsafe impl gc::Trace for Agent {
     });
 }
 
+// `print` global
+fn print(args: Args) -> Result<Value, Value> {
+    let mut inspected = Vec::with_capacity(args.args().len());
+    for v in args.args() {
+        inspected.push(Value::inspect(args.agent(), &v));
+    }
+    println!("{}", inspected.join(" "));
+    Ok(Value::Null)
+}
+
 impl Agent {
     pub fn new() -> Agent {
         let object_prototype = create_object_prototype();
@@ -162,8 +173,11 @@ impl Agent {
         {
             let mut scope = agent.root_scope.borrow_mut();
 
-            scope.create(&agent, "Symbol", true).unwrap();
+            scope.create(&agent, "Symbol", false).unwrap();
             scope.initialize("Symbol", agent.intrinsics.symbol.clone());
+
+            scope.create(&agent, "print", false).unwrap();
+            scope.initialize("print", Value::new_builtin_function(&agent, print));
         }
 
         agent
@@ -236,6 +250,7 @@ impl Agent {
     pub fn run_jobs(&self) {
         let mut events = mio::Events::with_capacity(16);
         loop {
+            crate::builtins::timers::poll();
             self.mio
                 .poll(&mut events, Some(std::time::Duration::from_millis(0)))
                 .expect("mio poll failed");

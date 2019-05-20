@@ -39,27 +39,26 @@ impl TimerList {
 
 lazy_static! {
     static ref TIMERS: Mutex<LinkedList<TimerList>> = Mutex::new(LinkedList::new());
-    static ref THREAD: std::thread::JoinHandle<()> = std::thread::spawn(move || loop {
-        let mut to_readd = Vec::new();
-        let mut timers = TIMERS.lock().unwrap();
-        if let Some(list) = timers.cursor().next() {
-            if Instant::now() >= list.instant {
-                while let Some((r, d, repeat)) = list.timers.pop_front() {
-                    r.set_readiness(Ready::readable())
-                        .expect("failed to set timer readiness");
-                    if repeat {
-                        to_readd.push((d, r));
-                    }
+}
+
+pub(crate) fn poll() {
+    let mut timers = TIMERS.lock().unwrap();
+    if let Some(list) = timers.cursor().next() {
+        if Instant::now() >= list.instant {
+            let mut to_readd = Vec::new();
+            while let Some((r, d, repeat)) = list.timers.pop_front() {
+                r.set_readiness(Ready::readable())
+                    .expect("failed to set timer readiness");
+                if repeat {
+                    to_readd.push((d, r));
                 }
-                timers.pop_front();
             }
-        } else {
-            std::thread::park();
+            timers.pop_front();
+            for (duration, r) in to_readd {
+                insert(&mut timers, duration, r, true);
+            }
         }
-        for (duration, r) in to_readd {
-            insert(&mut timers, duration, r, true);
-        }
-    });
+    }
 }
 
 fn call_timer_job(agent: &Agent, args: Vec<Value>) -> Result<(), Value> {
@@ -144,7 +143,6 @@ fn create_timeout(args: Args) -> Result<Value, Value> {
     );
 
     insert(&mut TIMERS.lock().unwrap(), duration, set_readiness, false);
-    THREAD.thread().unpark();
 
     // TODO: return object with cancel()
     Ok(Value::Null)
@@ -171,7 +169,6 @@ fn create_interval(args: Args) -> Result<Value, Value> {
         MioMapType::Timer(Timer::Repeat(registration, iter.clone())),
     );
     insert(&mut TIMERS.lock().unwrap(), duration, set_readiness, true);
-    THREAD.thread().unpark();
 
     Ok(iter)
 }

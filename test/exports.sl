@@ -1,5 +1,3 @@
-import { print } from standard:debug;
-
 export let a = 1;
 
 export function setA(v) {

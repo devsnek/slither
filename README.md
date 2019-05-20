@@ -3,10 +3,6 @@
 A modern scripting runtime
 
 ```js
-// modules keep your code organized
-// and your global clean
-import { print } from standard:debug;
-
 function fib(n, a = 0, b = 1) { // argument initializers
   if n == 0 { // no parenthesis around if or try
     return a;

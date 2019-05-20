@@ -1,4 +1,3 @@
-import { print } from standard:debug;
 import { createInterval } from standard:timers;
 
 (async () => {
