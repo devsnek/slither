@@ -1,19 +1,14 @@
 import { print } from standard:debug;
-import { listen, connect } from standard:net;
-
-async function handle(socket) {
-  for await message in socket {
-    print('message in socket', message);
-    socket.write(message);
-  }
-}
+import { createInterval } from standard:timers;
 
 (async () => {
-  const listener = listen('127.0.0.1:8080');
-  for await socket in listener {
-    handle(socket)
-      .catch((e) => print('error', e));
+  let i = 0;
+  for await _ in createInterval(1000) {
+    i += 1;
+    print('hi!', i);
+    if i > 5 {
+      break;
+    }
   }
-})().catch((e) => {
-  print('error', e);
-});
+  print('done!');
+})();

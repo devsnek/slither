@@ -6,6 +6,7 @@ use crate::intrinsics::{
     create_net_client_prototype, create_net_server_prototype, create_number_prototype,
     create_object_prototype, create_promise, create_promise_prototype, create_regex_prototype,
     create_string_prototype, create_symbol, create_symbol_prototype,
+    create_timer_iterator_prototype,
 };
 use crate::module::Module;
 use crate::Value;
@@ -35,6 +36,7 @@ pub(crate) struct Intrinsics {
     pub(crate) net_client_prototype: Value,
     pub(crate) net_server_prototype: Value,
     pub(crate) error_prototype: Value,
+    pub(crate) timer_iterator_prototype: Value,
 }
 
 type JobFn = fn(&Agent, Vec<Value>) -> Result<(), Value>;
@@ -49,7 +51,7 @@ unsafe impl gc::Trace for Job {
 
 #[derive(Debug, Finalize)]
 pub(crate) enum MioMapType {
-    Timer(mio::Registration, Value),
+    Timer(crate::builtins::timers::Timer),
     FS(mio::Registration, Value),
     Net(crate::builtins::net::Net),
 }
@@ -57,7 +59,8 @@ pub(crate) enum MioMapType {
 unsafe impl gc::Trace for MioMapType {
     custom_trace!(this, {
         match this {
-            MioMapType::Timer(_, v) | MioMapType::FS(_, v) => mark(v),
+            MioMapType::Timer(v) => mark(v),
+            MioMapType::FS(_, v) => mark(v),
             MioMapType::Net(v) => mark(v),
         }
     });
@@ -118,6 +121,7 @@ impl Agent {
                 net_client_prototype: Value::Null,
                 net_server_prototype: Value::Null,
                 error_prototype: Value::Null,
+                timer_iterator_prototype: Value::Null,
             },
             builtins: HashMap::new(),
             root_scope: Scope::new(None),
@@ -150,6 +154,8 @@ impl Agent {
 
         agent.intrinsics.net_client_prototype = create_net_client_prototype(&agent);
         agent.intrinsics.net_server_prototype = create_net_server_prototype(&agent);
+
+        agent.intrinsics.timer_iterator_prototype = create_timer_iterator_prototype(&agent);
 
         agent.builtins = crate::builtins::create(&agent);
 
@@ -240,8 +246,8 @@ impl Agent {
                     .remove(&event.token())
                     .expect("mio map was missing entry for event");
                 match entry {
-                    MioMapType::Timer(_, callback) => {
-                        self.enqueue_job(call_timer_job, vec![callback]);
+                    MioMapType::Timer(t) => {
+                        crate::builtins::timers::handle(self, event.token(), t);
                     }
                     MioMapType::FS(_, promise) => {
                         crate::builtins::fs::handle(self, event.token(), promise);
@@ -309,11 +315,6 @@ impl Default for Agent {
     fn default() -> Self {
         Agent::new()
     }
-}
-
-fn call_timer_job(agent: &Agent, args: Vec<Value>) -> Result<(), Value> {
-    args[0].call(agent, Value::Null, Vec::new())?;
-    Ok(())
 }
 
 macro_rules! test {

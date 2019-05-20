@@ -384,6 +384,9 @@ impl Assembler {
         BODY
         jump head
         end:
+        if iterator.return != null {
+            iterator.return()
+        }
         */
 
         let mut head = self.label();
@@ -430,6 +433,7 @@ impl Assembler {
         self.continue_label = Some(&mut head as *mut Label);
 
         self.visit(body);
+        self.store_accumulator_in_register(&body_result);
 
         self.break_label = pbl;
         self.continue_label = pcl;
@@ -439,6 +443,8 @@ impl Assembler {
         self.jump(&mut head);
 
         self.mark(&mut end);
+        self.load_accumulator_with_register(&iterator);
+        self.call_runtime(RuntimeFunction::IteratorDone);
         self.load_accumulator_with_register(&body_result);
     }
 

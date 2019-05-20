@@ -18,6 +18,7 @@ mod regex_prototype;
 mod string_prototype;
 mod symbol;
 mod symbol_prototype;
+mod timer_iterator_prototype;
 
 pub(crate) use perform_await::perform_await;
 
@@ -40,3 +41,4 @@ pub(crate) use regex_prototype::create_regex_prototype;
 pub(crate) use string_prototype::create_string_prototype;
 pub(crate) use symbol::create_symbol;
 pub(crate) use symbol_prototype::create_symbol_prototype;
+pub(crate) use timer_iterator_prototype::create_timer_iterator_prototype;

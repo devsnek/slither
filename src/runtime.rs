@@ -7,6 +7,7 @@ macro_rules! intrinsics {
             (ToString, to_string),
             (GetIterator, get_iterator),
             (GetAsyncIterator, get_async_iterator),
+            (IteratorDone, iterator_done),
             (ObjectKeys, object_keys),
             (ListLength, list_length),
             (ListPopFront, list_pop_front),
@@ -38,6 +39,18 @@ fn get_iterator(agent: &Agent, accumulator: &mut Value) -> Result<(), Value> {
 
 fn get_async_iterator(agent: &Agent, accumulator: &mut Value) -> Result<(), Value> {
     *accumulator = accumulator.to_async_iterator(agent)?;
+    Ok(())
+}
+
+fn iterator_done(agent: &Agent, accumulator: &mut Value) -> Result<(), Value> {
+    if let Value::Iterator(iter, ..) = accumulator {
+        let r = iter.get(agent, ObjectKey::from("return"))?;
+        if r != Value::Null {
+            r.call(agent, *iter.clone(), vec![])?;
+        }
+    } else {
+        unreachable!();
+    }
     Ok(())
 }
 

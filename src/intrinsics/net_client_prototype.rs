@@ -114,4 +114,12 @@ pub(crate) fn create_net_client_prototype(agent: &Agent) -> Value {
         .unwrap();
 
     proto
+        .set(
+            agent,
+            ObjectKey::from("return"),
+            proto.get(agent, ObjectKey::from("close")).unwrap(),
+        )
+        .unwrap();
+
+    proto
 }

@@ -7,7 +7,7 @@ mod debug;
 pub(crate) mod fs;
 mod math;
 pub(crate) mod net;
-mod timers;
+pub(crate) mod timers;
 
 pub(crate) fn create(agent: &Agent) -> HashMap<String, HashMap<String, Value>> {
     let mut builtins = HashMap::new();
