@@ -1,5 +1,10 @@
-workflow "Quickstart" {
+workflow "On Push" {
   on = "push"
+  resolves = ["check"]
+}
+
+workflow "On PR" {
+  on = "pull_request"
   resolves = ["check"]
 }
 

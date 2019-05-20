@@ -778,10 +778,10 @@ impl Value {
         }
     }
 
-    pub fn as_boolean(&self, agent: &Agent) -> Result<bool, Value> {
+    pub fn as_bool(&self, agent: &Agent) -> Result<bool, Value> {
         match self {
             Value::Boolean(b) => Ok(*b),
-            _ => Err(Value::new_error(agent, "value is not a string")),
+            _ => Err(Value::new_error(agent, "value is not a bool")),
         }
     }
 
