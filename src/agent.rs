@@ -450,7 +450,7 @@ test!(
 test!(
     test_for_loop,
     r#"
-    gen function numbers() {
+    generator numbers() {
       let i = 0;
       while i < 10 {
         yield i;

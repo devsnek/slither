@@ -769,6 +769,15 @@ impl Assembler {
                     } else {
                         unreachable!();
                     }
+                } else if let Node::Identifier(name) = &param {
+                    let mut label = self.label();
+                    self.visit_identifier(name);
+                    self.jump_if_not_empty(&mut label);
+                    self.load_null();
+                    self.overwrite_binding(name);
+                    self.mark(&mut label);
+                } else {
+                    unreachable!();
                 }
             }
             for (name, mutable) in &scope.bindings {
@@ -983,50 +992,26 @@ impl Assembler {
                     }
                     Node::ObjectPattern(patterns, wildcard) => {
                         self.push_op(Op::EnterScope);
-                        if *wildcard {
-                            for (binding, _pattern) in patterns {
-                                self.load_string(binding);
-                                self.push_op(Op::HasProperty); // TODO: replace with equality for pattern
-                                self.push_u32(value.id);
-                                self.jump_if_false(&mut next);
-                                self.lexical_declaration(binding, false);
-                                self.load_accumulator_with_register(&value);
-                                self.load_named_property(binding);
-                                self.lexical_initialization(binding);
-                            }
-                        } else {
-                            let mut head = self.label();
-
+                        if !*wildcard {
                             self.load_accumulator_with_register(&value);
-                            self.call_runtime(RuntimeFunction::ObjectKeys);
-                            let keys = rscope.register();
-                            self.store_accumulator_in_register(&keys);
-
+                            self.call_runtime(RuntimeFunction::ObjectKeysLength);
                             let keys_length = rscope.register();
-                            self.call_runtime(RuntimeFunction::ListLength);
                             self.store_accumulator_in_register(&keys_length);
 
                             self.load_f64(patterns.len() as f64);
                             self.push_op(Op::Eq);
                             self.push_u32(keys_length.id);
                             self.jump_if_false(&mut next);
-
-                            self.mark(&mut head);
-
-                            self.load_accumulator_with_register(&keys);
-                            self.call_runtime(RuntimeFunction::ListPopFront);
-                            self.jump_if_empty(&mut next);
-
+                        }
+                        for (binding, _pattern) in patterns {
+                            self.load_string(binding);
                             self.push_op(Op::HasProperty); // TODO: replace with equality for pattern
                             self.push_u32(value.id);
                             self.jump_if_false(&mut next);
-                            /*
                             self.lexical_declaration(binding, false);
                             self.load_accumulator_with_register(&value);
                             self.load_named_property(binding);
                             self.lexical_initialization(binding);
-                            */
-                            self.jump(&mut head);
                         }
                         self.visit(consequent);
                         self.push_op(Op::ExitScope);
@@ -1101,11 +1086,6 @@ impl Assembler {
 
     fn jump_if_false(&mut self, label: &mut Label) {
         self.push_op(Op::JumpIfFalse);
-        self.jmp(label);
-    }
-
-    fn jump_if_empty(&mut self, label: &mut Label) {
-        self.push_op(Op::JumpIfEmpty);
         self.jmp(label);
     }
 

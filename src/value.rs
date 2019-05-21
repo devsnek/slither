@@ -7,7 +7,6 @@ use indexmap::IndexMap;
 use regex::Regex;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{Hash, Hasher};
-use std::iter::FromIterator;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub struct BuiltinFunctionArgs<'a> {
@@ -680,13 +679,6 @@ impl Value {
 
     pub(crate) fn new_list() -> Value {
         Value::List(Gc::new(GcCell::new(VecDeque::new())))
-    }
-
-    pub(crate) fn new_list_from_iter<T>(iter: T) -> Value
-    where
-        T: IntoIterator<Item = Value>,
-    {
-        Value::List(Gc::new(GcCell::new(VecDeque::from_iter(iter))))
     }
 
     pub(crate) fn new_tuple() -> Value {

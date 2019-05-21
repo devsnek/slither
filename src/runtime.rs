@@ -8,9 +8,7 @@ macro_rules! intrinsics {
             (GetIterator, get_iterator),
             (GetAsyncIterator, get_async_iterator),
             (IteratorDone, iterator_done),
-            (ObjectKeys, object_keys),
-            (ListLength, list_length),
-            (ListPopFront, list_pop_front),
+            (ObjectKeysLength, object_keys_length),
         );
     };
 }
@@ -42,41 +40,17 @@ fn get_async_iterator(agent: &Agent, accumulator: &mut Value) -> Result<(), Valu
     Ok(())
 }
 
+fn object_keys_length(agent: &Agent, accumulator: &mut Value) -> Result<(), Value> {
+    *accumulator = Value::from(accumulator.keys(agent)?.len() as f64);
+    Ok(())
+}
+
 fn iterator_done(agent: &Agent, accumulator: &mut Value) -> Result<(), Value> {
     if let Value::Iterator(iter, ..) = accumulator {
         let r = iter.get(agent, ObjectKey::from("return"))?;
         if r != Value::Null {
             r.call(agent, *iter.clone(), vec![])?;
         }
-    } else {
-        unreachable!();
-    }
-    Ok(())
-}
-
-fn object_keys(agent: &Agent, accumulator: &mut Value) -> Result<(), Value> {
-    let keys = accumulator.keys(agent)?;
-    *accumulator = Value::new_list_from_iter(keys.iter().map(Value::from));
-    Ok(())
-}
-
-fn list_length(_agent: &Agent, accumulator: &mut Value) -> Result<(), Value> {
-    if let Value::List(list) = accumulator {
-        let len = list.borrow().len() as f64;
-        *accumulator = Value::from(len);
-    } else {
-        unreachable!();
-    }
-    Ok(())
-}
-
-fn list_pop_front(_agent: &Agent, accumulator: &mut Value) -> Result<(), Value> {
-    if let Value::List(list) = accumulator {
-        let item = list.borrow_mut().pop_front();
-        *accumulator = match item {
-            None => Value::Empty,
-            Some(v) => v,
-        };
     } else {
         unreachable!();
     }

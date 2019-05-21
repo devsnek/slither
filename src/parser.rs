@@ -92,7 +92,7 @@ enum Token {
     Yield,
     Await,
     Async,
-    Gen,
+    Generator,
     Import,
     Export,
     Default,
@@ -498,7 +498,7 @@ impl<'a> Lexer<'a> {
                         "from" => Token::From,
                         "async" => Token::Async,
                         "await" => Token::Await,
-                        "gen" => Token::Gen,
+                        "generator" => Token::Generator,
                         "yield" => Token::Yield,
                         "match" => Token::Match,
                         "typeof" => Token::Operator(Operator::Typeof),
@@ -935,9 +935,8 @@ impl<'a> Parser<'a> {
                 self.expect(Token::Function)?;
                 self.parse_function(false, FunctionKind::Async)
             }
-            Token::Gen => {
+            Token::Generator => {
                 self.lexer.next()?;
-                self.expect(Token::Function)?;
                 self.parse_function(false, FunctionKind::Generator)
             }
             Token::Class => self.parse_class(false),
@@ -1018,8 +1017,7 @@ impl<'a> Parser<'a> {
         } else {
             Some(self.parse_identifier(false)?)
         };
-        self.expect(Token::LeftParen)?;
-        let args = self.parse_parameters(Token::RightParen)?;
+        let args = self.parse_parameters()?;
         let body = self.parse_block(match kind {
             FunctionKind::Normal => ParseScope::Function,
             FunctionKind::Async => ParseScope::AsyncFunction,
@@ -1163,7 +1161,7 @@ impl<'a> Parser<'a> {
         }
         let kind = if self.eat(Token::Async) {
             FunctionKind::Async
-        } else if self.eat(Token::Gen) {
+        } else if self.eat(Token::Generator) {
             FunctionKind::Generator
         } else if self.eat(Token::Function) {
             FunctionKind::Normal
@@ -1489,7 +1487,7 @@ impl<'a> Parser<'a> {
             Token::From if allow_keyword => Ok("from".to_string()),
             Token::Async if allow_keyword => Ok("async".to_string()),
             Token::Await if allow_keyword => Ok("await".to_string()),
-            Token::Gen if allow_keyword => Ok("gen".to_string()),
+            Token::Generator if allow_keyword => Ok("generator".to_string()),
             Token::Yield if allow_keyword => Ok("yield".to_string()),
             Token::Match if allow_keyword => Ok("match".to_string()),
             Token::Operator(Operator::Typeof) if allow_keyword => Ok("typeof".to_string()),
@@ -1588,8 +1586,7 @@ impl<'a> Parser<'a> {
                 }
             }
             Token::Async => {
-                self.expect(Token::LeftParen)?;
-                let list = self.parse_parameters(Token::RightParen)?;
+                let list = self.parse_parameters()?;
                 self.expect(Token::Arrow)?;
                 self.parse_arrow_function(FunctionKind::Async, list)
             }
@@ -1891,21 +1888,21 @@ impl<'a> Parser<'a> {
         Ok(identifiers)
     }
 
-    fn parse_parameters(&mut self, close: Token) -> Result<Vec<Node>, Error> {
+    fn parse_parameters(&mut self) -> Result<Vec<Node>, Error> {
+        self.expect(Token::LeftParen)?;
         let mut parameters = Vec::new();
         let mut first = true;
-        while !self.eat(close.clone()) {
+        while !self.eat(Token::RightParen) {
             if first {
                 first = false;
             } else {
                 self.expect(Token::Comma)?;
-                if self.eat(close.clone()) {
+                if self.eat(Token::RightParen) {
                     break;
                 }
             }
             let ident = self.parse_identifier(false)?;
-            if self.lexer.peek()? == &Token::Operator(Operator::Assign) {
-                self.lexer.next()?;
+            if self.eat(Token::Operator(Operator::Assign)) {
                 let init = self.parse_expression()?;
                 parameters.push(Node::Initializer(
                     Box::new(Node::Identifier(ident)),
