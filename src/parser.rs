@@ -346,6 +346,16 @@ impl<'a> Lexer<'a> {
                                 'e' if !in_exp => {
                                     self.chars.next().unwrap();
                                     in_exp = true;
+                                    match self.chars.peek() {
+                                        Some('-') => {
+                                            self.chars.next().unwrap();
+                                            exp_str.push('-');
+                                        }
+                                        Some('+') => {
+                                            self.chars.next().unwrap();
+                                        }
+                                        _ => {}
+                                    }
                                 }
                                 '.' if !in_exp => {
                                     if !one_dot {
@@ -364,8 +374,8 @@ impl<'a> Lexer<'a> {
                         match str.parse::<f64>() {
                             Ok(n) => {
                                 if in_exp {
-                                    match exp_str.parse::<u32>() {
-                                        Ok(e) => Token::NumberLiteral(n * (10u64.pow(e) as f64)),
+                                    match exp_str.parse::<i32>() {
+                                        Ok(e) => Token::NumberLiteral(n * (10f64.powi(e) as f64)),
                                         Err(_) => return Err(Error::UnexpectedToken),
                                     }
                                 } else {
