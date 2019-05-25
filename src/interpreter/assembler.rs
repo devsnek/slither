@@ -1,6 +1,7 @@
 use crate::interpreter::{Op, REGISTER_COUNT};
 use crate::parser::{FunctionKind, Node, Operator, Scope, ScopeKind};
 use crate::runtime::RuntimeFunction;
+use crate::value::ValueType;
 use byteorder::{LittleEndian, WriteBytesExt};
 
 struct Register {
@@ -481,6 +482,27 @@ impl Assembler {
             self.visit(rhs);
             self.mark(&mut end);
             return;
+        }
+
+        if let Node::UnaryExpression(Operator::Typeof, v) = lhs {
+            if let Node::StringLiteral(check) = rhs {
+                if op == Operator::Equal {
+                    self.visit(v);
+                    self.push_op(Op::IsTypeof);
+                    self.push_u8(match check.as_str() {
+                        "null" => ValueType::Null,
+                        "boolean" => ValueType::Boolean,
+                        "number" => ValueType::Number,
+                        "string" => ValueType::String,
+                        "symbol" => ValueType::Symbol,
+                        "tuple" => ValueType::Tuple,
+                        "object" => ValueType::Object,
+                        "function" => ValueType::Function,
+                        _ => unreachable!(),
+                    } as u8);
+                    return;
+                }
+            }
         }
 
         let rscope = RegisterScope::new(self);

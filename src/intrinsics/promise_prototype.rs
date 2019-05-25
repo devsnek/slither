@@ -1,19 +1,19 @@
 use crate::agent::Agent;
 use crate::intrinsics::promise::{new_promise_capability, promise_reaction_job, promise_resolve_i};
-use crate::value::{Args, ObjectKey, Value};
+use crate::value::{Args, ObjectKey, Value, ValueType};
 
 fn promise_proto_then(args: Args) -> Result<Value, Value> {
     let constructor = args
         .this()
         .get(args.agent(), ObjectKey::from("constructor"))?;
 
-    let on_fulfilled = if args[0].type_of() == "function" {
+    let on_fulfilled = if args[0].type_of() == ValueType::Function {
         args[0].clone()
     } else {
         Value::Null
     };
 
-    let on_rejected = if args[1].type_of() == "function" {
+    let on_rejected = if args[1].type_of() == ValueType::Function {
         args[1].clone()
     } else {
         Value::Null
@@ -117,19 +117,19 @@ fn catch_finally_function(args: Args) -> Result<Value, Value> {
 
 fn promise_proto_finally(args: Args) -> Result<Value, Value> {
     let promise = args.this();
-    if promise.type_of() != "object" && promise.type_of() != "function" {
+    if promise.type_of() != ValueType::Object && promise.type_of() != ValueType::Function {
         return Err(Value::new_error(args.agent(), "invalid this"));
     }
 
     let c = promise.get(args.agent(), ObjectKey::from("constructor"))?;
-    if c.type_of() != "object" && c.type_of() != "function" {
+    if c.type_of() != ValueType::Object && c.type_of() != ValueType::Function {
         return Err(Value::new_error(
             args.agent(),
             "this does not derive a valid constructor",
         ));
     }
 
-    let (then_finally, catch_finally) = if args[0].type_of() == "function" {
+    let (then_finally, catch_finally) = if args[0].type_of() == ValueType::Function {
         let then_finally = Value::new_builtin_function(args.agent(), then_finally_function);
         then_finally.set_slot("constructor", c.clone());
         then_finally.set_slot("on finally", args[0].clone());

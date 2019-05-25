@@ -1,7 +1,7 @@
 use crate::agent::{Agent, MioMapType};
 use crate::intrinsics::promise::promise_resolve_i;
 use crate::linked_list::LinkedList;
-use crate::value::{Args, Value};
+use crate::value::{Args, Value, ValueType};
 use lazy_static::lazy_static;
 use mio::{PollOpt, Ready, Registration, SetReadiness};
 use num::ToPrimitive;
@@ -122,7 +122,7 @@ fn insert(
 }
 
 fn create_timeout(args: Args) -> Result<Value, Value> {
-    if args[0].type_of() != "function" {
+    if args[0].type_of() != ValueType::Function {
         return Err(Value::new_error(
             args.agent(),
             "callback must be a function",

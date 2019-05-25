@@ -742,6 +742,18 @@ fn constant_fold(op: Operator, left: &Node, right: &Node) -> Option<Node> {
         return constant_fold(op, left, e);
     }
 
+    if let Node::UnaryExpression(Operator::Typeof, _v) = left {
+        if let Node::StringLiteral(check) = right {
+            match check.as_str() {
+                "null" | "boolean" | "number" | "string" | "symbol" | "tuple" | "object"
+                | "function" => {}
+                _ => return Some(Node::FalseLiteral),
+            }
+        } else {
+            return Some(Node::FalseLiteral);
+        }
+    }
+
     match op {
         Operator::Add => match left {
             Node::StringLiteral(lhs) => match right {
@@ -777,9 +789,13 @@ fn constant_fold(op: Operator, left: &Node, right: &Node) -> Option<Node> {
             Some(false) => Some(Node::TrueLiteral),
             None => None,
         },
-        // Operator::Equal => {
-        //   every combination of literal needs to be tested here
-        // }
+        Operator::Equal => {
+            if left == right {
+                Some(Node::TrueLiteral)
+            } else {
+                None
+            }
+        }
         Operator::NotEqual => match constant_fold(Operator::Equal, left, right) {
             Some(Node::TrueLiteral) => Some(Node::FalseLiteral),
             Some(Node::FalseLiteral) => Some(Node::TrueLiteral),

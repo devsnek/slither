@@ -1,5 +1,5 @@
 use crate::value::ObjectKey;
-use crate::{Agent, Value};
+use crate::{Agent, Value, ValueType};
 
 macro_rules! intrinsics {
     ($V:ident) => {
@@ -14,11 +14,11 @@ macro_rules! intrinsics {
 }
 
 fn to_string(agent: &Agent, accumulator: &mut Value) -> Result<(), Value> {
-    if accumulator.type_of() == "string" {
+    if accumulator.type_of() == ValueType::String {
         Ok(())
     } else {
         let ts = accumulator.get(agent, ObjectKey::well_known_symbol("toString"))?;
-        if ts.type_of() != "function" {
+        if ts.type_of() != ValueType::Function {
             Err(Value::new_error(
                 agent,
                 "value does not provide a :toString",

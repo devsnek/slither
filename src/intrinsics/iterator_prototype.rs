@@ -1,5 +1,5 @@
 use crate::agent::Agent;
-use crate::value::{Args, ObjectKey, Value};
+use crate::value::{Args, ObjectKey, Value, ValueType};
 
 fn iterator(args: Args) -> Result<Value, Value> {
     Ok(args.this())
@@ -7,7 +7,7 @@ fn iterator(args: Args) -> Result<Value, Value> {
 
 fn map(args: Args) -> Result<Value, Value> {
     let iterated = args.this().to_iterator(args.agent())?;
-    if args[0].type_of() != "function" {
+    if args[0].type_of() != ValueType::Function {
         return Err(Value::new_error(args.agent(), "mapper is not a function"));
     }
     let iterator = Value::new_custom_object(args.agent().intrinsics.iterator_map_prototype.clone());

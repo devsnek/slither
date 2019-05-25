@@ -533,6 +533,40 @@ pub enum Value {
     Iterator(Box<Value>, Box<Value>),
 }
 
+#[derive(Debug, PartialEq)]
+#[repr(u8)]
+pub enum ValueType {
+    Null,
+    Boolean,
+    Number,
+    String,
+    Symbol,
+    Tuple,
+    Object,
+    Function,
+}
+
+impl ValueType {
+    pub fn as_str(&self) -> &str {
+        match self {
+            ValueType::Null => "null",
+            ValueType::Boolean => "boolean",
+            ValueType::Number => "number",
+            ValueType::String => "string",
+            ValueType::Symbol => "symbol",
+            ValueType::Tuple => "tuple",
+            ValueType::Object => "object",
+            ValueType::Function => "function",
+        }
+    }
+}
+
+impl From<u8> for ValueType {
+    fn from(n: u8) -> Self {
+        unsafe { std::mem::transmute::<u8, Self>(n) }
+    }
+}
+
 #[allow(non_upper_case_globals)]
 #[allow(clippy::declare_interior_mutable_const)]
 impl Value {
@@ -726,19 +760,19 @@ impl Value {
 }
 
 impl Value {
-    pub fn type_of(&self) -> &str {
+    pub fn type_of(&self) -> ValueType {
         match &self {
-            Value::Null => "null",
-            Value::Boolean(..) => "boolean",
-            Value::Number(..) => "number",
-            Value::String(..) => "string",
-            Value::Symbol(..) => "symbol",
+            Value::Null => ValueType::Null,
+            Value::Boolean(..) => ValueType::Boolean,
+            Value::Number(..) => ValueType::Number,
+            Value::String(..) => ValueType::String,
+            Value::Symbol(..) => ValueType::Symbol,
             Value::Object(o) => match o.kind {
-                ObjectKind::BytecodeFunction { .. } => "function",
-                ObjectKind::BuiltinFunction(..) => "function",
-                _ => "object",
+                ObjectKind::BytecodeFunction { .. } => ValueType::Function,
+                ObjectKind::BuiltinFunction(..) => ValueType::Function,
+                _ => ValueType::Object,
             },
-            Value::Tuple(..) => "tuple",
+            Value::Tuple(..) => ValueType::Tuple,
             _ => unreachable!(),
         }
     }
@@ -981,7 +1015,7 @@ impl Value {
                         Err(Value::new_error(agent, "value is not a constructor"))
                     } else {
                         let mut prototype = new_target.get(agent, ObjectKey::from("prototype"))?;
-                        if prototype.type_of() != "object" {
+                        if prototype.type_of() != ValueType::Object {
                             prototype = agent.intrinsics.object_prototype.clone();
                         }
                         let this = Value::new_object(prototype);
@@ -989,7 +1023,7 @@ impl Value {
                         ctx.borrow().scope.borrow_mut().this = Some(this.clone());
                         ctx.borrow_mut().function = Some(self.clone());
                         let r = evaluate_body(agent, ctx, *position, *kind, args, parameters)?;
-                        if r.type_of() == "object" {
+                        if r.type_of() == ValueType::Object {
                             Ok(r)
                         } else {
                             Ok(this)
@@ -998,7 +1032,7 @@ impl Value {
                 }
                 ObjectKind::BuiltinFunction(f, ..) => {
                     let mut prototype = new_target.get(agent, ObjectKey::from("prototype"))?;
-                    if prototype.type_of() != "object" {
+                    if prototype.type_of() != ValueType::Object {
                         prototype = agent.intrinsics.object_prototype.clone();
                     }
                     let this = Value::new_object(prototype);
@@ -1012,7 +1046,7 @@ impl Value {
                         this: this.clone(),
                     };
                     let r = f(args)?;
-                    if r.type_of() == "object" {
+                    if r.type_of() == ValueType::Object {
                         Ok(r)
                     } else {
                         Ok(this)
@@ -1272,7 +1306,7 @@ fn inspect(
                     ObjectKind::Array(..) => true,
                     _ => false,
                 };
-                let function = value.type_of() == "function";
+                let function = value.type_of() == ValueType::Function;
                 let keys = value.keys(agent).unwrap();
                 let mut out = String::new();
                 if function {

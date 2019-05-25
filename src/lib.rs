@@ -66,7 +66,7 @@ pub trait IntoValue: Sized {
 pub use agent::Agent;
 pub use interpreter::{Context, Interpreter, Scope};
 pub use parser::Parser;
-pub use value::{BuiltinFunctionArgs, ObjectKey, Value};
+pub use value::{BuiltinFunctionArgs, ObjectKey, Value, ValueType};
 
 pub fn disassemble(code: &str) {
     let mut agent = Agent::new();

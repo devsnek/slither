@@ -2,7 +2,7 @@ use crate::module::Module;
 use crate::num_util::{f64_band, f64_bnot, f64_bor, f64_bxor, f64_shl, f64_shr};
 use crate::parser::FunctionKind;
 use crate::runtime::RuntimeFunction;
-use crate::value::{ObjectKey, ObjectKind};
+use crate::value::{ObjectKey, ObjectKind, ValueType};
 use crate::{Agent, Value};
 use byteorder::{LittleEndian, ReadBytesExt};
 use gc::{Gc, GcCell};
@@ -118,6 +118,8 @@ macro_rules! OPS {
             (Typeof, AccumulatorUse::ReadWrite),
             (Void, AccumulatorUse::ReadWrite),
             (UnSub, AccumulatorUse::ReadWrite),
+
+            (IsTypeof, AccumulatorUse::ReadWrite, OpArg::U8),
 
             (End, AccumulatorUse::None),
         );
@@ -728,7 +730,7 @@ impl Interpreter {
                                 }
                                 if *kind & FunctionKind::Arrow == FunctionKind::Arrow {
                                     // FIXME: doesn't have `this` vs inherited `this` needs to be clarified
-                                } else if self.registers[rid].type_of() == "null" {
+                                } else if self.registers[rid].type_of() == ValueType::Null {
                                     scope.borrow_mut().this = Some(Value::Null);
                                 } else {
                                     let r = handle!(self.registers[rid].to_object(agent));
@@ -950,7 +952,7 @@ impl Interpreter {
                     _ => handle!(Err(Value::new_error(agent, "operand must be a number"))),
                 },
                 Op::Typeof => {
-                    self.accumulator = Value::from(self.accumulator.type_of());
+                    self.accumulator = Value::from(self.accumulator.type_of().as_str());
                 }
                 Op::Void => {
                     self.accumulator = Value::Null;
@@ -961,6 +963,10 @@ impl Interpreter {
                     }
                     _ => handle!(Err(Value::new_error(agent, "operand must be a number"))),
                 },
+                Op::IsTypeof => {
+                    let lowering = read_u8!();
+                    self.accumulator = Value::from(self.accumulator.type_of() == lowering.into());
+                }
             }
         }
 

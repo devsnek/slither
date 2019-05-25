@@ -1,5 +1,5 @@
 use crate::agent::Agent;
-use crate::value::{Args, ObjectKey, Value};
+use crate::value::{Args, ObjectKey, Value, ValueType};
 
 fn trigger_promise_reactions(
     agent: &Agent,
@@ -144,7 +144,7 @@ fn promise_reject_function(args: Args) -> Result<Value, Value> {
 }
 
 fn promise(args: Args) -> Result<Value, Value> {
-    if args[0].type_of() != "function" {
+    if args[0].type_of() != ValueType::Function {
         return Err(Value::new_error(
             args.agent(),
             "executor must be a function",
@@ -208,7 +208,7 @@ pub(crate) fn promise_resolve_i(agent: &Agent, c: Value, x: Value) -> Result<Val
 
 fn promise_resolve(args: Args) -> Result<Value, Value> {
     let c = args.this();
-    if c.type_of() != "object" && c.type_of() != "function" {
+    if c.type_of() != ValueType::Object && c.type_of() != ValueType::Function {
         return Err(Value::new_error(args.agent(), "this must be an object"));
     }
     promise_resolve_i(args.agent(), c, args[0].clone())
@@ -216,7 +216,7 @@ fn promise_resolve(args: Args) -> Result<Value, Value> {
 
 fn promise_reject(args: Args) -> Result<Value, Value> {
     let c = args.this();
-    if c.type_of() != "object" && c.type_of() != "function" {
+    if c.type_of() != ValueType::Object && c.type_of() != ValueType::Function {
         return Err(Value::new_error(args.agent(), "this must be an object"));
     }
     let capability = new_promise_capability(args.agent(), c)?;

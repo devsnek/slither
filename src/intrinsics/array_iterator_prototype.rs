@@ -1,9 +1,9 @@
 use crate::agent::Agent;
-use crate::value::{Args, ObjectKey, Value};
+use crate::value::{Args, ObjectKey, Value, ValueType};
 
 fn next(args: Args) -> Result<Value, Value> {
     let o = args.this();
-    if o.type_of() != "object" {
+    if o.type_of() != ValueType::Object {
         return Err(Value::new_error(args.agent(), "invalid receiver"));
     }
     let a = o.get_slot("iterated object");
