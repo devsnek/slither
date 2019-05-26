@@ -1,4 +1,4 @@
-#![allow(clippy::cyclomatic_complexity)]
+#![allow(clippy::cognitive_complexity)]
 #![allow(clippy::option_option)]
 
 #[macro_use]
