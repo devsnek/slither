@@ -47,10 +47,10 @@ impl Module {
             bytecode_position: agent.assembler.assemble(&ast),
         };
 
-        if let Node::Block(_scope, stmts) = ast {
+        if let Node::Block(_scope, stmts, ..) = ast {
             for stmt in stmts {
                 match stmt {
-                    Node::ImportDefaultDeclaration(specifier, name) => {
+                    Node::ImportDefaultDeclaration(specifier, name, ..) => {
                         let mr = agent.load(&specifier, filename)?;
                         module
                             .context
@@ -60,7 +60,7 @@ impl Module {
                             .create_import(&name, mr);
                         module.imports.insert(specifier);
                     }
-                    Node::ImportNamedDeclaration(specifier, names) => {
+                    Node::ImportNamedDeclaration(specifier, names, ..) => {
                         let mr = agent.load(&specifier, filename)?;
                         for name in names {
                             module
@@ -72,7 +72,7 @@ impl Module {
                         }
                         module.imports.insert(specifier);
                     }
-                    Node::ImportStandardDeclaration(specifier, names) => {
+                    Node::ImportStandardDeclaration(specifier, names, ..) => {
                         match agent.builtins.get(&specifier) {
                             Some(s) => {
                                 for name in names {

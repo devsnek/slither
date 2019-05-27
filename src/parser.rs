@@ -170,77 +170,94 @@ impl Scope {
     }
 }
 
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct Position(usize, usize);
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct Span(Position, Position);
+
+impl Span {
+    fn combine(&self, other: &Span) -> Span {
+        Span(self.0, other.1)
+    }
+
+    pub(crate) fn empty() -> Span {
+        Span(Position(0, 0), Position(0, 0))
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Node {
-    NullLiteral,
-    TrueLiteral,
-    FalseLiteral,
-    NumberLiteral(f64),
-    StringLiteral(String),
-    SymbolLiteral(String),
-    RegexLiteral(String),
-    ObjectLiteral(Vec<Node>),
-    ArrayLiteral(Vec<Node>),
-    TupleLiteral(Vec<Node>),
-    TemplateLiteral(Vec<String>, Vec<Node>),
+    NullLiteral(Span),
+    TrueLiteral(Span),
+    FalseLiteral(Span),
+    NumberLiteral(f64, Span),
+    StringLiteral(String, Span),
+    SymbolLiteral(String, Span),
+    RegexLiteral(String, Span),
+    ObjectLiteral(Vec<Node>, Span),
+    ArrayLiteral(Vec<Node>, Span),
+    TupleLiteral(Vec<Node>, Span),
+    TemplateLiteral(Vec<String>, Vec<Node>, Span),
 
-    Identifier(String),
+    Identifier(String, Span),
 
-    Block(Scope, Vec<Node>),
+    Block(Scope, Vec<Node>, Span),
 
-    IfStatement(Box<Node>, Box<Node>, Option<Box<Node>>),
-    ConditionalExpression(Box<Node>, Box<Node>, Box<Node>),
+    IfStatement(Box<Node>, Box<Node>, Option<Box<Node>>, Span),
+    ConditionalExpression(Box<Node>, Box<Node>, Box<Node>, Span),
 
-    WhileLoop(Box<Node>, Box<Node>),
-    ForLoop(bool, String, Box<Node>, Box<Node>),
+    WhileLoop(Box<Node>, Box<Node>, Span),
+    ForLoop(bool, String, Box<Node>, Box<Node>, Span),
 
-    ExpressionStatement(Box<Node>),
-    UnaryExpression(Operator, Box<Node>),
-    BinaryExpression(Operator, Box<Node>, Box<Node>),
-    ParenthesizedExpression(Box<Node>),
+    ExpressionStatement(Box<Node>, Span),
+    UnaryExpression(Operator, Box<Node>, Span),
+    BinaryExpression(Operator, Box<Node>, Box<Node>, Span),
+    ParenthesizedExpression(Box<Node>, Span),
 
-    YieldExpression(Option<Box<Node>>),
-    AwaitExpression(Box<Node>),
-    ThisExpression,
-    NewExpression(Box<Node>, Vec<Node>),
+    YieldExpression(Option<Box<Node>>, Span),
+    AwaitExpression(Box<Node>, Span),
+    ThisExpression(Span),
+    NewExpression(Box<Node>, Vec<Node>, Span),
 
-    MatchExpression(Box<Node>, Vec<Node>),
-    MatchArm(Box<Node>, Box<Node>),
-    ObjectPattern(IndexMap<String, Node>, bool),
-    ArrayPattern(Vec<Node>, bool),
+    MatchExpression(Box<Node>, Vec<Node>, Span),
+    MatchArm(Box<Node>, Box<Node>, Span),
+    ObjectPattern(IndexMap<String, Node>, bool, Span),
+    ArrayPattern(Vec<Node>, bool, Span),
 
-    MemberExpression(Box<Node>, String),
-    ComputedMemberExpression(Box<Node>, Box<Node>),
-    CallExpression(Box<Node>, Vec<Node>),
-    TailCallExpression(Box<Node>, Vec<Node>),
+    MemberExpression(Box<Node>, String, Span),
+    ComputedMemberExpression(Box<Node>, Box<Node>, Span),
+    CallExpression(Box<Node>, Vec<Node>, Span),
+    TailCallExpression(Box<Node>, Vec<Node>, Span),
 
-    FunctionExpression(FunctionKind, Option<String>, Vec<Node>, Box<Node>),
-    FunctionDeclaration(FunctionKind, String, Vec<Node>, Box<Node>),
-    ArrowFunctionExpression(FunctionKind, Vec<Node>, Box<Node>),
+    FunctionExpression(FunctionKind, Option<String>, Vec<Node>, Box<Node>, Span),
+    FunctionDeclaration(FunctionKind, String, Vec<Node>, Box<Node>, Span),
+    ArrowFunctionExpression(FunctionKind, Vec<Node>, Box<Node>, Span),
 
-    ClassExpression(String, Option<Box<Node>>, Vec<Node>),
-    ClassDeclaration(String, Option<Box<Node>>, Vec<Node>),
+    ClassExpression(String, Option<Box<Node>>, Vec<Node>, Span),
+    ClassDeclaration(String, Option<Box<Node>>, Vec<Node>, Span),
 
-    LexicalInitialization(String, Box<Node>),
+    LexicalInitialization(String, Box<Node>, Span),
 
-    ReturnStatement(Option<Box<Node>>),
-    ThrowStatement(Box<Node>),
-    BreakStatement,
-    ContinueStatement,
+    ReturnStatement(Option<Box<Node>>, Span),
+    ThrowStatement(Box<Node>, Span),
+    BreakStatement(Span),
+    ContinueStatement(Span),
     TryStatement(
         Box<Node>,
         Option<String>,
         Option<Box<Node>>,
         Option<Box<Node>>,
+        Span,
     ),
 
-    ImportDeclaration(String),
-    ImportNamedDeclaration(String, Vec<String>),
-    ImportDefaultDeclaration(String, String),
-    ImportStandardDeclaration(String, Vec<String>),
-    ExportDeclaration(Box<Node>),
+    ImportDeclaration(String, Span),
+    ImportNamedDeclaration(String, Vec<String>, Span),
+    ImportDefaultDeclaration(String, String, Span),
+    ImportStandardDeclaration(String, Vec<String>, Span),
+    ExportDeclaration(Box<Node>, Span),
 
-    Initializer(Box<Node>, Box<Node>),
+    Initializer(Box<Node>, Box<Node>, Span),
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -258,10 +275,10 @@ enum ParseScope {
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Error {
     NormalEOF,
-    UnexpectedEOF,
-    UnexpectedToken,
-    DuplicateBinding,
-    InvalidAssignmentTarget,
+    UnexpectedEOF(Position),
+    UnexpectedToken(Position),
+    DuplicateBinding(Position),
+    InvalidAssignmentTarget(Position),
 }
 
 impl IntoValue for Error {
@@ -273,6 +290,8 @@ impl IntoValue for Error {
 struct Lexer<'a> {
     chars: Peekable<Chars<'a>>,
     peeked: Option<Result<Token, Error>>,
+    line: usize,
+    column: usize,
 }
 
 impl<'a> Lexer<'a> {
@@ -280,13 +299,27 @@ impl<'a> Lexer<'a> {
         Lexer {
             chars: code.chars().peekable(),
             peeked: None,
+            line: 0,
+            column: 0,
         }
     }
 
+    fn next_char(&mut self) -> Option<char> {
+        self.column += 1;
+        let c = self.chars.next();
+        if let Some('\n') = c {
+            self.column = 0;
+            self.line += 1;
+        } else {
+            self.column += 1;
+        }
+        c
+    }
+
     fn inner_next(&mut self) -> Result<Token, Error> {
-        Ok(match self.chars.next() {
+        Ok(match self.next_char() {
             Some(c) => match c {
-                ' ' | '\t' | '\r' | '\n' => self.next()?,
+                ' ' | '\t' | '\n' => self.next()?,
                 '0'...'9' => {
                     if c == '0' && self.chars.peek() != Some(&'.') {
                         let radix = match self.chars.peek() {
@@ -296,28 +329,28 @@ impl<'a> Lexer<'a> {
                             _ => None,
                         };
                         if let Some(radix) = radix {
-                            self.chars.next();
+                            self.next_char();
                             let mut str = String::new();
                             while let Some(c) = self.chars.peek() {
                                 match c {
                                     '_' => {
-                                        self.chars.next().unwrap();
+                                        self.next_char().unwrap();
                                         if self.chars.peek() == Some(&'_') {
-                                            return Err(Error::UnexpectedToken);
+                                            return Err(Error::UnexpectedToken(self.position()));
                                         }
                                     }
-                                    '0' | '1' => str.push(self.chars.next().unwrap()),
-                                    '2'...'7' if radix > 7 => str.push(self.chars.next().unwrap()),
-                                    '8' | '9' if radix > 15 => str.push(self.chars.next().unwrap()),
+                                    '0' | '1' => str.push(self.next_char().unwrap()),
+                                    '2'...'7' if radix > 7 => str.push(self.next_char().unwrap()),
+                                    '8' | '9' if radix > 15 => str.push(self.next_char().unwrap()),
                                     'a'...'f' | 'A'...'F' if radix > 15 => {
-                                        str.push(self.chars.next().unwrap())
+                                        str.push(self.next_char().unwrap())
                                     }
                                     _ => break,
                                 }
                             }
                             match u64::from_str_radix(&str, radix) {
                                 Ok(n) => Token::NumberLiteral(n as f64),
-                                Err(_) => return Err(Error::UnexpectedToken),
+                                Err(_) => return Err(Error::UnexpectedToken(self.position())),
                             }
                         } else {
                             Token::NumberLiteral(0.0)
@@ -330,29 +363,29 @@ impl<'a> Lexer<'a> {
                         while let Some(c) = self.chars.peek() {
                             match c {
                                 '_' => {
-                                    self.chars.next().unwrap();
+                                    self.next_char().unwrap();
                                     if self.chars.peek() == Some(&'_') {
-                                        return Err(Error::UnexpectedToken);
+                                        return Err(Error::UnexpectedToken(self.position()));
                                     }
                                     continue;
                                 }
                                 '0'...'9' => {
                                     if in_exp {
-                                        exp_str.push(self.chars.next().unwrap());
+                                        exp_str.push(self.next_char().unwrap());
                                     } else {
-                                        str.push(self.chars.next().unwrap());
+                                        str.push(self.next_char().unwrap());
                                     }
                                 }
                                 'e' if !in_exp => {
-                                    self.chars.next().unwrap();
+                                    self.next_char().unwrap();
                                     in_exp = true;
                                     match self.chars.peek() {
                                         Some('-') => {
-                                            self.chars.next().unwrap();
+                                            self.next_char().unwrap();
                                             exp_str.push('-');
                                         }
                                         Some('+') => {
-                                            self.chars.next().unwrap();
+                                            self.next_char().unwrap();
                                         }
                                         _ => {}
                                     }
@@ -360,9 +393,9 @@ impl<'a> Lexer<'a> {
                                 '.' if !in_exp => {
                                     if !one_dot {
                                         one_dot = true;
-                                        str.push(self.chars.next().unwrap());
+                                        str.push(self.next_char().unwrap());
                                         if self.chars.peek() == Some(&'_') {
-                                            return Err(Error::UnexpectedToken);
+                                            return Err(Error::UnexpectedToken(self.position()));
                                         }
                                     } else {
                                         break;
@@ -376,13 +409,15 @@ impl<'a> Lexer<'a> {
                                 if in_exp {
                                     match exp_str.parse::<i32>() {
                                         Ok(e) => Token::NumberLiteral(n * (10f64.powi(e) as f64)),
-                                        Err(_) => return Err(Error::UnexpectedToken),
+                                        Err(_) => {
+                                            return Err(Error::UnexpectedToken(self.position()))
+                                        }
                                     }
                                 } else {
                                     Token::NumberLiteral(n)
                                 }
                             }
-                            Err(_) => return Err(Error::UnexpectedToken),
+                            Err(_) => return Err(Error::UnexpectedToken(self.position())),
                         }
                     }
                 }
@@ -390,31 +425,35 @@ impl<'a> Lexer<'a> {
                     let mut str = String::new();
                     while let Some(char) = self.chars.peek() {
                         if *char == c {
-                            self.chars.next();
+                            self.next_char();
                             break;
                         }
-                        let c = self.chars.next().unwrap();
+                        let c = self.next_char().unwrap();
                         match c {
-                            '\\' => match self.chars.next().unwrap() {
+                            '\\' => match self.next_char().unwrap() {
                                 'n' => str.push('\n'),
                                 't' => str.push('\t'),
                                 '"' => str.push('"'),
                                 '\'' => str.push('\''),
                                 '\\' => str.push('\\'),
                                 'u' => {
-                                    if Some('{') != self.chars.next() {
-                                        return Err(Error::UnexpectedToken);
+                                    if Some('{') != self.next_char() {
+                                        return Err(Error::UnexpectedToken(self.position()));
                                     }
                                     let mut n = String::new();
                                     macro_rules! digit {
                                         () => {
-                                            let next = self.chars.next();
+                                            let next = self.next_char();
                                             match next {
                                                 Some('0'...'9') | Some('a'...'f')
                                                 | Some('A'...'F') => {
                                                     n.push(next.unwrap());
                                                 }
-                                                _ => return Err(Error::UnexpectedToken),
+                                                _ => {
+                                                    return Err(Error::UnexpectedToken(
+                                                        self.position(),
+                                                    ))
+                                                }
                                             }
                                         };
                                     }
@@ -425,34 +464,42 @@ impl<'a> Lexer<'a> {
                                     match u32::from_str_radix(n.as_str(), 16) {
                                         Ok(n) => match std::char::from_u32(n) {
                                             Some(c) => str.push(c),
-                                            None => return Err(Error::UnexpectedToken),
+                                            None => {
+                                                return Err(Error::UnexpectedToken(self.position()))
+                                            }
                                         },
-                                        Err(_) => return Err(Error::UnexpectedToken),
+                                        Err(_) => {
+                                            return Err(Error::UnexpectedToken(self.position()))
+                                        }
                                     }
-                                    if Some('}') != self.chars.next() {
-                                        return Err(Error::UnexpectedToken);
+                                    if Some('}') != self.next_char() {
+                                        return Err(Error::UnexpectedToken(self.position()));
                                     }
                                 }
                                 'U' => {
-                                    if Some('{') != self.chars.next() {
-                                        return Err(Error::UnexpectedToken);
+                                    if Some('{') != self.next_char() {
+                                        return Err(Error::UnexpectedToken(self.position()));
                                     }
                                     let mut name = String::new();
                                     loop {
-                                        match self.chars.next() {
+                                        match self.next_char() {
                                             Some('}') => break,
-                                            None => return Err(Error::UnexpectedEOF),
+                                            None => {
+                                                return Err(Error::UnexpectedEOF(self.position()))
+                                            }
                                             Some(c) => name.push(c),
                                         }
                                     }
                                     match UNICODE_NAME_MAP.get(name.as_str()) {
                                         Some(c) => str.push(*c),
-                                        None => return Err(Error::UnexpectedToken),
+                                        None => {
+                                            return Err(Error::UnexpectedToken(self.position()))
+                                        }
                                     };
                                 }
-                                _ => return Err(Error::UnexpectedToken),
+                                _ => return Err(Error::UnexpectedToken(self.position())),
                             },
-                            '\r' | '\n' => return Err(Error::UnexpectedToken),
+                            '\r' | '\n' => return Err(Error::UnexpectedToken(self.position())),
                             c => str.push(c),
                         }
                     }
@@ -463,7 +510,7 @@ impl<'a> Lexer<'a> {
                     while let Some(c) = self.chars.peek() {
                         match c {
                             'a'...'z' | 'A'...'Z' | '0'...'9' | '_' => {
-                                ident.push(self.chars.next().unwrap())
+                                ident.push(self.next_char().unwrap())
                             }
                             _ => break,
                         }
@@ -518,12 +565,12 @@ impl<'a> Lexer<'a> {
                 '?' => Token::Question,
                 '.' => match self.chars.peek() {
                     Some('.') => {
-                        self.chars.next();
+                        self.next_char();
                         if let Some('.') = self.chars.peek() {
-                            self.chars.next();
+                            self.next_char();
                             Token::Ellipsis
                         } else {
-                            return Err(Error::UnexpectedToken);
+                            return Err(Error::UnexpectedToken(self.position()));
                         }
                     }
                     _ => Token::Dot,
@@ -532,24 +579,24 @@ impl<'a> Lexer<'a> {
                 '`' => Token::BackQuote,
                 '+' => match self.chars.peek() {
                     Some('=') => {
-                        self.chars.next();
+                        self.next_char();
                         Token::Operator(Operator::AddAssign)
                     }
                     _ => Token::Operator(Operator::Add),
                 },
                 '-' => match self.chars.peek() {
                     Some('=') => {
-                        self.chars.next();
+                        self.next_char();
                         Token::Operator(Operator::SubAssign)
                     }
                     _ => Token::Operator(Operator::Sub),
                 },
                 '*' => match self.chars.peek() {
                     Some('*') => {
-                        self.chars.next();
+                        self.next_char();
                         match self.chars.peek() {
                             Some('=') => {
-                                self.chars.next();
+                                self.next_char();
                                 Token::Operator(Operator::PowAssign)
                             }
                             _ => Token::Operator(Operator::Pow),
@@ -557,7 +604,7 @@ impl<'a> Lexer<'a> {
                     }
                     _ => match self.chars.peek() {
                         Some('=') => {
-                            self.chars.next();
+                            self.next_char();
                             Token::Operator(Operator::MulAssign)
                         }
                         _ => Token::Operator(Operator::Mul),
@@ -565,16 +612,16 @@ impl<'a> Lexer<'a> {
                 },
                 '/' => match self.chars.peek() {
                     Some('=') => {
-                        self.chars.next();
+                        self.next_char();
                         Token::Operator(Operator::DivAssign)
                     }
                     Some('*') => {
                         loop {
                             if self.chars.peek() == None {
-                                return Err(Error::UnexpectedEOF);
+                                return Err(Error::UnexpectedEOF(self.position()));
                             }
-                            if let Some('*') = self.chars.next() {
-                                if let Some('/') = self.chars.next() {
+                            if let Some('*') = self.next_char() {
+                                if let Some('/') = self.next_char() {
                                     break;
                                 }
                             }
@@ -584,9 +631,9 @@ impl<'a> Lexer<'a> {
                     Some('/') => {
                         loop {
                             if self.chars.peek() == None {
-                                return Err(Error::UnexpectedEOF);
+                                return Err(Error::UnexpectedEOF(self.position()));
                             }
-                            if let Some('\n') = self.chars.next() {
+                            if let Some('\n') = self.next_char() {
                                 break;
                             }
                         }
@@ -596,50 +643,50 @@ impl<'a> Lexer<'a> {
                 },
                 '%' => match self.chars.peek() {
                     Some('=') => {
-                        self.chars.next();
+                        self.next_char();
                         Token::Operator(Operator::ModAssign)
                     }
                     _ => Token::Operator(Operator::Mod),
                 },
                 '<' => match self.chars.peek() {
                     Some('<') => {
-                        self.chars.next();
+                        self.next_char();
                         Token::Operator(Operator::LeftShift)
                     }
                     Some('=') => {
-                        self.chars.next();
+                        self.next_char();
                         Token::Operator(Operator::LessThanOrEqual)
                     }
                     _ => Token::Operator(Operator::LessThan),
                 },
                 '!' => match self.chars.peek() {
                     Some('=') => {
-                        self.chars.next();
+                        self.next_char();
                         Token::Operator(Operator::NotEqual)
                     }
                     _ => Token::Operator(Operator::Not),
                 },
                 '>' => match self.chars.peek() {
                     Some('>') => {
-                        self.chars.next();
+                        self.next_char();
                         Token::Operator(Operator::RightShift)
                     }
                     Some('=') => {
-                        self.chars.next();
+                        self.next_char();
                         Token::Operator(Operator::GreaterThanOrEqual)
                     }
                     _ => Token::Operator(Operator::GreaterThan),
                 },
                 '&' => match self.chars.peek() {
                     Some('&') => {
-                        self.chars.next();
+                        self.next_char();
                         Token::Operator(Operator::LogicalAND)
                     }
                     _ => Token::Operator(Operator::BitwiseAND),
                 },
                 '|' => match self.chars.peek() {
                     Some('|') => {
-                        self.chars.next();
+                        self.next_char();
                         Token::Operator(Operator::LogicalOR)
                     }
                     _ => Token::Operator(Operator::BitwiseOR),
@@ -648,17 +695,17 @@ impl<'a> Lexer<'a> {
                 '~' => Token::Operator(Operator::BitwiseNOT),
                 '=' => match self.chars.peek() {
                     Some('=') => {
-                        self.chars.next();
+                        self.next_char();
                         Token::Operator(Operator::Equal)
                     }
                     Some('>') => {
-                        self.chars.next();
+                        self.next_char();
                         Token::Arrow
                     }
                     _ => Token::Operator(Operator::Assign),
                 },
                 '@' => Token::At,
-                _ => return Err(Error::UnexpectedToken),
+                _ => return Err(Error::UnexpectedToken(self.position())),
             },
             None => Token::EOF,
         })
@@ -692,10 +739,10 @@ impl<'a> Lexer<'a> {
 
     fn skip_hashbang(&mut self) {
         if self.chars.peek() == Some(&'#') {
-            self.chars.next();
+            self.next_char();
             if self.chars.peek() == Some(&'!') {
                 loop {
-                    match self.chars.next() {
+                    match self.next_char() {
                         Some('\n') | None => break,
                         _ => {}
                     }
@@ -703,14 +750,20 @@ impl<'a> Lexer<'a> {
             }
         }
     }
+
+    fn position(&self) -> Position {
+        Position(self.line, self.column)
+    }
 }
 
 fn constant_fold(op: Operator, left: &Node, right: &Node) -> Option<Node> {
     macro_rules! num_binop_num {
         ($fn:expr) => {
             match left {
-                Node::NumberLiteral(ln) => match right {
-                    Node::NumberLiteral(rn) => Some(Node::NumberLiteral($fn(*ln, *rn))),
+                Node::NumberLiteral(ln, ls) => match right {
+                    Node::NumberLiteral(rn, rs) => {
+                        Some(Node::NumberLiteral($fn(*ln, *rn), ls.combine(rs)))
+                    }
                     _ => None,
                 },
                 _ => None,
@@ -721,11 +774,11 @@ fn constant_fold(op: Operator, left: &Node, right: &Node) -> Option<Node> {
     macro_rules! num_binop_bool {
         ($fn:expr) => {
             match left {
-                Node::NumberLiteral(ln) => match right {
-                    Node::NumberLiteral(rn) => Some(if $fn(ln, rn) {
-                        Node::TrueLiteral
+                Node::NumberLiteral(ln, ls) => match right {
+                    Node::NumberLiteral(rn, rs) => Some(if $fn(ln, rn) {
+                        Node::TrueLiteral(ls.combine(rs))
                     } else {
-                        Node::FalseLiteral
+                        Node::FalseLiteral(ls.combine(rs))
                     }),
                     _ => None,
                 },
@@ -734,34 +787,39 @@ fn constant_fold(op: Operator, left: &Node, right: &Node) -> Option<Node> {
         };
     }
 
-    if let Node::ParenthesizedExpression(e) = left {
+    if let Node::ParenthesizedExpression(e, ..) = left {
         return constant_fold(op, e, right);
     }
 
-    if let Node::ParenthesizedExpression(e) = right {
+    if let Node::ParenthesizedExpression(e, ..) = right {
         return constant_fold(op, left, e);
     }
 
-    if let Node::UnaryExpression(Operator::Typeof, _v) = left {
-        if let Node::StringLiteral(check) = right {
+    if let Node::UnaryExpression(Operator::Typeof, _v, s) = left {
+        if let Node::StringLiteral(check, ..) = right {
             match check.as_str() {
                 "null" | "boolean" | "number" | "string" | "symbol" | "tuple" | "object"
                 | "function" => {}
-                _ => return Some(Node::FalseLiteral),
+                _ => return Some(Node::FalseLiteral(*s)),
             }
         } else {
-            return Some(Node::FalseLiteral);
+            return Some(Node::FalseLiteral(*s));
         }
     }
 
     match op {
         Operator::Add => match left {
-            Node::StringLiteral(lhs) => match right {
-                Node::StringLiteral(rhs) => Some(Node::StringLiteral(format!("{}{}", lhs, rhs))),
+            Node::StringLiteral(lhs, ls) => match right {
+                Node::StringLiteral(rhs, rs) => Some(Node::StringLiteral(
+                    format!("{}{}", lhs, rhs),
+                    ls.combine(rs),
+                )),
                 _ => None,
             },
-            Node::NumberLiteral(lhs) => match right {
-                Node::NumberLiteral(rhs) => Some(Node::NumberLiteral(lhs + rhs)),
+            Node::NumberLiteral(lhs, ls) => match right {
+                Node::NumberLiteral(rhs, rs) => {
+                    Some(Node::NumberLiteral(lhs + rhs, ls.combine(rs)))
+                }
                 _ => None,
             },
             _ => None,
@@ -775,7 +833,7 @@ fn constant_fold(op: Operator, left: &Node, right: &Node) -> Option<Node> {
         Operator::BitwiseXOR => num_binop_num!(f64_bxor),
         Operator::BitwiseAND => num_binop_num!(f64_band),
         Operator::BitwiseNOT => match left {
-            Node::NumberLiteral(n) => Some(Node::NumberLiteral(f64_bnot(*n))),
+            Node::NumberLiteral(n, s) => Some(Node::NumberLiteral(f64_bnot(*n), *s)),
             _ => None,
         },
         Operator::LeftShift => num_binop_num!(f64_shl),
@@ -785,34 +843,34 @@ fn constant_fold(op: Operator, left: &Node, right: &Node) -> Option<Node> {
         Operator::GreaterThanOrEqual => num_binop_bool!(f64::ge),
         Operator::LessThanOrEqual => num_binop_bool!(f64::le),
         Operator::Not => match constant_truthy(left) {
-            Some(true) => Some(Node::FalseLiteral),
-            Some(false) => Some(Node::TrueLiteral),
+            Some(true) => Some(Node::FalseLiteral(Span::empty())),
+            Some(false) => Some(Node::TrueLiteral(Span::empty())),
             None => None,
         },
         Operator::Equal => {
             if left == right {
-                Some(Node::TrueLiteral)
+                Some(Node::TrueLiteral(Span::empty()))
             } else {
                 None
             }
         }
         Operator::NotEqual => match constant_fold(Operator::Equal, left, right) {
-            Some(Node::TrueLiteral) => Some(Node::FalseLiteral),
-            Some(Node::FalseLiteral) => Some(Node::TrueLiteral),
+            Some(Node::TrueLiteral(s)) => Some(Node::FalseLiteral(s)),
+            Some(Node::FalseLiteral(s)) => Some(Node::TrueLiteral(s)),
             None => None,
             _ => unreachable!(),
         },
         Operator::Typeof => match left {
-            Node::NullLiteral => Some(Node::StringLiteral("null".to_string())),
-            Node::TrueLiteral | Node::FalseLiteral => {
-                Some(Node::StringLiteral("boolean".to_string()))
+            Node::NullLiteral(s) => Some(Node::StringLiteral("null".to_string(), *s)),
+            Node::TrueLiteral(s) | Node::FalseLiteral(s) => {
+                Some(Node::StringLiteral("boolean".to_string(), *s))
             }
-            Node::NumberLiteral(..) => Some(Node::StringLiteral("number".to_string())),
-            Node::StringLiteral(..) => Some(Node::StringLiteral("string".to_string())),
-            Node::SymbolLiteral(..) => Some(Node::StringLiteral("symbol".to_string())),
-            Node::TupleLiteral(..) => Some(Node::StringLiteral("tuple".to_string())),
-            Node::ObjectLiteral(..) | Node::ArrayLiteral(..) => {
-                Some(Node::StringLiteral("object".to_string()))
+            Node::NumberLiteral(_, s) => Some(Node::StringLiteral("number".to_string(), *s)),
+            Node::StringLiteral(_, s) => Some(Node::StringLiteral("string".to_string(), *s)),
+            Node::SymbolLiteral(_, s) => Some(Node::StringLiteral("symbol".to_string(), *s)),
+            Node::TupleLiteral(_, s) => Some(Node::StringLiteral("tuple".to_string(), *s)),
+            Node::ObjectLiteral(_, s) | Node::ArrayLiteral(_, s) => {
+                Some(Node::StringLiteral("object".to_string(), *s))
             }
             _ => None,
         },
@@ -822,12 +880,12 @@ fn constant_fold(op: Operator, left: &Node, right: &Node) -> Option<Node> {
 
 fn constant_truthy(node: &Node) -> Option<bool> {
     match node {
-        Node::ParenthesizedExpression(e) => constant_truthy(e),
-        Node::NullLiteral => Some(false),
-        Node::TrueLiteral => Some(true),
-        Node::FalseLiteral => Some(false),
-        Node::StringLiteral(s) => Some(!s.is_empty()),
-        Node::NumberLiteral(n) => Some(*n != 0.0),
+        Node::ParenthesizedExpression(e, ..) => constant_truthy(e),
+        Node::NullLiteral(..) => Some(false),
+        Node::TrueLiteral(..) => Some(true),
+        Node::FalseLiteral(..) => Some(false),
+        Node::StringLiteral(s, ..) => Some(!s.is_empty()),
+        Node::NumberLiteral(n, ..) => Some(*n != 0.0),
         Node::SymbolLiteral(..) => Some(true),
         Node::ArrayLiteral(..) | Node::TupleLiteral(..) | Node::ObjectLiteral(..) => Some(true),
         _ => None,
@@ -837,13 +895,14 @@ fn constant_truthy(node: &Node) -> Option<bool> {
 macro_rules! binop_production {
     ( $name:ident, $lower:ident, [ $( $op:path ),* ] ) => {
         fn $name(&mut self) -> Result<Node, Error> {
+            let start = self.lexer.position();
             let mut lhs = self.$lower()?;
             match self.lexer.peek()? {
                 Token::Operator(op) if $( op == &$op )||* => {
                     let op = op.clone();
                     self.lexer.next()?;
                     let rhs = self.$name()?;
-                    lhs = self.build_binary(op, lhs, rhs);
+                    lhs = self.build_binary(op, lhs, rhs, Span(start, self.lexer.position()));
                 }
                 _ => {},
             }
@@ -868,18 +927,18 @@ impl<'a> Parser<'a> {
 
         parser.lexer.skip_hashbang();
 
-        if let Node::Block(scope, mut stmts) = parser.parse_block(ParseScope::TopLevel)? {
+        if let Node::Block(scope, mut stmts, span) = parser.parse_block(ParseScope::TopLevel)? {
             if let Some(Node::ExpressionStatement(..)) = stmts.last() {
                 // if the last item is an expression statement, replace it with the expression
                 // so that the value will be left on the stack to inspect in tests
-                if let Node::ExpressionStatement(expr) = stmts.pop().unwrap() {
-                    stmts.push(Node::ParenthesizedExpression(expr));
-                    Ok(Node::Block(scope, stmts))
+                if let Node::ExpressionStatement(expr, sp) = stmts.pop().unwrap() {
+                    stmts.push(Node::ParenthesizedExpression(expr, sp));
+                    Ok(Node::Block(scope, stmts, span))
                 } else {
                     unreachable!();
                 }
             } else {
-                Ok(Node::Block(scope, stmts))
+                Ok(Node::Block(scope, stmts, span))
             }
         } else {
             unreachable!();
@@ -895,7 +954,7 @@ impl<'a> Parser<'a> {
         if scope.declare(name, mutable) {
             Ok(())
         } else {
-            Err(Error::DuplicateBinding)
+            Err(Error::DuplicateBinding(self.lexer.position()))
         }
     }
 
@@ -916,23 +975,23 @@ impl<'a> Parser<'a> {
     fn expect(&mut self, token: Token) -> Result<Token, Error> {
         match self.lexer.next()? {
             ref t if t == &token => Ok(token),
-            _ => Err(Error::UnexpectedToken),
+            _ => Err(Error::UnexpectedToken(self.lexer.position())),
         }
     }
 
-    fn build_binary(&self, op: Operator, left: Node, right: Node) -> Node {
+    fn build_binary(&self, op: Operator, left: Node, right: Node, span: Span) -> Node {
         if let Some(node) = constant_fold(op, &left, &right) {
             node
         } else {
-            Node::BinaryExpression(op, Box::new(left), Box::new(right))
+            Node::BinaryExpression(op, Box::new(left), Box::new(right), span)
         }
     }
 
-    fn build_unary(&self, op: Operator, node: Node) -> Node {
-        if let Some(node) = constant_fold(op, &node, &Node::NullLiteral) {
+    fn build_unary(&self, op: Operator, node: Node, span: Span) -> Node {
+        if let Some(node) = constant_fold(op, &node, &Node::NullLiteral(Span::empty())) {
             node
         } else {
-            Node::UnaryExpression(op, Box::new(node))
+            Node::UnaryExpression(op, Box::new(node), span)
         }
     }
 
@@ -943,31 +1002,36 @@ impl<'a> Parser<'a> {
             Token::LeftBrace => self.parse_block(ParseScope::Block),
             Token::Let | Token::Const => self.parse_lexical_declaration(),
             Token::Function => {
+                let start = self.lexer.position();
                 self.lexer.next()?;
-                self.parse_function(false, FunctionKind::Normal)
+                self.parse_function(false, FunctionKind::Normal, start)
             }
             Token::Async => {
+                let start = self.lexer.position();
                 self.lexer.next()?;
                 self.expect(Token::Function)?;
-                self.parse_function(false, FunctionKind::Async)
+                self.parse_function(false, FunctionKind::Async, start)
             }
             Token::Generator => {
+                let start = self.lexer.position();
                 self.lexer.next()?;
-                self.parse_function(false, FunctionKind::Generator)
+                self.parse_function(false, FunctionKind::Generator, start)
             }
             Token::Class => self.parse_class(false),
             Token::If => self.parse_if_statement(),
             Token::While => self.parse_while(),
             Token::For => self.parse_for(),
             Token::Continue if self.scope(ParseScope::Loop) => {
+                let start = self.lexer.position();
                 self.lexer.next()?;
                 self.expect(Token::Semicolon)?;
-                Ok(Node::ContinueStatement)
+                Ok(Node::ContinueStatement(Span(start, self.lexer.position())))
             }
             Token::Break if self.scope(ParseScope::Loop) => {
+                let start = self.lexer.position();
                 self.lexer.next()?;
                 self.expect(Token::Semicolon)?;
-                Ok(Node::BreakStatement)
+                Ok(Node::BreakStatement(Span(start, self.lexer.position())))
             }
             Token::Return if self.scope(ParseScope::Function) => self.parse_return(),
             Token::Throw => self.parse_throw(),
@@ -976,14 +1040,19 @@ impl<'a> Parser<'a> {
             Token::Import if self.scope(ParseScope::TopLevel) => self.parse_import(),
             Token::Export if self.scope(ParseScope::TopLevel) => self.parse_export(),
             _ => {
+                let start = self.lexer.position();
                 let r = self.parse_expression()?;
                 self.expect(Token::Semicolon)?;
-                Ok(Node::ExpressionStatement(Box::new(r)))
+                Ok(Node::ExpressionStatement(
+                    Box::new(r),
+                    Span(start, self.lexer.position()),
+                ))
             }
         }
     }
 
     fn parse_block(&mut self, scope: ParseScope) -> Result<Node, Error> {
+        let start = self.lexer.position();
         if scope != ParseScope::TopLevel {
             self.expect(Token::LeftBrace)?;
         }
@@ -1004,26 +1073,40 @@ impl<'a> Parser<'a> {
         }
         let scope = self.scope.pop().unwrap();
         self.scope_bits = saved;
-        Ok(Node::Block(scope, statements))
+        Ok(Node::Block(
+            scope,
+            statements,
+            Span(start, self.lexer.position()),
+        ))
     }
 
     fn parse_lexical_declaration(&mut self) -> Result<Node, Error> {
+        let start = self.lexer.position();
         let mutable = if self.eat(Token::Let) {
             true
         } else if self.eat(Token::Const) {
             false
         } else {
-            return Err(Error::UnexpectedToken);
+            return Err(Error::UnexpectedToken(start));
         };
         let name = self.parse_identifier(false)?;
         self.declare(name.as_str(), mutable)?;
         self.expect(Token::Operator(Operator::Assign))?;
         let init = self.parse_expression()?;
         self.expect(Token::Semicolon)?;
-        Ok(Node::LexicalInitialization(name, Box::new(init)))
+        Ok(Node::LexicalInitialization(
+            name,
+            Box::new(init),
+            Span(start, self.lexer.position()),
+        ))
     }
 
-    fn parse_function(&mut self, expression: bool, kind: FunctionKind) -> Result<Node, Error> {
+    fn parse_function(
+        &mut self,
+        expression: bool,
+        kind: FunctionKind,
+        pos: Position,
+    ) -> Result<Node, Error> {
         let name = if expression {
             if let Ok(Token::Identifier(..)) = self.lexer.peek() {
                 Some(self.parse_identifier(false)?)
@@ -1041,15 +1124,28 @@ impl<'a> Parser<'a> {
             _ => unreachable!(),
         })?;
         Ok(if expression {
-            Node::FunctionExpression(kind, name, args, Box::new(body))
+            Node::FunctionExpression(
+                kind,
+                name,
+                args,
+                Box::new(body),
+                Span(pos, self.lexer.position()),
+            )
         } else {
             let name = name.unwrap();
             self.declare(name.as_str(), false)?;
-            Node::FunctionDeclaration(kind, name, args, Box::new(body))
+            Node::FunctionDeclaration(
+                kind,
+                name,
+                args,
+                Box::new(body),
+                Span(pos, self.lexer.position()),
+            )
         })
     }
 
     fn parse_if_statement(&mut self) -> Result<Node, Error> {
+        let start = self.lexer.position();
         self.expect(Token::If)?;
         let test = self.parse_expression()?;
         let consequent = self.parse_block(ParseScope::Block)?;
@@ -1066,32 +1162,37 @@ impl<'a> Parser<'a> {
                     Box::new(test),
                     Box::new(consequent),
                     Some(Box::new(alternative)),
+                    Span(start, self.lexer.position()),
                 )),
             }
         } else {
             match constant_truthy(&test) {
                 Some(true) => Ok(consequent),
-                Some(false) => Ok(Node::NullLiteral),
+                Some(false) => Ok(Node::NullLiteral(Span(start, self.lexer.position()))),
                 None => Ok(Node::IfStatement(
                     Box::new(test),
                     Box::new(consequent),
                     None,
+                    Span(start, self.lexer.position()),
                 )),
             }
         }
     }
 
     fn parse_while(&mut self) -> Result<Node, Error> {
+        let start = self.lexer.position();
         self.expect(Token::While)?;
         let test = self.parse_expression()?;
         let body = self.parse_block(ParseScope::Loop)?;
+        let end = Span(start, self.lexer.position());
         match constant_truthy(&test) {
-            Some(true) | None => Ok(Node::WhileLoop(Box::new(test), Box::new(body))),
-            Some(false) => Ok(Node::NullLiteral),
+            Some(true) | None => Ok(Node::WhileLoop(Box::new(test), Box::new(body), end)),
+            Some(false) => Ok(Node::NullLiteral(end)),
         }
     }
 
     fn parse_for(&mut self) -> Result<Node, Error> {
+        let start = self.lexer.position();
         self.expect(Token::For)?;
         let r#async = if self.scope(ParseScope::AsyncFunction) {
             self.eat(Token::Await)
@@ -1107,36 +1208,49 @@ impl<'a> Parser<'a> {
             binding,
             Box::new(target),
             Box::new(body),
+            Span(start, self.lexer.position()),
         ))
     }
 
     fn parse_return(&mut self) -> Result<Node, Error> {
+        let start = self.lexer.position();
         self.expect(Token::Return)?;
         if self.eat(Token::Semicolon) {
-            Ok(Node::ReturnStatement(None))
+            Ok(Node::ReturnStatement(
+                None,
+                Span(start, self.lexer.position()),
+            ))
         } else if self.scope(ParseScope::GeneratorFunction) {
-            Err(Error::UnexpectedToken)
+            Err(Error::UnexpectedToken(self.lexer.position()))
         } else {
             let expr = self.parse_expression()?;
             self.expect(Token::Semicolon)?;
-            Ok(Node::ReturnStatement(Some(Box::new(
-                if let Node::CallExpression(callee, arguments) = expr {
-                    Node::TailCallExpression(callee, arguments)
-                } else {
-                    expr
-                },
-            ))))
+            Ok(Node::ReturnStatement(
+                Some(Box::new(
+                    if let Node::CallExpression(callee, arguments, s) = expr {
+                        Node::TailCallExpression(callee, arguments, s)
+                    } else {
+                        expr
+                    },
+                )),
+                Span(start, self.lexer.position()),
+            ))
         }
     }
 
     fn parse_throw(&mut self) -> Result<Node, Error> {
+        let start = self.lexer.position();
         self.expect(Token::Throw)?;
         let expr = self.parse_expression()?;
         self.expect(Token::Semicolon)?;
-        Ok(Node::ThrowStatement(Box::new(expr)))
+        Ok(Node::ThrowStatement(
+            Box::new(expr),
+            Span(start, self.lexer.position()),
+        ))
     }
 
     fn parse_try(&mut self) -> Result<Node, Error> {
+        let start = self.lexer.position();
         self.expect(Token::Try)?;
         let try_clause = Box::new(self.parse_block(ParseScope::Block)?);
         if self.eat(Token::Finally) {
@@ -1146,6 +1260,7 @@ impl<'a> Parser<'a> {
                 None,
                 None,
                 Some(Box::new(finally_clause)),
+                Span(start, self.lexer.position()),
             ))
         } else {
             self.expect(Token::Catch)?;
@@ -1165,6 +1280,7 @@ impl<'a> Parser<'a> {
                 binding,
                 Some(catch_clause),
                 finally_clause,
+                Span(start, self.lexer.position()),
             ))
         }
     }
@@ -1175,6 +1291,7 @@ impl<'a> Parser<'a> {
             let d = self.parse_left_hand_side_expression(true)?;
             decorators.push_front(d);
         }
+        let start = self.lexer.position();
         let kind = if self.eat(Token::Async) {
             FunctionKind::Async
         } else if self.eat(Token::Generator) {
@@ -1182,22 +1299,27 @@ impl<'a> Parser<'a> {
         } else if self.eat(Token::Function) {
             FunctionKind::Normal
         } else {
-            return Err(Error::UnexpectedToken);
+            return Err(Error::UnexpectedToken(start));
         };
-        if let Node::FunctionDeclaration(kind, name, args, body) =
-            self.parse_function(false, kind)?
+        if let Node::FunctionDeclaration(kind, name, args, body, span) =
+            self.parse_function(false, kind, start)?
         {
-            let mut top = Node::FunctionExpression(kind, None, args, body);
+            let mut top = Node::FunctionExpression(kind, None, args, body, span);
             for d in decorators {
-                top = Node::CallExpression(Box::new(d), vec![top]);
+                top = Node::CallExpression(Box::new(d), vec![top], Span::empty());
             }
-            Ok(Node::LexicalInitialization(name, Box::new(top)))
+            Ok(Node::LexicalInitialization(
+                name,
+                Box::new(top),
+                Span(start, self.lexer.position()),
+            ))
         } else {
             unreachable!();
         }
     }
 
     fn parse_import(&mut self) -> Result<Node, Error> {
+        let start = self.lexer.position();
         self.expect(Token::Import)?;
         self.lexer.peek()?;
         match self.lexer.peek_immutable()? {
@@ -1206,7 +1328,10 @@ impl<'a> Parser<'a> {
                 let specifier = s.to_string();
                 self.lexer.next()?;
                 self.expect(Token::Semicolon)?;
-                Ok(Node::ImportDeclaration(specifier))
+                Ok(Node::ImportDeclaration(
+                    specifier,
+                    Span(start, self.lexer.position()),
+                ))
             }
 
             // import { x, y } from "specifier";
@@ -1219,15 +1344,23 @@ impl<'a> Parser<'a> {
                     Token::StringLiteral(c) => {
                         let specifier = c;
                         self.expect(Token::Semicolon)?;
-                        Ok(Node::ImportNamedDeclaration(specifier, bindings))
+                        Ok(Node::ImportNamedDeclaration(
+                            specifier,
+                            bindings,
+                            Span(start, self.lexer.position()),
+                        ))
                     }
                     Token::Identifier(ref s) if s == "standard" => {
                         self.expect(Token::Colon)?;
                         let namespace = self.parse_identifier(true)?;
                         self.expect(Token::Semicolon)?;
-                        Ok(Node::ImportStandardDeclaration(namespace, bindings))
+                        Ok(Node::ImportStandardDeclaration(
+                            namespace,
+                            bindings,
+                            Span(start, self.lexer.position()),
+                        ))
                     }
-                    _ => Err(Error::UnexpectedToken),
+                    _ => Err(Error::UnexpectedToken(self.lexer.position())),
                 }
             }
 
@@ -1240,24 +1373,33 @@ impl<'a> Parser<'a> {
                     _ => unreachable!(),
                 };
                 self.expect(Token::Semicolon)?;
-                Ok(Node::ImportDefaultDeclaration(specifier, binding))
+                Ok(Node::ImportDefaultDeclaration(
+                    specifier,
+                    binding,
+                    Span(start, self.lexer.position()),
+                ))
             }
 
-            _ => Err(Error::UnexpectedToken),
+            _ => Err(Error::UnexpectedToken(self.lexer.position())),
         }
     }
 
     fn parse_export(&mut self) -> Result<Node, Error> {
+        let start = self.lexer.position();
         self.expect(Token::Export)?;
         let decl = match self.lexer.peek()? {
             Token::Let | Token::Const => self.parse_lexical_declaration(),
             Token::Function => {
+                let start = self.lexer.position();
                 self.lexer.next()?;
-                self.parse_function(false, FunctionKind::Normal)
+                self.parse_function(false, FunctionKind::Normal, start)
             }
-            _ => Err(Error::UnexpectedToken),
+            _ => Err(Error::UnexpectedToken(self.lexer.position())),
         }?;
-        Ok(Node::ExportDeclaration(Box::new(decl)))
+        Ok(Node::ExportDeclaration(
+            Box::new(decl),
+            Span(start, self.lexer.position()),
+        ))
     }
 
     fn parse_expression(&mut self) -> Result<Node, Error> {
@@ -1265,6 +1407,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_assignment_expression(&mut self) -> Result<Node, Error> {
+        let start = self.lexer.position();
         if self.eat(Token::Yield) && self.scope(ParseScope::GeneratorFunction) {
             match self.lexer.peek()? {
                 Token::Semicolon
@@ -1273,11 +1416,17 @@ impl<'a> Parser<'a> {
                 | Token::RightParen
                 | Token::Colon
                 | Token::Comma => {
-                    return Ok(Node::YieldExpression(None));
+                    return Ok(Node::YieldExpression(
+                        None,
+                        Span(start, self.lexer.position()),
+                    ));
                 }
                 _ => {
                     let exp = self.parse_assignment_expression()?;
-                    return Ok(Node::YieldExpression(Some(Box::new(exp))));
+                    return Ok(Node::YieldExpression(
+                        Some(Box::new(exp)),
+                        Span(start, self.lexer.position()),
+                    ));
                 }
             }
         }
@@ -1288,7 +1437,7 @@ impl<'a> Parser<'a> {
                 self.lexer.next()?;
                 self.check_assignment_target(&lhs)?;
                 let rhs = self.parse_assignment_expression()?;
-                lhs = self.build_binary($op, lhs, rhs);
+                lhs = self.build_binary($op, lhs, rhs, Span(start, self.lexer.position()));
             }};
         }
 
@@ -1312,11 +1461,12 @@ impl<'a> Parser<'a> {
             Node::Identifier(..) => Ok(()),
             Node::MemberExpression(..) => Ok(()),
             Node::ComputedMemberExpression(..) => Ok(()),
-            _ => Err(Error::InvalidAssignmentTarget),
+            _ => Err(Error::InvalidAssignmentTarget(self.lexer.position())),
         }
     }
 
     fn parse_conditional_expression(&mut self) -> Result<Node, Error> {
+        let start = self.lexer.position();
         let lhs = self.parse_logical_or_expression()?;
         if self.eat(Token::Question) {
             let consequent = self.parse_assignment_expression()?;
@@ -1330,6 +1480,7 @@ impl<'a> Parser<'a> {
                         Box::new(lhs),
                         Box::new(consequent),
                         Box::new(alternative),
+                        Span(start, self.lexer.position()),
                     ));
                 }
             }
@@ -1410,67 +1561,85 @@ impl<'a> Parser<'a> {
     );
 
     fn parse_unary_expression(&mut self) -> Result<Node, Error> {
+        let start = self.lexer.position();
         self.lexer.peek()?;
         match self.lexer.peek_immutable()? {
             Token::Operator(Operator::Add) => {
                 self.lexer.next()?;
                 let expr = self.parse_unary_expression()?;
-                Ok(self.build_unary(Operator::Add, expr))
+                Ok(self.build_unary(Operator::Add, expr, Span(start, self.lexer.position())))
             }
             Token::Operator(Operator::Sub) => {
                 self.lexer.next()?;
                 let expr = self.parse_unary_expression()?;
-                Ok(self.build_unary(Operator::Sub, expr))
+                Ok(self.build_unary(Operator::Sub, expr, Span(start, self.lexer.position())))
             }
             Token::Operator(Operator::BitwiseNOT) => {
                 self.lexer.next()?;
                 let expr = self.parse_unary_expression()?;
-                Ok(self.build_unary(Operator::BitwiseNOT, expr))
+                Ok(self.build_unary(
+                    Operator::BitwiseNOT,
+                    expr,
+                    Span(start, self.lexer.position()),
+                ))
             }
             Token::Operator(Operator::Not) => {
                 self.lexer.next()?;
                 let expr = self.parse_unary_expression()?;
-                Ok(self.build_unary(Operator::Not, expr))
+                Ok(self.build_unary(Operator::Not, expr, Span(start, self.lexer.position())))
             }
             Token::Operator(Operator::Typeof) => {
                 self.lexer.next()?;
                 let expr = self.parse_unary_expression()?;
-                Ok(self.build_unary(Operator::Typeof, expr))
+                Ok(self.build_unary(Operator::Typeof, expr, Span(start, self.lexer.position())))
             }
             Token::Operator(Operator::Void) => {
                 self.lexer.next()?;
                 let expr = self.parse_unary_expression()?;
-                Ok(self.build_unary(Operator::Void, expr))
+                Ok(self.build_unary(Operator::Void, expr, Span(start, self.lexer.position())))
             }
             Token::Await if self.scope(ParseScope::AsyncFunction) => {
                 self.lexer.next()?;
                 let expr = self.parse_unary_expression()?;
-                Ok(Node::AwaitExpression(Box::new(expr)))
+                Ok(Node::AwaitExpression(
+                    Box::new(expr),
+                    Span(start, self.lexer.position()),
+                ))
             }
             _ => self.parse_left_hand_side_expression(true),
         }
     }
 
     fn parse_left_hand_side_expression(&mut self, calls: bool) -> Result<Node, Error> {
+        let start = self.lexer.position();
         let mut base = if self.eat(Token::New) {
             let callee = self.parse_left_hand_side_expression(false)?;
             self.expect(Token::LeftParen)?;
             let (list, ..) = self.parse_expression_list(Token::RightParen)?;
-            Node::NewExpression(Box::new(callee), list)
+            Node::NewExpression(Box::new(callee), list, Span(start, self.lexer.position()))
         } else {
             self.parse_primary_expression()?
         };
         loop {
             if self.eat(Token::Dot) {
                 let property = self.parse_identifier(true)?;
-                base = Node::MemberExpression(Box::new(base), property);
+                base = Node::MemberExpression(
+                    Box::new(base),
+                    property,
+                    Span(start, self.lexer.position()),
+                );
             } else if self.eat(Token::LeftBracket) {
                 let property = self.parse_expression()?;
                 self.expect(Token::RightBracket)?;
-                base = Node::ComputedMemberExpression(Box::new(base), Box::new(property));
+                base = Node::ComputedMemberExpression(
+                    Box::new(base),
+                    Box::new(property),
+                    Span(start, self.lexer.position()),
+                );
             } else if calls && self.eat(Token::LeftParen) {
                 let (list, ..) = self.parse_expression_list(Token::RightParen)?;
-                base = Node::CallExpression(Box::new(base), list);
+                base =
+                    Node::CallExpression(Box::new(base), list, Span(start, self.lexer.position()));
             } else {
                 return Ok(base);
             }
@@ -1516,21 +1685,29 @@ impl<'a> Parser<'a> {
             Token::Operator(Operator::Typeof) if allow_keyword => Ok("typeof".to_string()),
             Token::Operator(Operator::Void) if allow_keyword => Ok("void".to_string()),
             Token::Operator(Operator::Has) if allow_keyword => Ok("has".to_string()),
-            _ => Err(Error::UnexpectedToken),
+            _ => Err(Error::UnexpectedToken(self.lexer.position())),
         }
     }
 
     fn parse_primary_expression(&mut self) -> Result<Node, Error> {
+        let start = self.lexer.position();
         let token = self.lexer.next()?;
         match token {
-            Token::Null => Ok(Node::NullLiteral),
-            Token::True => Ok(Node::TrueLiteral),
-            Token::False => Ok(Node::FalseLiteral),
-            Token::StringLiteral(s) => Ok(Node::StringLiteral(s)),
-            Token::NumberLiteral(n) => Ok(Node::NumberLiteral(n)),
+            Token::Null => Ok(Node::NullLiteral(Span(start, self.lexer.position()))),
+            Token::True => Ok(Node::TrueLiteral(Span(start, self.lexer.position()))),
+            Token::False => Ok(Node::FalseLiteral(Span(start, self.lexer.position()))),
+            Token::StringLiteral(s) => {
+                Ok(Node::StringLiteral(s, Span(start, self.lexer.position())))
+            }
+            Token::NumberLiteral(n) => {
+                Ok(Node::NumberLiteral(n, Span(start, self.lexer.position())))
+            }
             Token::Colon => {
                 let name = self.parse_identifier(false)?;
-                Ok(Node::SymbolLiteral(name))
+                Ok(Node::SymbolLiteral(
+                    name,
+                    Span(start, self.lexer.position()),
+                ))
             }
             Token::Operator(Operator::Div) => {
                 let mut pattern = String::new();
@@ -1544,16 +1721,22 @@ impl<'a> Parser<'a> {
                         Some(c) => {
                             pattern.push(c);
                         }
-                        None => return Err(Error::UnexpectedEOF),
+                        None => return Err(Error::UnexpectedEOF(self.lexer.position())),
                     }
                 }
-                Ok(Node::RegexLiteral(pattern))
+                Ok(Node::RegexLiteral(
+                    pattern,
+                    Span(start, self.lexer.position()),
+                ))
             }
-            Token::This => Ok(Node::ThisExpression),
-            Token::Identifier(i) => Ok(Node::Identifier(i)),
+            Token::This => Ok(Node::ThisExpression(Span(start, self.lexer.position()))),
+            Token::Identifier(i) => Ok(Node::Identifier(i, Span(start, self.lexer.position()))),
             Token::LeftBracket => {
                 let (exprs, ..) = self.parse_expression_list(Token::RightBracket)?;
-                Ok(Node::ArrayLiteral(exprs))
+                Ok(Node::ArrayLiteral(
+                    exprs,
+                    Span(start, self.lexer.position()),
+                ))
             }
             Token::LeftBrace => {
                 let mut fields = Vec::new();
@@ -1567,47 +1750,61 @@ impl<'a> Parser<'a> {
                             break;
                         }
                     }
+                    let start = self.lexer.position();
                     let name = if self.eat(Token::LeftBracket) {
                         let name = self.parse_expression()?;
                         self.expect(Token::RightBracket)?;
                         name
                     } else {
-                        Node::StringLiteral(self.parse_identifier(true)?)
+                        Node::StringLiteral(
+                            self.parse_identifier(true)?,
+                            Span(start, self.lexer.position()),
+                        )
                     };
                     let init = if self.eat(Token::Colon) {
                         self.parse_expression()?
                     } else if self.peek(Token::LeftParen) {
-                        self.parse_function(true, FunctionKind::Normal)?
-                    } else if let Node::StringLiteral(n) = &name {
-                        Node::Identifier(n.to_string())
+                        self.parse_function(true, FunctionKind::Normal, start)?
+                    } else if let Node::StringLiteral(n, s) = &name {
+                        Node::Identifier(n.to_string(), *s)
                     } else {
-                        return Err(Error::UnexpectedToken);
+                        return Err(Error::UnexpectedToken(self.lexer.position()));
                     };
-                    fields.push(Node::Initializer(Box::new(name), Box::new(init)));
+                    fields.push(Node::Initializer(
+                        Box::new(name),
+                        Box::new(init),
+                        Span(start, self.lexer.position()),
+                    ));
                 }
-                Ok(Node::ObjectLiteral(fields))
+                Ok(Node::ObjectLiteral(
+                    fields,
+                    Span(start, self.lexer.position()),
+                ))
             }
             Token::LeftParen => {
                 let (mut list, trailing) = self.parse_expression_list(Token::RightParen)?;
                 if self.eat(Token::Arrow) {
                     // ( ... ) =>
-                    self.parse_arrow_function(FunctionKind::Normal, list)
+                    self.parse_arrow_function(FunctionKind::Normal, list, start)
                 } else if list.is_empty() {
                     // ( )
-                    Err(Error::UnexpectedToken)
+                    Err(Error::UnexpectedToken(self.lexer.position()))
                 } else if list.len() == 1 && !trailing {
                     // ( expr )
-                    Ok(Node::ParenthesizedExpression(Box::new(list.pop().unwrap())))
+                    Ok(Node::ParenthesizedExpression(
+                        Box::new(list.pop().unwrap()),
+                        Span(start, self.lexer.position()),
+                    ))
                 } else {
                     // ( expr , )
                     // ( expr , expr )
-                    Ok(Node::TupleLiteral(list))
+                    Ok(Node::TupleLiteral(list, Span(start, self.lexer.position())))
                 }
             }
             Token::Async => {
                 let list = self.parse_parameters()?;
                 self.expect(Token::Arrow)?;
-                self.parse_arrow_function(FunctionKind::Async, list)
+                self.parse_arrow_function(FunctionKind::Async, list, start)
             }
             Token::Class => self.parse_class(true),
             Token::BackQuote => {
@@ -1637,7 +1834,9 @@ impl<'a> Parser<'a> {
                                     Some('\\') => current.push('\\'),
                                     Some('u') => {
                                         if Some('{') != self.lexer.chars.next() {
-                                            return Err(Error::UnexpectedToken);
+                                            return Err(Error::UnexpectedToken(
+                                                self.lexer.position(),
+                                            ));
                                         }
                                         let mut n = String::new();
                                         macro_rules! digit {
@@ -1648,7 +1847,11 @@ impl<'a> Parser<'a> {
                                                     | Some('A'...'F') => {
                                                         n.push(next.unwrap());
                                                     }
-                                                    _ => return Err(Error::UnexpectedToken),
+                                                    _ => {
+                                                        return Err(Error::UnexpectedToken(
+                                                            self.lexer.position(),
+                                                        ))
+                                                    }
                                                 }
                                             };
                                         }
@@ -1659,42 +1862,68 @@ impl<'a> Parser<'a> {
                                         match u32::from_str_radix(n.as_str(), 16) {
                                             Ok(n) => match std::char::from_u32(n) {
                                                 Some(c) => current.push(c),
-                                                None => return Err(Error::UnexpectedToken),
+                                                None => {
+                                                    return Err(Error::UnexpectedToken(
+                                                        self.lexer.position(),
+                                                    ))
+                                                }
                                             },
-                                            Err(_) => return Err(Error::UnexpectedToken),
+                                            Err(_) => {
+                                                return Err(Error::UnexpectedToken(
+                                                    self.lexer.position(),
+                                                ))
+                                            }
                                         }
                                         if Some('}') != self.lexer.chars.next() {
-                                            return Err(Error::UnexpectedToken);
+                                            return Err(Error::UnexpectedToken(
+                                                self.lexer.position(),
+                                            ));
                                         }
                                     }
                                     Some('U') => {
                                         if Some('{') != self.lexer.chars.next() {
-                                            return Err(Error::UnexpectedToken);
+                                            return Err(Error::UnexpectedToken(
+                                                self.lexer.position(),
+                                            ));
                                         }
                                         let mut name = String::new();
                                         loop {
                                             match self.lexer.chars.next() {
                                                 Some('}') => break,
-                                                None => return Err(Error::UnexpectedEOF),
+                                                None => {
+                                                    return Err(Error::UnexpectedEOF(
+                                                        self.lexer.position(),
+                                                    ))
+                                                }
                                                 Some(c) => name.push(c),
                                             }
                                         }
                                         match UNICODE_NAME_MAP.get(name.as_str()) {
                                             Some(c) => current.push(*c),
-                                            None => return Err(Error::UnexpectedToken),
+                                            None => {
+                                                return Err(Error::UnexpectedToken(
+                                                    self.lexer.position(),
+                                                ))
+                                            }
                                         };
                                     }
-                                    None | _ => return Err(Error::UnexpectedEOF),
+                                    None | _ => {
+                                        return Err(Error::UnexpectedEOF(self.lexer.position()))
+                                    }
                                 }
                             } else {
                                 current.push(c);
                             }
                         }
-                        None => return Err(Error::UnexpectedEOF),
+                        None => return Err(Error::UnexpectedEOF(self.lexer.position())),
                     }
                 }
                 quasis.push(current);
-                Ok(Node::TemplateLiteral(quasis, expressions))
+                Ok(Node::TemplateLiteral(
+                    quasis,
+                    expressions,
+                    Span(start, self.lexer.position()),
+                ))
             }
             Token::Match => {
                 let expr = self.parse_expression()?;
@@ -1710,6 +1939,7 @@ impl<'a> Parser<'a> {
                             break;
                         }
                     }
+                    let start = self.lexer.position();
                     let pattern = self.parse_pattern()?;
                     self.expect(Token::Arrow)?;
                     let consequent = if self.peek(Token::LeftBrace) {
@@ -1717,11 +1947,19 @@ impl<'a> Parser<'a> {
                     } else {
                         self.parse_expression()?
                     };
-                    arms.push(Node::MatchArm(Box::new(pattern), Box::new(consequent)));
+                    arms.push(Node::MatchArm(
+                        Box::new(pattern),
+                        Box::new(consequent),
+                        Span(start, self.lexer.position()),
+                    ));
                 }
-                Ok(Node::MatchExpression(Box::new(expr), arms))
+                Ok(Node::MatchExpression(
+                    Box::new(expr),
+                    arms,
+                    Span(start, self.lexer.position()),
+                ))
             }
-            _ => Err(Error::UnexpectedToken),
+            _ => Err(Error::UnexpectedToken(self.lexer.position())),
         }
     }
 
@@ -1738,6 +1976,7 @@ impl<'a> Parser<'a> {
             // { a: { c } }
             // { a: b, ... }
             Token::LeftBrace => {
+                let start = self.lexer.position();
                 self.lexer.next()?;
                 let mut patterns = IndexMap::new();
                 let mut first = true;
@@ -1756,20 +1995,29 @@ impl<'a> Parser<'a> {
                             break;
                         }
                     }
+                    let start = self.lexer.position();
                     let name = self.parse_identifier(false)?;
                     if self.eat(Token::Colon) {
                         let pattern = self.parse_pattern()?;
                         patterns.insert(name, pattern);
                     } else {
-                        patterns.insert(name.to_string(), Node::Identifier(name));
+                        patterns.insert(
+                            name.to_string(),
+                            Node::Identifier(name, Span(start, self.lexer.position())),
+                        );
                     }
                 }
-                Ok(Node::ObjectPattern(patterns, wildcard))
+                Ok(Node::ObjectPattern(
+                    patterns,
+                    wildcard,
+                    Span(start, self.lexer.position()),
+                ))
             }
             // [a]
             // [{ b }]
             // [a, ...]
             Token::LeftBracket => {
+                let start = self.lexer.position();
                 self.lexer.next()?;
                 let mut patterns = Vec::new();
                 let mut first = true;
@@ -1791,13 +2039,18 @@ impl<'a> Parser<'a> {
                     let pattern = self.parse_pattern()?;
                     patterns.push(pattern);
                 }
-                Ok(Node::ArrayPattern(patterns, wildcard))
+                Ok(Node::ArrayPattern(
+                    patterns,
+                    wildcard,
+                    Span(start, self.lexer.position()),
+                ))
             }
-            _ => Err(Error::UnexpectedToken),
+            _ => Err(Error::UnexpectedToken(self.lexer.position())),
         }
     }
 
     fn parse_class(&mut self, expression: bool) -> Result<Node, Error> {
+        let start = self.lexer.position();
         if !expression {
             self.expect(Token::Class)?;
         }
@@ -1813,17 +2066,29 @@ impl<'a> Parser<'a> {
         self.expect(Token::LeftBrace)?;
         let mut fields = Vec::new();
         while !self.eat(Token::RightBrace) {
-            let name = self.parse_identifier(false)?;
-            let f = self.parse_function(true, FunctionKind::Normal)?;
+            let start = self.lexer.position();
+            let name = Node::StringLiteral(self.parse_identifier(false)?, Span::empty());
+            let f = self.parse_function(true, FunctionKind::Normal, start)?;
             fields.push(Node::Initializer(
-                Box::new(Node::StringLiteral(name)),
+                Box::new(name),
                 Box::new(f),
+                Span(start, self.lexer.position()),
             ));
         }
         if expression {
-            Ok(Node::ClassExpression(name, extends, fields))
+            Ok(Node::ClassExpression(
+                name,
+                extends,
+                fields,
+                Span(start, self.lexer.position()),
+            ))
         } else {
-            Ok(Node::ClassDeclaration(name, extends, fields))
+            Ok(Node::ClassDeclaration(
+                name,
+                extends,
+                fields,
+                Span(start, self.lexer.position()),
+            ))
         }
     }
 
@@ -1831,22 +2096,30 @@ impl<'a> Parser<'a> {
         &mut self,
         kind: FunctionKind,
         mut args: Vec<Node>,
+        start: Position,
     ) -> Result<Node, Error> {
         for item in &mut args {
             match item {
                 Node::Identifier(..) | Node::Initializer(..) => {}
-                Node::BinaryExpression(op, left, right) if *op == Operator::Assign => {
+                Node::BinaryExpression(op, left, right, s) if *op == Operator::Assign => {
                     if let Node::Identifier(..) = &**left {
                         let init = Node::Initializer(
-                            Box::new(std::mem::replace(&mut **left, Node::NullLiteral)),
-                            Box::new(std::mem::replace(&mut **right, Node::NullLiteral)),
+                            Box::new(std::mem::replace(
+                                &mut **left,
+                                Node::NullLiteral(Span::empty()),
+                            )),
+                            Box::new(std::mem::replace(
+                                &mut **right,
+                                Node::NullLiteral(Span::empty()),
+                            )),
+                            *s,
                         );
                         std::mem::replace(item, init);
                     } else {
-                        return Err(Error::UnexpectedToken);
+                        return Err(Error::UnexpectedToken(s.0));
                     }
                 }
-                _ => return Err(Error::UnexpectedToken),
+                _ => return Err(Error::UnexpectedToken(self.lexer.position())),
             }
         }
         let body = if self.peek(Token::LeftBrace) {
@@ -1860,13 +2133,15 @@ impl<'a> Parser<'a> {
             let expr = self.parse_assignment_expression()?;
             Node::Block(
                 Scope::new(ParseScope::Function),
-                vec![Node::ReturnStatement(Some(Box::new(expr)))],
+                vec![Node::ReturnStatement(Some(Box::new(expr)), Span::empty())],
+                Span::empty(),
             )
         };
         Ok(Node::ArrowFunctionExpression(
             kind | FunctionKind::Arrow,
             args,
             Box::new(body),
+            Span(start, self.lexer.position()),
         ))
     }
 
@@ -1920,15 +2195,17 @@ impl<'a> Parser<'a> {
                     break;
                 }
             }
+            let start = self.lexer.position();
             let ident = self.parse_identifier(false)?;
             if self.eat(Token::Operator(Operator::Assign)) {
                 let init = self.parse_expression()?;
                 parameters.push(Node::Initializer(
-                    Box::new(Node::Identifier(ident)),
+                    Box::new(Node::Identifier(ident, Span::empty())),
                     Box::new(init),
+                    Span(start, self.lexer.position()),
                 ));
             } else {
-                parameters.push(Node::Identifier(ident));
+                parameters.push(Node::Identifier(ident, Span::empty()));
             }
         }
         Ok(parameters)

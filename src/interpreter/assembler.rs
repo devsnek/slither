@@ -1,5 +1,5 @@
 use crate::interpreter::{Op, REGISTER_COUNT};
-use crate::parser::{FunctionKind, Node, Operator, Scope, ScopeKind};
+use crate::parser::{FunctionKind, Node, Operator, Scope, ScopeKind, Span};
 use crate::runtime::RuntimeFunction;
 use crate::value::ValueType;
 use byteorder::{LittleEndian, WriteBytesExt};
@@ -100,74 +100,76 @@ impl Assembler {
 
     fn visit(&mut self, node: &Node) {
         match node {
-            Node::NullLiteral => self.visit_null(),
-            Node::TrueLiteral => self.visit_true(),
-            Node::FalseLiteral => self.visit_false(),
-            Node::NumberLiteral(n) => self.visit_number(*n),
-            Node::StringLiteral(s) => self.visit_string(s),
-            Node::SymbolLiteral(s) => self.visit_symbol(s),
-            Node::RegexLiteral(r) => self.visit_regex(r),
-            Node::ObjectLiteral(inits) => self.visit_object(inits),
-            Node::ArrayLiteral(exprs) => self.visit_array(exprs),
-            Node::TupleLiteral(exprs) => self.visit_tuple(exprs),
-            Node::TemplateLiteral(quasis, exprs) => self.visit_template(quasis, exprs),
-            Node::Identifier(var) => self.visit_identifier(var),
-            Node::Block(scope, stmts) => self.visit_block(scope, stmts),
-            Node::IfStatement(test, consequent, alternative) => {
+            Node::NullLiteral(..) => self.visit_null(),
+            Node::TrueLiteral(..) => self.visit_true(),
+            Node::FalseLiteral(..) => self.visit_false(),
+            Node::NumberLiteral(n, ..) => self.visit_number(*n),
+            Node::StringLiteral(s, ..) => self.visit_string(s),
+            Node::SymbolLiteral(s, ..) => self.visit_symbol(s),
+            Node::RegexLiteral(r, ..) => self.visit_regex(r),
+            Node::ObjectLiteral(inits, ..) => self.visit_object(inits),
+            Node::ArrayLiteral(exprs, ..) => self.visit_array(exprs),
+            Node::TupleLiteral(exprs, ..) => self.visit_tuple(exprs),
+            Node::TemplateLiteral(quasis, exprs, ..) => self.visit_template(quasis, exprs),
+            Node::Identifier(var, ..) => self.visit_identifier(var),
+            Node::Block(scope, stmts, ..) => self.visit_block(scope, stmts),
+            Node::IfStatement(test, consequent, alternative, ..) => {
                 self.visit_if(test, consequent, alternative)
             }
-            Node::ConditionalExpression(test, consequent, alternative) => {
+            Node::ConditionalExpression(test, consequent, alternative, ..) => {
                 self.visit_conditional(test, consequent, alternative)
             }
-            Node::WhileLoop(test, body) => self.visit_while(test, body),
-            Node::ForLoop(r#async, binding, target, body) => {
+            Node::WhileLoop(test, body, ..) => self.visit_while(test, body),
+            Node::ForLoop(r#async, binding, target, body, ..) => {
                 self.visit_for(*r#async, binding, target, body)
             }
-            Node::ExpressionStatement(expr) => self.visit_expression_statement(expr),
-            Node::UnaryExpression(op, expr) => self.visit_unary(*op, expr),
-            Node::BinaryExpression(op, lhs, rhs) => self.visit_binary(*op, lhs, rhs),
-            Node::ParenthesizedExpression(expr) => self.visit_parenthesized_expression(expr),
-            Node::YieldExpression(expr) => self.visit_yield(expr),
-            Node::AwaitExpression(expr) => self.visit_await(expr),
-            Node::ThisExpression => self.visit_this(),
-            Node::NewExpression(callee, args) => self.visit_new(callee, args),
-            Node::MemberExpression(target, key) => self.visit_member_expression(target, key),
-            Node::ComputedMemberExpression(target, expr) => {
+            Node::ExpressionStatement(expr, ..) => self.visit_expression_statement(expr),
+            Node::UnaryExpression(op, expr, ..) => self.visit_unary(*op, expr),
+            Node::BinaryExpression(op, lhs, rhs, ..) => self.visit_binary(*op, lhs, rhs),
+            Node::ParenthesizedExpression(expr, ..) => self.visit_parenthesized_expression(expr),
+            Node::YieldExpression(expr, ..) => self.visit_yield(expr),
+            Node::AwaitExpression(expr, ..) => self.visit_await(expr),
+            Node::ThisExpression(..) => self.visit_this(),
+            Node::NewExpression(callee, args, ..) => self.visit_new(callee, args),
+            Node::MemberExpression(target, key, ..) => self.visit_member_expression(target, key),
+            Node::ComputedMemberExpression(target, expr, ..) => {
                 self.visit_computed_member_expression(target, expr)
             }
-            Node::CallExpression(callee, args) => self.visit_call(callee, args, false),
-            Node::TailCallExpression(callee, args) => self.visit_call(callee, args, true),
-            Node::FunctionExpression(kind, name, args, body) => {
+            Node::CallExpression(callee, args, ..) => self.visit_call(callee, args, false),
+            Node::TailCallExpression(callee, args, ..) => self.visit_call(callee, args, true),
+            Node::FunctionExpression(kind, name, args, body, ..) => {
                 self.visit_function_expression(*kind, name, args, body)
             }
-            Node::FunctionDeclaration(kind, name, args, body) => {
+            Node::FunctionDeclaration(kind, name, args, body, ..) => {
                 self.visit_function_declaration(*kind, name, args, body)
             }
-            Node::ArrowFunctionExpression(kind, args, body) => {
+            Node::ArrowFunctionExpression(kind, args, body, ..) => {
                 self.visit_arrow_function(*kind, args, body)
             }
-            Node::ClassExpression(name, extends, body) => {
+            Node::ClassExpression(name, extends, body, ..) => {
                 self.visit_class_expression(name, extends, body)
             }
-            Node::ClassDeclaration(name, extends, body) => {
+            Node::ClassDeclaration(name, extends, body, ..) => {
                 self.visit_class_declaration(name, extends, body)
             }
-            Node::LexicalInitialization(var, expr) => self.visit_lexical_initialization(var, expr),
-            Node::ReturnStatement(expr) => self.visit_return(expr),
-            Node::ThrowStatement(expr) => self.visit_throw(expr),
-            Node::BreakStatement => self.visit_break(),
-            Node::ContinueStatement => self.visit_continue(),
-            Node::TryStatement(tryc, binding, catch, finally) => {
+            Node::LexicalInitialization(var, expr, ..) => {
+                self.visit_lexical_initialization(var, expr)
+            }
+            Node::ReturnStatement(expr, ..) => self.visit_return(expr),
+            Node::ThrowStatement(expr, ..) => self.visit_throw(expr),
+            Node::BreakStatement(..) => self.visit_break(),
+            Node::ContinueStatement(..) => self.visit_continue(),
+            Node::TryStatement(tryc, binding, catch, finally, ..) => {
                 self.visit_try(tryc, binding, catch, finally)
             }
-            Node::MatchExpression(expr, arms) => self.visit_match(expr, arms),
+            Node::MatchExpression(expr, arms, ..) => self.visit_match(expr, arms),
             Node::ImportDeclaration(..)
             | Node::ImportNamedDeclaration(..)
             | Node::ImportDefaultDeclaration(..)
             | Node::ImportStandardDeclaration(..) => {
                 self.load_null();
             }
-            Node::ExportDeclaration(decl) => self.visit_export(decl),
+            Node::ExportDeclaration(decl, ..) => self.visit_export(decl),
             Node::Initializer(..) => unreachable!(),
             Node::MatchArm(..) => unreachable!(),
             Node::ObjectPattern(..) | Node::ArrayPattern(..) => unreachable!(),
@@ -238,7 +240,7 @@ impl Assembler {
         self.push_op(Op::CreateEmptyObject);
         self.store_accumulator_in_register(&obj);
         for init in inits {
-            if let Node::Initializer(name, value) = init {
+            if let Node::Initializer(name, value, ..) = init {
                 self.visit(name);
                 self.store_accumulator_in_register(&key);
                 self.visit(value);
@@ -484,8 +486,8 @@ impl Assembler {
             return;
         }
 
-        if let Node::UnaryExpression(Operator::Typeof, v) = lhs {
-            if let Node::StringLiteral(check) = rhs {
+        if let Node::UnaryExpression(Operator::Typeof, v, ..) = lhs {
+            if let Node::StringLiteral(check, ..) = rhs {
                 if op == Operator::Equal {
                     self.visit(v);
                     self.push_op(Op::IsTypeof);
@@ -509,20 +511,20 @@ impl Assembler {
 
         if op == Operator::Assign {
             match lhs {
-                Node::Identifier(s) => {
+                Node::Identifier(s, ..) => {
                     self.visit(rhs);
                     self.push_op(Op::AssignIdentifier);
                     let id = self.string_id(s);
                     self.push_u32(id);
                 }
-                Node::MemberExpression(base, name) => {
+                Node::MemberExpression(base, name, ..) => {
                     let obj = rscope.register();
                     self.visit(base);
                     self.store_accumulator_in_register(&obj);
                     self.visit(rhs);
                     self.store_named_property(&obj, name);
                 }
-                Node::ComputedMemberExpression(base, key) => {
+                Node::ComputedMemberExpression(base, key, ..) => {
                     let obj = rscope.register();
                     let keyr = rscope.register();
                     self.visit(base);
@@ -573,12 +575,12 @@ impl Assembler {
             | Operator::DivAssign
             | Operator::ModAssign
             | Operator::PowAssign => match lhs {
-                Node::Identifier(s) => {
+                Node::Identifier(s, ..) => {
                     self.push_op(Op::AssignIdentifier);
                     let id = self.string_id(s);
                     self.push_u32(id);
                 }
-                Node::MemberExpression(base, name) => {
+                Node::MemberExpression(base, name, ..) => {
                     let value = rscope.register();
                     let obj = rscope.register();
                     self.store_accumulator_in_register(&value);
@@ -587,7 +589,7 @@ impl Assembler {
                     self.load_accumulator_with_register(&value);
                     self.store_named_property(&obj, name);
                 }
-                Node::ComputedMemberExpression(base, key) => {
+                Node::ComputedMemberExpression(base, key, ..) => {
                     let value = rscope.register();
                     let obj = rscope.register();
                     let keyr = rscope.register();
@@ -648,13 +650,13 @@ impl Assembler {
         let callee = rscope.register();
 
         match callee_node {
-            Node::MemberExpression(base, prop) => {
+            Node::MemberExpression(base, prop, ..) => {
                 self.visit(base);
                 self.store_accumulator_in_register(&receiver);
                 self.load_named_property(prop);
                 self.store_accumulator_in_register(&callee);
             }
-            Node::ComputedMemberExpression(base, key) => {
+            Node::ComputedMemberExpression(base, key, ..) => {
                 self.visit(base);
                 self.store_accumulator_in_register(&receiver);
                 self.visit(key);
@@ -753,9 +755,9 @@ impl Assembler {
             parameters: params
                 .iter()
                 .map(|n: &Node| match n {
-                    Node::Identifier(s) => s.to_string(),
+                    Node::Identifier(s, ..) => s.to_string(),
                     Node::Initializer(s, ..) => {
-                        if let Node::Identifier(s) = &**s {
+                        if let Node::Identifier(s, ..) = &**s {
                             s.to_string()
                         } else {
                             unreachable!();
@@ -770,10 +772,10 @@ impl Assembler {
         self.push_u32(id as u32); // 4
         self.jump(&mut end); // 5
 
-        if let Node::Block(scope, stmts) = body {
+        if let Node::Block(scope, stmts, ..) = body {
             for param in params {
-                if let Node::Initializer(name, init) = param {
-                    if let Node::Identifier(name) = &**name {
+                if let Node::Initializer(name, init, ..) = param {
+                    if let Node::Identifier(name, ..) = &**name {
                         let mut label = self.label();
                         self.visit_identifier(name);
                         self.jump_if_not_empty(&mut label);
@@ -783,7 +785,7 @@ impl Assembler {
                     } else {
                         unreachable!();
                     }
-                } else if let Node::Identifier(name) = &param {
+                } else if let Node::Identifier(name, ..) = &param {
                     let mut label = self.label();
                     self.visit_identifier(name);
                     self.jump_if_not_empty(&mut label);
@@ -806,7 +808,7 @@ impl Assembler {
                 }
             }
             if needs_return {
-                self.visit(&Node::ReturnStatement(None));
+                self.visit(&Node::ReturnStatement(None, Span::empty()));
             }
         }
 
@@ -846,14 +848,18 @@ impl Assembler {
 
         let constructor = fields.iter().find(|f| {
             if let Node::Initializer(name, ..) = f {
-                **name == Node::StringLiteral("constructor".to_string())
+                if let Node::StringLiteral(s, ..) = &**name {
+                    s == "constructor"
+                } else {
+                    false
+                }
             } else {
                 unreachable!();
             }
         });
 
         if let Some(constructor) = constructor {
-            if let Node::Initializer(_, value) = constructor {
+            if let Node::Initializer(_, value, ..) = constructor {
                 self.visit(value);
             } else {
                 unreachable!();
@@ -863,7 +869,8 @@ impl Assembler {
                 FunctionKind::Normal,
                 None,
                 vec![],
-                Box::new(Node::NullLiteral),
+                Box::new(Node::NullLiteral(Span::empty())),
+                Span::empty(),
             ));
         }
         self.store_accumulator_in_register(&class);
@@ -873,15 +880,18 @@ impl Assembler {
         self.store_named_property(&class, "prototype");
 
         for field in fields {
-            if let Node::Initializer(name, value) = field {
-                if **name != Node::StringLiteral("constructor".to_string()) {
-                    self.visit(name);
-                    self.store_accumulator_in_register(&key);
-                    self.visit(value);
-                    self.push_op(Op::StoreInObjectLiteral);
-                    self.push_u32(prototype.id);
-                    self.push_u32(key.id);
+            if let Node::Initializer(name, value, ..) = field {
+                if let Node::StringLiteral(s, ..) = &**name {
+                    if s == "constructor" {
+                        continue;
+                    }
                 }
+                self.visit(name);
+                self.store_accumulator_in_register(&key);
+                self.visit(value);
+                self.push_op(Op::StoreInObjectLiteral);
+                self.push_u32(prototype.id);
+                self.push_u32(key.id);
             } else {
                 unreachable!();
             }
@@ -986,10 +996,10 @@ impl Assembler {
         self.store_accumulator_in_register(&value);
 
         for arm in arms {
-            if let Node::MatchArm(test, consequent) = arm {
+            if let Node::MatchArm(test, consequent, ..) = arm {
                 let mut next = self.label();
                 match &**test {
-                    Node::Identifier(binding) => {
+                    Node::Identifier(binding, ..) => {
                         self.push_op(Op::EnterScope);
                         self.lexical_declaration(binding, false);
                         self.load_accumulator_with_register(&value);
@@ -1004,7 +1014,7 @@ impl Assembler {
                         self.jump_if_false(&mut next);
                         self.visit(consequent);
                     }
-                    Node::ObjectPattern(patterns, wildcard) => {
+                    Node::ObjectPattern(patterns, wildcard, ..) => {
                         self.push_op(Op::EnterScope);
                         if !*wildcard {
                             self.load_accumulator_with_register(&value);
@@ -1030,7 +1040,7 @@ impl Assembler {
                         self.visit(consequent);
                         self.push_op(Op::ExitScope);
                     }
-                    Node::ArrayPattern(_patterns, _wildcard) => unreachable!(),
+                    Node::ArrayPattern(_patterns, _wildcard, ..) => unreachable!(),
                     _ => unreachable!(),
                 }
                 self.jump(&mut end);
