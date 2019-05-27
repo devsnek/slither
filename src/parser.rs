@@ -202,7 +202,7 @@ pub enum Node {
     YieldExpression(Option<Box<Node>>),
     AwaitExpression(Box<Node>),
     ThisExpression,
-    NewExpression(Box<Node>),
+    NewExpression(Box<Node>, Vec<Node>),
 
     MatchExpression(Box<Node>, Vec<Node>),
     MatchArm(Box<Node>, Box<Node>),
@@ -1172,7 +1172,7 @@ impl<'a> Parser<'a> {
     fn parse_decorators(&mut self) -> Result<Node, Error> {
         let mut decorators = VecDeque::new();
         while self.eat(Token::At) {
-            let d = self.parse_left_hand_side_expression()?;
+            let d = self.parse_left_hand_side_expression(true)?;
             decorators.push_front(d);
         }
         let kind = if self.eat(Token::Async) {
@@ -1447,12 +1447,19 @@ impl<'a> Parser<'a> {
                 let expr = self.parse_unary_expression()?;
                 Ok(Node::AwaitExpression(Box::new(expr)))
             }
-            _ => self.parse_left_hand_side_expression(),
+            _ => self.parse_left_hand_side_expression(true),
         }
     }
 
-    fn parse_left_hand_side_expression(&mut self) -> Result<Node, Error> {
-        let mut base = self.parse_primary_expression()?;
+    fn parse_left_hand_side_expression(&mut self, calls: bool) -> Result<Node, Error> {
+        let mut base = if self.eat(Token::New) {
+            let callee = self.parse_left_hand_side_expression(false)?;
+            self.expect(Token::LeftParen)?;
+            let (list, ..) = self.parse_expression_list(Token::RightParen)?;
+            Node::NewExpression(Box::new(callee), list)
+        } else {
+            self.parse_primary_expression()?
+        };
         loop {
             if self.eat(Token::Dot) {
                 let property = self.parse_identifier(true)?;
@@ -1461,7 +1468,7 @@ impl<'a> Parser<'a> {
                 let property = self.parse_expression()?;
                 self.expect(Token::RightBracket)?;
                 base = Node::ComputedMemberExpression(Box::new(base), Box::new(property));
-            } else if self.eat(Token::LeftParen) {
+            } else if calls && self.eat(Token::LeftParen) {
                 let (list, ..) = self.parse_expression_list(Token::RightParen)?;
                 base = Node::CallExpression(Box::new(base), list);
             } else {
@@ -1543,10 +1550,6 @@ impl<'a> Parser<'a> {
                 Ok(Node::RegexLiteral(pattern))
             }
             Token::This => Ok(Node::ThisExpression),
-            Token::New => {
-                let expr = self.parse_left_hand_side_expression()?;
-                Ok(Node::NewExpression(Box::new(expr)))
-            }
             Token::Identifier(i) => Ok(Node::Identifier(i)),
             Token::LeftBracket => {
                 let (exprs, ..) = self.parse_expression_list(Token::RightBracket)?;
@@ -1803,7 +1806,7 @@ impl<'a> Parser<'a> {
             self.declare(&name, false)?;
         }
         let extends = if self.eat(Token::Extends) {
-            Some(Box::new(self.parse_left_hand_side_expression()?))
+            Some(Box::new(self.parse_left_hand_side_expression(true)?))
         } else {
             None
         };

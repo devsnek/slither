@@ -130,7 +130,7 @@ impl Assembler {
             Node::YieldExpression(expr) => self.visit_yield(expr),
             Node::AwaitExpression(expr) => self.visit_await(expr),
             Node::ThisExpression => self.visit_this(),
-            Node::NewExpression(target) => self.visit_new(target),
+            Node::NewExpression(callee, args) => self.visit_new(callee, args),
             Node::MemberExpression(target, key) => self.visit_member_expression(target, key),
             Node::ComputedMemberExpression(target, expr) => {
                 self.visit_computed_member_expression(target, expr)
@@ -684,31 +684,23 @@ impl Assembler {
         self.push_u8(args.len() as u8);
     }
 
-    fn visit_new(&mut self, target: &Node) {
-        match target {
-            Node::CallExpression(callee, args) => {
-                self.visit(callee);
-                let rscope = RegisterScope::new(self);
-                let callee = rscope.register();
-                self.store_accumulator_in_register(&callee);
+    fn visit_new(&mut self, callee: &Node, args: &[Node]) {
+        self.visit(callee);
+        let rscope = RegisterScope::new(self);
+        let callee = rscope.register();
+        self.store_accumulator_in_register(&callee);
 
-                let rarg = self.register_index;
-                for arg in args {
-                    let reg = rscope.register();
-                    self.visit(arg);
-                    self.store_accumulator_in_register(&reg);
-                }
-
-                self.push_op(Op::ConstructWithArgs);
-                self.push_u32(callee.id);
-                self.push_u32(rarg);
-                self.push_u8(args.len() as u8);
-            }
-            _ => {
-                self.visit(target);
-                self.push_op(Op::Construct);
-            }
+        let rarg = self.register_index;
+        for arg in args {
+            let reg = rscope.register();
+            self.visit(arg);
+            self.store_accumulator_in_register(&reg);
         }
+
+        self.push_op(Op::Construct);
+        self.push_u32(callee.id);
+        self.push_u32(rarg);
+        self.push_u8(args.len() as u8);
     }
 
     fn visit_function_expression(
@@ -816,8 +808,6 @@ impl Assembler {
             if needs_return {
                 self.visit(&Node::ReturnStatement(None));
             }
-        } else {
-            unreachable!();
         }
 
         self.mark(&mut end);
@@ -869,7 +859,12 @@ impl Assembler {
                 unreachable!();
             }
         } else {
-            self.load_empty();
+            self.visit(&Node::FunctionExpression(
+                FunctionKind::Normal,
+                None,
+                vec![],
+                Box::new(Node::NullLiteral),
+            ));
         }
         self.store_accumulator_in_register(&class);
 
@@ -892,11 +887,8 @@ impl Assembler {
             }
         }
 
-        self.push_op(Op::FinishClass);
-        self.push_u32(class.id);
-        self.push_u32(extends.id);
-        let id = self.string_id(name);
-        self.push_u32(id);
+        self.load_string(name);
+        self.store_named_property(&class, "name");
 
         self.load_accumulator_with_register(&class);
     }

@@ -49,7 +49,6 @@ macro_rules! OPS {
             (CreateEmptyObject, AccumulatorUse::Write),
             (StoreInObjectLiteral, AccumulatorUse::Read, OpArg::Register, OpArg::Register),
             (NewFunction, AccumulatorUse::ReadWrite, OpArg::FunctionInfo),
-            (FinishClass, AccumulatorUse::ReadWrite, OpArg::Register, OpArg::Register, OpArg::String),
 
             (LoadNamedProperty, AccumulatorUse::ReadWrite, OpArg::String),
             (LoadComputedProperty, AccumulatorUse::ReadWrite, OpArg::Register),
@@ -68,8 +67,7 @@ macro_rules! OPS {
             (TailCall, AccumulatorUse::ReadWrite, OpArg::Register, OpArg::Register, OpArg::Register, OpArg::U8),
             (CallRuntime, AccumulatorUse::ReadWrite, OpArg::RuntimeFunction),
 
-            (Construct, AccumulatorUse::ReadWrite),
-            (ConstructWithArgs, AccumulatorUse::ReadWRite, OpArg::Register, OpArg::Register, OpArg::U8),
+            (Construct, AccumulatorUse::ReadWRite, OpArg::Register, OpArg::Register, OpArg::U8),
 
             (EnterScope, AccumulatorUse::None),
             (ExitScope, AccumulatorUse::None),
@@ -662,13 +660,6 @@ impl Interpreter {
                     )));
                 }
                 Op::Construct => {
-                    self.accumulator = handle!(self.accumulator.construct(
-                        agent,
-                        vec![],
-                        self.accumulator.clone()
-                    ));
-                }
-                Op::ConstructWithArgs => {
                     let cid = read_u32!() as usize; // callee
                     let sargid = read_u32!() as usize; // first argument register
                     let argc = read_u8!() as usize;
@@ -876,21 +867,6 @@ impl Interpreter {
                         handle!(f.set(agent, ObjectKey::from("name"), Value::from(name.as_str())));
                     }
                     self.accumulator = f;
-                }
-                Op::FinishClass => {
-                    let cid = read_u32!() as usize;
-                    let eid = read_u32!() as usize;
-                    let nid = read_u32!() as usize;
-
-                    let name = agent.assembler.string_table[nid].as_str();
-                    handle!(self.registers[cid].set(
-                        agent,
-                        ObjectKey::from("name"),
-                        Value::from(name)
-                    ));
-                    if self.registers[eid] != Value::Empty {
-                        // FIXME: self.registers[cid].set_prototype(self.registers[eid]);
-                    }
                 }
                 Op::Add => {
                     let lhsid = read_u32!() as usize;
