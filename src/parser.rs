@@ -305,7 +305,6 @@ impl<'a> Lexer<'a> {
     }
 
     fn next_char(&mut self) -> Option<char> {
-        self.column += 1;
         let c = self.chars.next();
         if let Some('\n') = c {
             self.column = 0;
@@ -319,8 +318,9 @@ impl<'a> Lexer<'a> {
     fn inner_next(&mut self) -> Result<Token, Error> {
         Ok(match self.next_char() {
             Some(c) => match c {
-                ' ' | '\t' | '\n' => self.next()?,
+                ' ' | '\t' | '\n' => self.inner_next()?,
                 '0'...'9' => {
+                    let start = self.position();
                     if c == '0' && self.chars.peek() != Some(&'.') {
                         let radix = match self.chars.peek() {
                             Some('b') | Some('B') => Some(2),
@@ -350,7 +350,7 @@ impl<'a> Lexer<'a> {
                             }
                             match u64::from_str_radix(&str, radix) {
                                 Ok(n) => Token::NumberLiteral(n as f64),
-                                Err(_) => return Err(Error::UnexpectedToken(self.position())),
+                                Err(_) => return Err(Error::UnexpectedToken(start)),
                             }
                         } else {
                             Token::NumberLiteral(0.0)
@@ -409,15 +409,13 @@ impl<'a> Lexer<'a> {
                                 if in_exp {
                                     match exp_str.parse::<i32>() {
                                         Ok(e) => Token::NumberLiteral(n * (10f64.powi(e) as f64)),
-                                        Err(_) => {
-                                            return Err(Error::UnexpectedToken(self.position()))
-                                        }
+                                        Err(_) => return Err(Error::UnexpectedToken(start)),
                                     }
                                 } else {
                                     Token::NumberLiteral(n)
                                 }
                             }
-                            Err(_) => return Err(Error::UnexpectedToken(self.position())),
+                            Err(_) => return Err(Error::UnexpectedToken(start)),
                         }
                     }
                 }
@@ -973,9 +971,10 @@ impl<'a> Parser<'a> {
     }
 
     fn expect(&mut self, token: Token) -> Result<Token, Error> {
+        let pos = self.lexer.position();
         match self.lexer.next()? {
             ref t if t == &token => Ok(token),
-            _ => Err(Error::UnexpectedToken(self.lexer.position())),
+            _ => Err(Error::UnexpectedToken(pos)),
         }
     }
 
@@ -1959,7 +1958,7 @@ impl<'a> Parser<'a> {
                     Span(start, self.lexer.position()),
                 ))
             }
-            _ => Err(Error::UnexpectedToken(self.lexer.position())),
+            _ => Err(Error::UnexpectedToken(start)),
         }
     }
 
