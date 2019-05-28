@@ -1185,7 +1185,12 @@ impl<'a> Parser<'a> {
         let body = self.parse_block(ParseScope::Loop)?;
         let end = Span(start, self.lexer.position());
         match constant_truthy(&test) {
-            Some(true) | None => Ok(Node::WhileLoop(Box::new(test), Box::new(body), end)),
+            None => Ok(Node::WhileLoop(Box::new(test), Box::new(body), end)),
+            Some(true) => Ok(Node::WhileLoop(
+                Box::new(Node::TrueLiteral(Span::empty())),
+                Box::new(body),
+                end,
+            )),
             Some(false) => Ok(Node::NullLiteral(end)),
         }
     }

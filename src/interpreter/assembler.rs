@@ -356,8 +356,12 @@ impl Assembler {
         let mut head = self.label();
         let mut end = self.label();
         self.mark(&mut head);
-        self.visit(test);
-        self.jump_if_false(&mut end);
+        if let Node::TrueLiteral(..) = test {
+            // no check
+        } else {
+            self.visit(test);
+            self.jump_if_false(&mut end);
+        }
         let pbl = self.break_label;
         self.break_label = Some(&mut end as *mut Label);
         let pcl = self.continue_label;
@@ -874,6 +878,9 @@ impl Assembler {
             ));
         }
         self.store_accumulator_in_register(&class);
+        if extends_o.is_some() {
+            // set prototype of `class` to `extends`
+        }
 
         self.push_op(Op::CreateEmptyObject);
         self.store_accumulator_in_register(&prototype);
