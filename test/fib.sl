@@ -18,7 +18,7 @@ function fib(n) {
   return fib(n - 1) + fib(n - 2);
 }
 
-gen function genfib() {
+generator genfib() {
   let fn1 = 0;
   let fn2 = 1;
   while true {

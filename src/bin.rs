@@ -40,8 +40,12 @@ fn main() {
         let referrer = referrer.to_str().unwrap();
 
         let mut agent = Agent::new();
-        agent.import(filename, referrer).unwrap();
-        agent.run_jobs();
+        match agent.import(filename, referrer) {
+            Ok(..) => {
+                agent.run_jobs();
+            }
+            Err(e) => println!("Uncaught Exception: {}", Value::inspect(&agent, &e)),
+        };
     }
 }
 

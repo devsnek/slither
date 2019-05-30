@@ -113,7 +113,7 @@ syntax region  slParenRepeat        contained matchgroup=slParensRepeat        s
 syntax region  slParenSwitch        contained matchgroup=slParensSwitch        start=/(/  end=/)/  contains=@slAll skipwhite skipempty nextgroup=slSwitchBlock extend fold
 syntax region  slParenCatch         contained matchgroup=slParensCatch         start=/(/  end=/)/  skipwhite skipempty nextgroup=slTryCatchBlock extend fold
 syntax region  slFuncArgs           contained matchgroup=slFuncParens          start=/(/  end=/)/  contains=slFuncArgCommas,slComment,slFuncArgExpression,slDestructuringBlock,slDestructuringArray,slRestExpression skipwhite skipempty nextgroup=slCommentFunction,slFuncBlock extend fold
-syntax region  slClassBlock         contained matchgroup=slClassBraces         start=/{/  end=/}/  contains=slClassFuncName,slClassMethodType,slArrowFunction,slArrowFuncArgs,slComment,slGenerator,slDecorator,slClassProperty,slClassPropertyComputed,slClassStringKey,slAsyncKeyword,slNoise extend fold
+syntax region  slClassBlock         contained matchgroup=slClassBraces         start=/{/  end=/}/  contains=slClassFuncName,slClassMethodType,slArrowFunction,slArrowFuncArgs,slComment,slDecorator,slClassProperty,slClassPropertyComputed,slClassStringKey,slAsyncKeyword,slNoise extend fold
 syntax region  slFuncBlock          contained matchgroup=slFuncBraces          start=/{/  end=/}/  contains=@slAll,slBlock extend fold
 syntax region  slIfElseBlock        contained matchgroup=slIfElseBraces        start=/{/  end=/}/  contains=@slAll,slBlock extend fold
 syntax region  slTryCatchBlock      contained matchgroup=slTryCatchBraces      start=/{/  end=/}/  contains=@slAll,slBlock skipwhite skipempty nextgroup=slCatch,slFinally extend fold
@@ -122,7 +122,7 @@ syntax region  slSwitchBlock        contained matchgroup=slSwitchBraces        s
 syntax region  slRepeatBlock        contained matchgroup=slRepeatBraces        start=/{/  end=/}/  contains=@slAll,slBlock extend fold
 syntax region  slDestructuringBlock contained matchgroup=slDestructuringBraces start=/{/  end=/}/  contains=slDestructuringProperty,slDestructuringAssignment,slDestructuringNoise,slDestructuringPropertyComputed,slSpreadExpression,slComment extend fold
 syntax region  slDestructuringArray contained matchgroup=slDestructuringBraces start=/\[/ end=/\]/ contains=slDestructuringPropertyValue,slNoise,slDestructuringProperty,slSpreadExpression,slDestructuringBlock,slDestructuringArray,slComment extend fold
-syntax region  slObject             contained matchgroup=slObjectBraces        start=/{/  end=/}/  contains=slObjectKey,slObjectKeyString,slObjectKeyComputed,slObjectShorthandProp,slObjectSeparator,slObjectFuncName,slObjectMethodType,slGenerator,slComment,slObjectStringKey,slSpreadExpression,slDecorator,slAsyncKeyword extend fold
+syntax region  slObject             contained matchgroup=slObjectBraces        start=/{/  end=/}/  contains=slObjectKey,slObjectKeyString,slObjectKeyComputed,slObjectShorthandProp,slObjectSeparator,slObjectFuncName,slObjectMethodType,slComment,slObjectStringKey,slSpreadExpression,slDecorator,slAsyncKeyword extend fold
 syntax region  slBlock                        matchgroup=slBraces              start=/{/  end=/}/  contains=@slAll,slSpreadExpression extend fold
 syntax region  slModuleGroup        contained matchgroup=slModuleBraces        start=/{/ end=/}/   contains=slModuleKeyword,slModuleComma,slModuleAs,slComment skipwhite skipempty nextgroup=slFrom fold
 syntax region  slSpreadExpression   contained matchgroup=slSpreadOperator      start=/\.\.\./ end=/[,}\]]\@=/ contains=@slExpression
@@ -130,7 +130,6 @@ syntax region  slRestExpression     contained matchgroup=slRestOperator        s
 syntax region  slTernaryIf                    matchgroup=slTernaryIfOperator   start=/?:\@!/  end=/\%(:\|}\@=\)/  contains=@slExpression extend skipwhite skipempty nextgroup=@slExpression
 syntax match   slOperator       /?\.\ze\_D/
 
-syntax match   slGenerator            contained /\*/ skipwhite skipempty nextgroup=slFuncName,slFuncArgs
 syntax match   slFuncName             contained /\<\K\k*/ skipwhite skipempty nextgroup=slFuncArgs
 syntax region  slFuncArgExpression    contained matchgroup=slFuncArgOperator start=/=/ end=/[,)]\@=/ contains=@slExpression extend
 syntax match   slFuncArgCommas        contained ','
@@ -142,7 +141,8 @@ syntax match   slArrowFuncArgs  /\<\K\k*\ze\s*=>/ skipwhite contains=slFuncArgs 
 " Matches a series of arguments surrounded in parens
 syntax match   slArrowFuncArgs  /([^()]*)\ze\s*=>/ contains=slFuncArgs skipempty skipwhite nextgroup=slArrowFunction extend
 
-exe 'syntax match slFunction /\<function\>/      skipwhite skipempty nextgroup=slGenerator,slFuncName,slFuncArgs skipwhite '.(exists('g:slither_conceal_function') ? 'conceal cchar='.g:slither_conceal_function : '')
+exe 'syntax match slGenerator /\<generator\>/    skipwhite skipempty nextgroup=slFuncName,slFuncArgs skipwhite '.(exists('g:slither_conceal_function') ? 'conceal cchar='.g:slither_conceal_function : '')
+exe 'syntax match slFunction /\<function\>/      skipwhite skipempty nextgroup=slFuncName,slFuncArgs skipwhite '.(exists('g:slither_conceal_function') ? 'conceal cchar='.g:slither_conceal_function : '')
 exe 'syntax match slArrowFunction /=>/           skipwhite skipempty nextgroup=slFuncBlock,slCommentFunction '.(exists('g:slither_conceal_arrow_function') ? 'conceal cchar='.g:slither_conceal_arrow_function : '')
 exe 'syntax match slArrowFunction /()\ze\s*=>/   skipwhite skipempty nextgroup=slArrowFunction '.(exists('g:slither_conceal_noarg_arrow_function') ? 'conceal cchar='.g:slither_conceal_noarg_arrow_function : '')
 exe 'syntax match slArrowFunction /_\ze\s*=>/    skipwhite skipempty nextgroup=slArrowFunction '.(exists('g:slither_conceal_underscore_arrow_function') ? 'conceal cchar='.g:slither_conceal_underscore_arrow_function : '')
@@ -190,7 +190,7 @@ syntax region  slCommentRepeat      contained start=+/\*+ end=+\*/+ contains=slC
 syntax match   slDecorator                    /^\s*@/ nextgroup=slDecoratorFunction
 syntax match   slDecoratorFunction  contained /\h[a-zA-Z0-9_.]*/ nextgroup=slParenDecorator
 
-syntax cluster slExpression  contains=slBracket,slParen,slObject,slTernaryIf,slTaggedTemplate,slTemplateString,slString,slNumber,slFloat,slOperator,slOperatorKeyword,slBooleanTrue,slBooleanFalse,slNull,slFunction,slArrowFunction,slGlobalObjects,slExceptions,slFutureKeys,slFuncCall,slNan,slPrototype,slBuiltins,slNoise,slClassDefinition,slArrowFunction,slArrowFuncArgs,slParensError,slComment,slArguments,slThis,slSuper,slDo,slForAwait,slAsyncKeyword,slStatement,slDot
+syntax cluster slExpression  contains=slBracket,slParen,slObject,slTernaryIf,slTaggedTemplate,slTemplateString,slString,slNumber,slFloat,slOperator,slOperatorKeyword,slBooleanTrue,slBooleanFalse,slNull,slFunction,slGenerator,slArrowFunction,slGlobalObjects,slExceptions,slFutureKeys,slFuncCall,slNan,slPrototype,slBuiltins,slNoise,slClassDefinition,slArrowFunction,slArrowFuncArgs,slParensError,slComment,slArguments,slThis,slSuper,slDo,slForAwait,slAsyncKeyword,slStatement,slDot
 syntax cluster slAll         contains=@slExpression,slStorageClass,slConditional,slRepeat,slReturn,slException,slTry,slNoise,slBlockLabel
 
 " Define the default highlighting.
@@ -234,7 +234,7 @@ if version >= 508 || !exists("did_slither_syn_inits")
   HiLink slForAwait             Keyword
   HiLink slArrowFunction        Type
   HiLink slFunction             Type
-  HiLink slGenerator            slFunction
+  HiLink slGenerator            Type
   HiLink slArrowFuncArgs        slFuncArgs
   HiLink slFuncName             Function
   HiLink slFuncCall             Function
