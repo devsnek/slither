@@ -55,6 +55,16 @@ fn iterator(args: Args) -> Result<Value, Value> {
     Ok(it)
 }
 
+fn pop(args: Args) -> Result<Value, Value> {
+    match args.this() {
+        Value::Object(o) => match &o.kind {
+            ObjectKind::Array(values) => Ok(values.borrow_mut().pop().unwrap_or(Value::Null)),
+            _ => Err(Value::new_error(args.agent(), "invalid receiver")),
+        },
+        _ => Err(Value::new_error(args.agent(), "invalid receiver")),
+    }
+}
+
 pub(crate) fn create_array_prototype(agent: &Agent) -> Value {
     let p = Value::new_object(agent.intrinsics.object_prototype.clone());
 
@@ -62,6 +72,13 @@ pub(crate) fn create_array_prototype(agent: &Agent) -> Value {
         agent,
         ObjectKey::from("sort"),
         Value::new_builtin_function(agent, sort),
+    )
+    .unwrap();
+
+    p.set(
+        agent,
+        ObjectKey::from("pop"),
+        Value::new_builtin_function(agent, pop),
     )
     .unwrap();
 
