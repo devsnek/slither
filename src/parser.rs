@@ -289,7 +289,7 @@ impl IntoValue for Error {
 
 struct Lexer<'a> {
     chars: Peekable<Chars<'a>>,
-    peeked: Option<Result<Token, Error>>,
+    peeked: Option<(Position, Result<Token, Error>)>,
     line: usize,
     column: usize,
 }
@@ -711,28 +711,25 @@ impl<'a> Lexer<'a> {
 
     fn next(&mut self) -> Result<Token, Error> {
         match self.peeked.take() {
-            Some(v) => v,
+            Some(v) => v.1,
             None => self.inner_next(),
-        }
-    }
-
-    pub(crate) fn peek(&mut self) -> Result<&Token, Error> {
-        if self.peeked.is_none() {
-            self.peeked = Some(self.next());
-        }
-        match self.peeked {
-            Some(Ok(ref value)) => Ok(value),
-            Some(Err(e)) => Err(e),
-            _ => unreachable!(),
         }
     }
 
     pub(crate) fn peek_immutable(&self) -> Result<&Token, Error> {
         match self.peeked {
-            Some(Ok(ref value)) => Ok(value),
-            Some(Err(e)) => Err(e),
-            _ => panic!(),
+            Some((_p, Ok(ref value))) => Ok(value),
+            Some((_p, Err(e))) => Err(e),
+            None => unreachable!(),
         }
+    }
+
+    pub(crate) fn peek(&mut self) -> Result<&Token, Error> {
+        if self.peeked.is_none() {
+            let position = self.position();
+            self.peeked = Some((position, self.next()));
+        }
+        self.peek_immutable()
     }
 
     fn skip_hashbang(&mut self) {
@@ -750,7 +747,11 @@ impl<'a> Lexer<'a> {
     }
 
     fn position(&self) -> Position {
-        Position(self.line, self.column)
+        if let Some((p, ..)) = self.peeked {
+            p
+        } else {
+            Position(self.line, self.column)
+        }
     }
 }
 
@@ -1805,6 +1806,7 @@ impl<'a> Parser<'a> {
                     Ok(Node::TupleLiteral(list, Span(start, self.lexer.position())))
                 }
             }
+            Token::Function => self.parse_function(true, FunctionKind::Normal, start),
             Token::Async => {
                 let list = self.parse_parameters()?;
                 self.expect(Token::Arrow)?;
