@@ -1057,7 +1057,11 @@ impl<'a> Parser<'a> {
             self.expect(Token::LeftBrace)?;
         }
         let saved = self.scope_bits;
-        self.scope_bits |= scope as u8;
+        self.scope_bits = if ((scope as u8) & (ParseScope::Function as u8)) != 0 {
+            scope as u8
+        } else {
+            self.scope_bits | (scope as u8)
+        };
         self.scope.push(Scope::new(scope));
         let mut statements = Vec::new();
         while !self.eat(Token::RightBrace) {
@@ -1807,6 +1811,7 @@ impl<'a> Parser<'a> {
                 }
             }
             Token::Function => self.parse_function(true, FunctionKind::Normal, start),
+            Token::Generator => self.parse_function(true, FunctionKind::Generator, start),
             Token::Async => {
                 let list = self.parse_parameters()?;
                 self.expect(Token::Arrow)?;
