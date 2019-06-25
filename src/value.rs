@@ -178,7 +178,7 @@ impl PartialOrd for ObjectKey {
             },
             ObjectKey::String(s) => match other {
                 ObjectKey::String(sv) => s.partial_cmp(sv),
-                ObjectKey::Number(n) => n.to_string().partial_cmp(s),
+                ObjectKey::Number(n) => s.partial_cmp(&n.to_string()),
                 ObjectKey::Symbol(..) => Some(std::cmp::Ordering::Less),
             },
             ObjectKey::Symbol(..) => match other {
@@ -1334,16 +1334,23 @@ fn inspect(
                         continue;
                     }
                     out += &format!(
-                        "\n{}{}: {},",
+                        "\n{}{}{},",
                         "  ".repeat(indent + 1),
-                        key.clone(),
+                        if array {
+                            match key {
+                                ObjectKey::Number(..) => String::new(),
+                                _ => format!("{}: ", key),
+                            }
+                        } else {
+                            format!("{}: ", key)
+                        },
                         inspect(
                             agent,
                             &value.get(agent, key).unwrap(),
                             indent + 1,
                             inspected
                         )
-                    )
+                    );
                 }
                 inspected.remove(&hash_key);
                 out += &format!("\n{}{}", "  ".repeat(indent), if array { "]" } else { "}" });
