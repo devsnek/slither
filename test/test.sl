@@ -1,13 +1,16 @@
-import { createInterval } from standard:timers;
+import { parse, stringify } from standard:json;
 
-(async () => {
-  let i = 0;
-  for await _ in createInterval(1000) {
-    i += 1;
-    print('hi!', i);
-    if i > 5 {
-      break;
-    }
-  }
-  print('done!');
-})();
+print(parse(`{
+  "a": 1,
+  "b": null,
+  "c": ["hi", [1, 2, 3]]
+}`));
+
+print(stringify({
+  a: 1,
+  b: null,
+  d: () => 1,
+  c: ['hi', (1, 2, 3)],
+  e: :owo,
+  [:owo]: 'OWO',
+}));

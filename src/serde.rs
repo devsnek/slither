@@ -1,8 +1,8 @@
-use crate::value::ObjectKey;
+use crate::value::{ObjectKey, ObjectKind, ValueType};
 use crate::{Agent, Value};
 
 #[derive(Debug)]
-pub(crate) struct Error;
+pub(crate) struct Error(String);
 impl std::fmt::Display for Error {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(fmt, "Error")
@@ -10,11 +10,19 @@ impl std::fmt::Display for Error {
 }
 impl std::error::Error for Error {}
 impl serde::ser::Error for Error {
-    fn custom<T>(_msg: T) -> Error
+    fn custom<T>(msg: T) -> Error
     where
         T: std::fmt::Display,
     {
-        Error
+        Error(format!("{}", msg))
+    }
+}
+impl serde::de::Error for Error {
+    fn custom<T>(msg: T) -> Error
+    where
+        T: std::fmt::Display,
+    {
+        Error(format!("{}", msg))
     }
 }
 
@@ -22,6 +30,12 @@ type SerializerResult = Result<Value, Error>;
 
 pub(crate) struct Serializer<'a> {
     agent: &'a Agent,
+}
+
+impl<'a> Serializer<'a> {
+    pub(crate) fn new(agent: &'a Agent) -> Serializer<'a> {
+        Serializer { agent }
+    }
 }
 
 pub(crate) fn serialize<T>(agent: &Agent, v: &T) -> SerializerResult
@@ -99,9 +113,8 @@ impl<'a> serde::Serializer for Serializer<'a> {
         Ok(Value::new_buffer_from_vec(self.agent, v.to_vec()))
     }
 
-    // An absent optional is represented as the JSON `null`.
     fn serialize_none(self) -> SerializerResult {
-        self.serialize_unit()
+        Ok(Value::Null)
     }
 
     fn serialize_some<T>(self, value: &T) -> SerializerResult
@@ -379,5 +392,393 @@ impl<'a> serde::ser::SerializeStructVariant for MapSerializer<'a> {
 
     fn end(self) -> SerializerResult {
         Ok(self.object)
+    }
+}
+
+pub(crate) struct Deserializer<'a, 'de> {
+    value: Value,
+    agent: &'a Agent,
+    phantom: std::marker::PhantomData<&'de ()>,
+}
+
+impl<'a, 'de> Deserializer<'a, 'de> {
+    pub(crate) fn new(agent: &'a Agent, value: Value) -> Deserializer<'a, 'de> {
+        Deserializer {
+            value,
+            agent,
+            phantom: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<'a, 'de> serde::Deserializer<'de> for Deserializer<'a, 'de> {
+    type Error = Error;
+
+    fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        match self.value {
+            Value::Null => self.deserialize_unit(visitor),
+            Value::Boolean(..) => self.deserialize_bool(visitor),
+            Value::String(..) => self.deserialize_string(visitor),
+            Value::Number(..) => self.deserialize_f64(visitor),
+            Value::Symbol(..) => self.deserialize_ignored_any(visitor),
+            Value::Object(ref o) => match o.kind {
+                ObjectKind::Array(..) => self.deserialize_seq(visitor),
+                ObjectKind::Buffer(..) => self.deserialize_byte_buf(visitor),
+                ObjectKind::BuiltinFunction(..) => self.deserialize_ignored_any(visitor),
+                ObjectKind::BytecodeFunction { .. } => self.deserialize_ignored_any(visitor),
+                _ => self.deserialize_map(visitor),
+            },
+            Value::Tuple(..) => self.deserialize_seq(visitor),
+            _ => unreachable!(),
+        }
+    }
+
+    fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        visitor.visit_unit()
+    }
+
+    fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        visitor.visit_bool(match self.value {
+            Value::Boolean(b) => b,
+            _ => unreachable!(),
+        })
+    }
+
+    fn deserialize_i8<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        visitor.visit_i8(match self.value {
+            Value::Number(n) => n as i8,
+            _ => unreachable!(),
+        })
+    }
+
+    fn deserialize_i16<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        visitor.visit_i16(match self.value {
+            Value::Number(n) => n as i16,
+            _ => unreachable!(),
+        })
+    }
+
+    fn deserialize_i32<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        visitor.visit_i32(match self.value {
+            Value::Number(n) => n as i32,
+            _ => unreachable!(),
+        })
+    }
+
+    fn deserialize_i64<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        visitor.visit_i64(match self.value {
+            Value::Number(n) => n as i64,
+            _ => unreachable!(),
+        })
+    }
+
+    fn deserialize_u8<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        visitor.visit_u8(match self.value {
+            Value::Number(n) => n as u8,
+            _ => unreachable!(),
+        })
+    }
+
+    fn deserialize_u16<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        visitor.visit_u16(match self.value {
+            Value::Number(n) => n as u16,
+            _ => unreachable!(),
+        })
+    }
+
+    fn deserialize_u32<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        visitor.visit_u32(match self.value {
+            Value::Number(n) => n as u32,
+            _ => unreachable!(),
+        })
+    }
+
+    fn deserialize_u64<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        visitor.visit_u64(match self.value {
+            Value::Number(n) => n as u64,
+            _ => unreachable!(),
+        })
+    }
+
+    fn deserialize_f32<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        visitor.visit_f32(match self.value {
+            Value::Number(n) => n as f32,
+            _ => unreachable!(),
+        })
+    }
+
+    fn deserialize_f64<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        visitor.visit_f64(match self.value {
+            Value::Number(n) => n,
+            _ => unreachable!(),
+        })
+    }
+
+    fn deserialize_char<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        visitor.visit_char(match self.value {
+            Value::String(s) => s.chars().nth(0).unwrap(),
+            _ => unreachable!(),
+        })
+    }
+
+    fn deserialize_str<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        visitor.visit_string(match self.value {
+            Value::String(s) => s,
+            _ => unreachable!(),
+        })
+    }
+
+    fn deserialize_string<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        self.deserialize_str(visitor)
+    }
+
+    fn deserialize_bytes<V>(self, _visitor: V) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        panic!();
+    }
+
+    fn deserialize_byte_buf<V>(self, _visitor: V) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        panic!();
+    }
+
+    fn deserialize_option<V>(self, _visitor: V) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        panic!();
+    }
+
+    fn deserialize_unit<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        visitor.visit_unit()
+    }
+
+    fn deserialize_unit_struct<V>(self, _name: &'static str, visitor: V) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        visitor.visit_unit()
+    }
+
+    fn deserialize_newtype_struct<V>(
+        self,
+        _name: &'static str,
+        _visitor: V,
+    ) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        panic!();
+    }
+
+    fn deserialize_seq<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        visitor.visit_seq(ObjectDeserializer::new(&self))
+    }
+
+    fn deserialize_tuple<V>(self, _len: usize, visitor: V) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        self.deserialize_seq(visitor)
+    }
+
+    fn deserialize_tuple_struct<V>(
+        self,
+        _name: &'static str,
+        _len: usize,
+        _visitor: V,
+    ) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        unreachable!();
+    }
+
+    fn deserialize_map<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        visitor.visit_map(ObjectDeserializer::new(&self))
+    }
+
+    fn deserialize_struct<V>(
+        self,
+        _name: &'static str,
+        _fields: &'static [&'static str],
+        _visitor: V,
+    ) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        panic!();
+    }
+
+    fn deserialize_enum<V>(
+        self,
+        _name: &'static str,
+        _variants: &'static [&'static str],
+        _visitor: V,
+    ) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        panic!();
+    }
+
+    fn deserialize_identifier<V>(self, _visitor: V) -> Result<V::Value, Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        panic!();
+    }
+}
+
+struct ObjectDeserializer<'a, 'de> {
+    de: &'a Deserializer<'a, 'de>,
+    keys: Vec<ObjectKey>,
+    index: usize,
+}
+
+impl<'a, 'de> ObjectDeserializer<'a, 'de> {
+    fn new(de: &'a Deserializer<'a, 'de>) -> Self {
+        ObjectDeserializer {
+            de,
+            keys: de.value.keys(de.agent).unwrap(),
+            index: 0,
+        }
+    }
+}
+
+impl<'a, 'de> serde::de::SeqAccess<'de> for ObjectDeserializer<'a, 'de> {
+    type Error = Error;
+
+    fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Error>
+    where
+        T: serde::de::DeserializeSeed<'de>,
+    {
+        if self.index >= self.keys.len() {
+            return Ok(None);
+        }
+        let value = self
+            .de
+            .value
+            .get(self.de.agent, self.keys[self.index].clone())
+            .unwrap();
+        self.index += 1;
+        seed.deserialize(Deserializer::new(self.de.agent, value))
+            .map(Some)
+    }
+}
+
+impl<'a, 'de> serde::de::MapAccess<'de> for ObjectDeserializer<'a, 'de> {
+    type Error = Error;
+
+    fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>, Error>
+    where
+        K: serde::de::DeserializeSeed<'de>,
+    {
+        loop {
+            if self.index >= self.keys.len() {
+                return Ok(None);
+            }
+            if let ObjectKey::Symbol(..) = self.keys[self.index] {
+                self.index += 1;
+                continue;
+            }
+            let value = self
+                .de
+                .value
+                .get(self.de.agent, self.keys[self.index].clone())
+                .unwrap();
+            match value.type_of() {
+                ValueType::Function | ValueType::Symbol => {
+                    self.index += 1;
+                }
+                _ => {
+                    return seed
+                        .deserialize(Deserializer::new(
+                            self.de.agent,
+                            match self.keys[self.index] {
+                                ObjectKey::Number(n) => Value::String(n.to_string()),
+                                ObjectKey::String(ref s) => Value::String(s.clone()),
+                                _ => unreachable!(),
+                            },
+                        ))
+                        .map(Some)
+                }
+            }
+        }
+    }
+
+    fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value, Error>
+    where
+        V: serde::de::DeserializeSeed<'de>,
+    {
+        let index = self.index;
+        self.index += 1;
+        let value = self
+            .de
+            .value
+            .get(self.de.agent, self.keys[index].clone())
+            .unwrap();
+        seed.deserialize(Deserializer::new(self.de.agent, value))
     }
 }

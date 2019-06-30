@@ -4,7 +4,7 @@ use crate::{Agent, IntoValue, Value};
 use gc::{Gc, GcCell};
 use std::collections::HashSet;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 enum ModuleStatus {
     Uninstantiated,
     Instantiating,
@@ -120,7 +120,7 @@ fn inner_module_instantiation(
     stack: &mut Vec<Gc<GcCell<Module>>>,
     mut index: u32,
 ) -> Result<u32, Value> {
-    let status = module.borrow().status.clone();
+    let status = module.borrow().status;
     match status {
         ModuleStatus::Instantiating | ModuleStatus::Instantiated | ModuleStatus::Evaluated => {
             Ok(index)
@@ -164,7 +164,7 @@ fn inner_module_evaluation(
     stack: &mut Vec<Gc<GcCell<Module>>>,
     mut index: u32,
 ) -> Result<u32, Value> {
-    let status = module.borrow().status.clone();
+    let status = module.borrow().status;
     match status {
         ModuleStatus::Evaluated | ModuleStatus::Evaluating => Ok(index),
         ModuleStatus::Instantiated => {
