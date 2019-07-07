@@ -109,9 +109,9 @@ macro_rules! OPS {
             (GreaterThanOrEqual, AccumulatorUse::ReadWrite, OpArg::Register),
             (LessThanOrEqual, AccumulatorUse::ReadWrite, OpArg::Register),
             (HasProperty, AccumulatorUse::ReadWrite, OpArg::Register),
-            (Eq, AccumulatorUse::ReadWrite, OpArg::Register),
-            (Neq, AccumulatorUse::ReadWrite, OpArg::Register),
-            (LNOT, AccumulatorUse::ReadWrite),
+            (Equal, AccumulatorUse::ReadWrite, OpArg::Register),
+            (NotEqual, AccumulatorUse::ReadWrite, OpArg::Register),
+            (Not, AccumulatorUse::ReadWrite),
             (BitNOT, AccumulatorUse::ReadWrite),
             (Typeof, AccumulatorUse::ReadWrite),
             (Void, AccumulatorUse::ReadWrite),
@@ -910,15 +910,15 @@ impl Interpreter {
                     let r = handle!(target.has(agent, key));
                     self.accumulator = Value::from(r);
                 }
-                Op::Eq => {
+                Op::Equal => {
                     let lhsid = read_u32!() as usize;
                     self.accumulator = Value::from(self.registers[lhsid] == self.accumulator);
                 }
-                Op::Neq => {
+                Op::NotEqual => {
                     let lhsid = read_u32!() as usize;
                     self.accumulator = Value::from(self.registers[lhsid] != self.accumulator);
                 }
-                Op::LNOT => {
+                Op::Not => {
                     self.accumulator = Value::from(!self.accumulator.to_bool());
                 }
                 Op::BitNOT => match self.accumulator {

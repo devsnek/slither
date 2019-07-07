@@ -222,8 +222,8 @@ pub enum Node {
 
     MatchExpression(Box<Node>, Vec<Node>, Span),
     MatchArm(Box<Node>, Box<Node>, Span),
-    ObjectPattern(IndexMap<String, Node>, bool, Span),
-    ArrayPattern(Vec<Node>, bool, Span),
+    ObjectPattern(IndexMap<String, String>, bool, Span),
+    ArrayPattern(Vec<String>, bool, Span),
 
     MemberExpression(Box<Node>, String, Span),
     ComputedMemberExpression(Box<Node>, Box<Node>, Span),
@@ -1951,6 +1951,7 @@ impl<'a> Parser<'a> {
                         }
                     }
                     let start = self.lexer.position();
+                    self.scope.push(Scope::new(ParseScope::Block));
                     let pattern = self.parse_pattern()?;
                     self.expect(Token::Arrow)?;
                     let consequent = if self.peek(Token::LeftBrace) {
@@ -1958,6 +1959,7 @@ impl<'a> Parser<'a> {
                     } else {
                         self.parse_expression()?
                     };
+                    self.scope.pop().unwrap();
                     arms.push(Node::MatchArm(
                         Box::new(pattern),
                         Box::new(consequent),
@@ -1984,20 +1986,14 @@ impl<'a> Parser<'a> {
             }
             // { a }
             // { a: b }
-            // { a: { c } }
             // { a: b, ... }
             Token::LeftBrace => {
                 let start = self.lexer.position();
                 self.lexer.next()?;
-                let mut patterns = IndexMap::new();
+                let mut bindings = IndexMap::new();
                 let mut first = true;
                 let mut wildcard = false;
                 while !self.eat(Token::RightBrace) {
-                    if !first && self.eat(Token::Ellipsis) {
-                        wildcard = true;
-                        self.expect(Token::RightBrace)?;
-                        break;
-                    }
                     if first {
                         first = false;
                     } else {
@@ -2005,40 +2001,37 @@ impl<'a> Parser<'a> {
                         if self.eat(Token::RightBrace) {
                             break;
                         }
+                        if self.eat(Token::Ellipsis) {
+                            wildcard = true;
+                            self.expect(Token::RightBrace)?;
+                            break;
+                        }
                     }
-                    let start = self.lexer.position();
                     let name = self.parse_identifier(false)?;
                     if self.eat(Token::Colon) {
-                        let pattern = self.parse_pattern()?;
-                        patterns.insert(name, pattern);
+                        let rename = self.parse_identifier(false)?;
+                        self.declare(&rename, false)?;
+                        bindings.insert(name, rename);
                     } else {
-                        patterns.insert(
-                            name.to_string(),
-                            Node::Identifier(name, Span(start, self.lexer.position())),
-                        );
+                        self.declare(&name, false)?;
+                        bindings.insert(name.to_string(), name.to_string());
                     }
                 }
                 Ok(Node::ObjectPattern(
-                    patterns,
+                    bindings,
                     wildcard,
                     Span(start, self.lexer.position()),
                 ))
             }
             // [a]
-            // [{ b }]
             // [a, ...]
             Token::LeftBracket => {
                 let start = self.lexer.position();
                 self.lexer.next()?;
-                let mut patterns = Vec::new();
+                let mut bindings = Vec::new();
                 let mut first = true;
                 let mut wildcard = false;
                 while !self.eat(Token::RightBracket) {
-                    if !first && self.eat(Token::Ellipsis) {
-                        wildcard = true;
-                        self.expect(Token::RightBracket)?;
-                        break;
-                    }
                     if first {
                         first = false;
                     } else {
@@ -2046,12 +2039,18 @@ impl<'a> Parser<'a> {
                         if self.eat(Token::RightBracket) {
                             break;
                         }
+                        if self.eat(Token::Ellipsis) {
+                            wildcard = true;
+                            self.expect(Token::RightBracket)?;
+                            break;
+                        }
                     }
-                    let pattern = self.parse_pattern()?;
-                    patterns.push(pattern);
+                    let name = self.parse_identifier(false)?;
+                    self.declare(&name, false)?;
+                    bindings.push(name);
                 }
                 Ok(Node::ArrayPattern(
-                    patterns,
+                    bindings,
                     wildcard,
                     Span(start, self.lexer.position()),
                 ))

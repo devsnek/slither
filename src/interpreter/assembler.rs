@@ -462,7 +462,7 @@ impl Assembler {
     fn visit_unary(&mut self, op: Operator, expr: &Node) {
         self.visit(expr);
         match op {
-            Operator::Not => self.push_op(Op::LNOT),
+            Operator::Not => self.push_op(Op::Not),
             Operator::BitwiseNOT => self.push_op(Op::BitNOT),
             Operator::Typeof => self.push_op(Op::Typeof),
             Operator::Void => self.push_op(Op::Void),
@@ -564,8 +564,8 @@ impl Assembler {
             Operator::LessThan => self.push_op(Op::LessThan),
             Operator::GreaterThanOrEqual => self.push_op(Op::GreaterThanOrEqual),
             Operator::LessThanOrEqual => self.push_op(Op::LessThanOrEqual),
-            Operator::Equal => self.push_op(Op::Eq),
-            Operator::NotEqual => self.push_op(Op::Neq),
+            Operator::Equal => self.push_op(Op::Equal),
+            Operator::NotEqual => self.push_op(Op::NotEqual),
             Operator::Has => self.push_op(Op::HasProperty),
             _ => unreachable!(),
         }
@@ -1016,38 +1016,67 @@ impl Assembler {
                     }
                     Node::StringLiteral(..) | Node::NumberLiteral(..) => {
                         self.visit(test);
-                        self.push_op(Op::Eq);
+                        self.push_op(Op::Equal);
                         self.push_u32(value.id);
                         self.jump_if_false(&mut next);
                         self.visit(consequent);
                     }
-                    Node::ObjectPattern(patterns, wildcard, ..) => {
-                        self.push_op(Op::EnterScope);
+                    Node::ObjectPattern(bindings, wildcard, ..) => {
                         if !*wildcard {
                             self.load_accumulator_with_register(&value);
                             self.call_runtime(RuntimeFunction::ObjectKeysLength);
                             let keys_length = rscope.register();
                             self.store_accumulator_in_register(&keys_length);
 
-                            self.load_f64(patterns.len() as f64);
-                            self.push_op(Op::Eq);
+                            self.load_f64(bindings.len() as f64);
+                            self.push_op(Op::Equal);
                             self.push_u32(keys_length.id);
                             self.jump_if_false(&mut next);
                         }
-                        for (binding, _pattern) in patterns {
-                            self.load_string(binding);
-                            self.push_op(Op::HasProperty); // TODO: replace with equality for pattern
+                        self.push_op(Op::EnterScope);
+                        for (name, binding) in bindings {
+                            self.load_string(name);
+                            self.push_op(Op::HasProperty);
                             self.push_u32(value.id);
                             self.jump_if_false(&mut next);
                             self.lexical_declaration(binding, false);
                             self.load_accumulator_with_register(&value);
-                            self.load_named_property(binding);
+                            self.load_named_property(name);
                             self.lexical_initialization(binding);
                         }
                         self.visit(consequent);
                         self.push_op(Op::ExitScope);
                     }
-                    Node::ArrayPattern(_patterns, _wildcard, ..) => unreachable!(),
+                    Node::ArrayPattern(bindings, wildcard, ..) => {
+                        let array_len = rscope.register();
+                        self.load_accumulator_with_register(&value);
+                        self.call_runtime(RuntimeFunction::IsArray);
+                        self.jump_if_false(&mut next);
+
+                        self.load_accumulator_with_register(&value);
+                        self.load_named_property("length");
+
+                        self.store_accumulator_in_register(&array_len);
+
+                        self.load_f64(bindings.len() as f64);
+                        self.push_op(if *wildcard {
+                            Op::GreaterThanOrEqual
+                        } else {
+                            Op::Equal
+                        });
+                        self.push_u32(array_len.id);
+                        self.jump_if_false(&mut next);
+
+                        self.push_op(Op::EnterScope);
+                        for (i, binding) in bindings.iter().enumerate() {
+                            self.lexical_declaration(binding, false);
+                            self.load_accumulator_with_register(&value);
+                            self.load_named_property(&i.to_string()); // FIXME: use indexed property
+                            self.lexical_initialization(binding);
+                        }
+                        self.visit(consequent);
+                        self.push_op(Op::ExitScope);
+                    }
                     _ => unreachable!(),
                 }
                 self.jump(&mut end);
