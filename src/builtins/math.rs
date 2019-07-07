@@ -35,8 +35,14 @@ fn max(args: Args) -> Result<Value, Value> {
 pub(crate) fn create(agent: &Agent) -> HashMap<String, Value> {
     let mut module = HashMap::new();
 
-    module.insert("min".to_string(), Value::new_builtin_function(agent, min));
-    module.insert("max".to_string(), Value::new_builtin_function(agent, max));
+    module.insert(
+        "min".to_string(),
+        Value::new_builtin_function(agent, min, false),
+    );
+    module.insert(
+        "max".to_string(),
+        Value::new_builtin_function(agent, max, false),
+    );
 
     macro_rules! C {
         ($n:ident) => {

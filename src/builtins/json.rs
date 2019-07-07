@@ -305,11 +305,11 @@ pub(crate) fn create(agent: &Agent) -> HashMap<String, Value> {
     let mut module = HashMap::new();
     module.insert(
         "parse".to_string(),
-        Value::new_builtin_function(agent, json_parse),
+        Value::new_builtin_function(agent, json_parse, false),
     );
     module.insert(
         "stringify".to_string(),
-        Value::new_builtin_function(agent, json_stringify),
+        Value::new_builtin_function(agent, json_stringify, false),
     );
 
     module

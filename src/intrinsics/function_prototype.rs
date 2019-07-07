@@ -16,7 +16,7 @@ pub(crate) fn create_function_prototype(agent: &mut Agent) {
         .set(
             agent,
             ObjectKey::from("call"),
-            Value::new_builtin_function(agent, call),
+            Value::new_builtin_function(agent, call, false),
         )
         .unwrap();
 }

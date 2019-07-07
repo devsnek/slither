@@ -177,11 +177,11 @@ pub(crate) fn create(agent: &Agent) -> HashMap<String, Value> {
     let mut module = HashMap::new();
     module.insert(
         "createTimeout".to_string(),
-        Value::new_builtin_function(agent, create_timeout),
+        Value::new_builtin_function(agent, create_timeout, false),
     );
     module.insert(
         "createInterval".to_string(),
-        Value::new_builtin_function(agent, create_interval),
+        Value::new_builtin_function(agent, create_interval, false),
     );
 
     module

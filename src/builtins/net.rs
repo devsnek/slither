@@ -204,11 +204,11 @@ pub(crate) fn create(agent: &Agent) -> HashMap<String, Value> {
     let mut module = HashMap::new();
     module.insert(
         "connect".to_string(),
-        Value::new_builtin_function(agent, connect),
+        Value::new_builtin_function(agent, connect, false),
     );
     module.insert(
         "listen".to_string(),
-        Value::new_builtin_function(agent, listen),
+        Value::new_builtin_function(agent, listen, false),
     );
 
     module

@@ -20,7 +20,7 @@ fn private(args: Args) -> Result<Value, Value> {
 }
 
 pub(crate) fn create_symbol(agent: &Agent) -> Value {
-    let s = Value::new_builtin_function(agent, symbol);
+    let s = Value::new_builtin_function(agent, symbol, true);
 
     s.set(
         agent,
@@ -37,7 +37,7 @@ pub(crate) fn create_symbol(agent: &Agent) -> Value {
     s.set(
         agent,
         ObjectKey::from("private"),
-        Value::new_builtin_function(agent, private),
+        Value::new_builtin_function(agent, private, false),
     )
     .expect("failed to set private on symbol constructor");
 

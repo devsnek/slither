@@ -698,7 +698,7 @@ impl Interpreter {
                             {
                                 slow_call!();
                             }
-                            ObjectKind::BuiltinFunction(..) => {
+                            ObjectKind::BuiltinFunction { .. } => {
                                 slow_call!();
                             }
                             ObjectKind::BytecodeFunction {

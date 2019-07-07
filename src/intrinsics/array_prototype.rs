@@ -71,21 +71,21 @@ pub(crate) fn create_array_prototype(agent: &Agent) -> Value {
     p.set(
         agent,
         ObjectKey::from("sort"),
-        Value::new_builtin_function(agent, sort),
+        Value::new_builtin_function(agent, sort, false),
     )
     .unwrap();
 
     p.set(
         agent,
         ObjectKey::from("pop"),
-        Value::new_builtin_function(agent, pop),
+        Value::new_builtin_function(agent, pop, false),
     )
     .unwrap();
 
     p.set(
         agent,
         ObjectKey::well_known_symbol("iterator"),
-        Value::new_builtin_function(agent, iterator),
+        Value::new_builtin_function(agent, iterator, false),
     )
     .unwrap();
 

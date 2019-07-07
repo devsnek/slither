@@ -18,7 +18,7 @@ pub(crate) fn create_boolean_prototype(agent: &Agent) -> Value {
         .set(
             agent,
             ObjectKey::well_known_symbol("toString"),
-            Value::new_builtin_function(agent, to_string),
+            Value::new_builtin_function(agent, to_string, false),
         )
         .unwrap();
 

@@ -73,9 +73,9 @@ pub(crate) fn on_rejected(args: Args) -> Result<Value, Value> {
 pub(crate) fn perform_await(agent: &Agent, ctx: Value, value: Value) -> Result<(), Value> {
     let promise = promise_resolve_i(agent, agent.intrinsics.promise.clone(), value)?;
 
-    let on_fulfilled = Value::new_builtin_function(agent, on_fulfilled);
+    let on_fulfilled = Value::new_builtin_function(agent, on_fulfilled, false);
     on_fulfilled.set_slot("async context", ctx.clone());
-    let on_rejected = Value::new_builtin_function(agent, on_rejected);
+    let on_rejected = Value::new_builtin_function(agent, on_rejected, false);
     on_rejected.set_slot("async context", ctx);
 
     promise.get(agent, ObjectKey::from("then"))?.call(

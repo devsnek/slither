@@ -28,7 +28,7 @@ pub(crate) fn create_iterator_map_prototype(agent: &Agent) -> Value {
         .set(
             agent,
             ObjectKey::from("next"),
-            Value::new_builtin_function(agent, next),
+            Value::new_builtin_function(agent, next, false),
         )
         .unwrap();
 

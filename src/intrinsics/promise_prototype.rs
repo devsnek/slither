@@ -93,7 +93,7 @@ fn then_finally_function(args: Args) -> Result<Value, Value> {
         args.function().get_slot("constructor"),
         result,
     )?;
-    let value_thunk = Value::new_builtin_function(args.agent(), value_thunk);
+    let value_thunk = Value::new_builtin_function(args.agent(), value_thunk, false);
     value_thunk.set_slot("value", args[0].clone());
     promise.get(args.agent(), ObjectKey::from("then"))?.call(
         args.agent(),
@@ -108,7 +108,7 @@ fn catch_finally_function(args: Args) -> Result<Value, Value> {
     let result = on_finally.call(args.agent(), Value::Null, vec![])?;
     let c = f.get_slot("constructor");
     let promise = promise_resolve_i(args.agent(), c, result)?;
-    let thrower = Value::new_builtin_function(args.agent(), value_thrower);
+    let thrower = Value::new_builtin_function(args.agent(), value_thrower, false);
     thrower.set_slot("value", args[0].clone());
     promise
         .get(args.agent(), ObjectKey::from("then"))?
@@ -130,10 +130,11 @@ fn promise_proto_finally(args: Args) -> Result<Value, Value> {
     }
 
     let (then_finally, catch_finally) = if args[0].type_of() == ValueType::Function {
-        let then_finally = Value::new_builtin_function(args.agent(), then_finally_function);
+        let then_finally = Value::new_builtin_function(args.agent(), then_finally_function, false);
         then_finally.set_slot("constructor", c.clone());
         then_finally.set_slot("on finally", args[0].clone());
-        let catch_finally = Value::new_builtin_function(args.agent(), catch_finally_function);
+        let catch_finally =
+            Value::new_builtin_function(args.agent(), catch_finally_function, false);
         catch_finally.set_slot("constructor", c);
         catch_finally.set_slot("on finally", args[0].clone());
         (then_finally, catch_finally)
@@ -154,19 +155,19 @@ pub(crate) fn create_promise_prototype(agent: &Agent) -> Value {
     p.set(
         agent,
         ObjectKey::from("then"),
-        Value::new_builtin_function(agent, promise_proto_then),
+        Value::new_builtin_function(agent, promise_proto_then, false),
     )
     .expect("unable to set then on promise prototype");
     p.set(
         agent,
         ObjectKey::from("catch"),
-        Value::new_builtin_function(agent, promise_proto_catch),
+        Value::new_builtin_function(agent, promise_proto_catch, false),
     )
     .expect("unable to set catch on promise prototype");
     p.set(
         agent,
         ObjectKey::from("finally"),
-        Value::new_builtin_function(agent, promise_proto_finally),
+        Value::new_builtin_function(agent, promise_proto_finally, false),
     )
     .expect("unable to set finally on promise prototype");
 

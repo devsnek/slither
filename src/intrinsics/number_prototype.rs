@@ -19,7 +19,7 @@ pub(crate) fn create_number_prototype(agent: &Agent) -> Value {
         .set(
             agent,
             ObjectKey::well_known_symbol("toString"),
-            Value::new_builtin_function(agent, to_string),
+            Value::new_builtin_function(agent, to_string, false),
         )
         .unwrap();
 
@@ -40,7 +40,7 @@ pub(crate) fn create_number_prototype(agent: &Agent) -> Value {
                 .set(
                     agent,
                     ObjectKey::from(stringify!($n)),
-                    Value::new_builtin_function(agent, $n),
+                    Value::new_builtin_function(agent, $n, false),
                 )
                 .unwrap();
         };
@@ -79,7 +79,7 @@ pub(crate) fn create_number_prototype(agent: &Agent) -> Value {
                 .set(
                     agent,
                     ObjectKey::from($sln),
-                    Value::new_builtin_function(agent, $n),
+                    Value::new_builtin_function(agent, $n, false),
                 )
                 .unwrap();
         };

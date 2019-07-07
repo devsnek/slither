@@ -105,6 +105,14 @@ fn print(args: Args) -> Result<Value, Value> {
     Ok(Value::Null)
 }
 
+// `Error` global
+fn error_constructor(args: Args) -> Result<Value, Value> {
+    match args[0] {
+        Value::String(ref s) => Ok(Value::new_error(args.agent(), s)),
+        _ => Err(Value::new_error(args.agent(), "message must be a string")),
+    }
+}
+
 impl Agent {
     pub fn new() -> Agent {
         let object_prototype = create_object_prototype();
@@ -177,7 +185,13 @@ impl Agent {
             scope.initialize("Symbol", agent.intrinsics.symbol.clone());
 
             scope.create(&agent, "print", false).unwrap();
-            scope.initialize("print", Value::new_builtin_function(&agent, print));
+            scope.initialize("print", Value::new_builtin_function(&agent, print, false));
+
+            scope.create(&agent, "Error", false).unwrap();
+            scope.initialize(
+                "Error",
+                Value::new_builtin_function(&agent, error_constructor, true),
+            );
         }
 
         agent

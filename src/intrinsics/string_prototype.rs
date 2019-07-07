@@ -40,7 +40,7 @@ pub(crate) fn create_string_prototype(agent: &Agent) -> Value {
     p.set(
         agent,
         ObjectKey::from("normalize"),
-        Value::new_builtin_function(agent, normalize),
+        Value::new_builtin_function(agent, normalize, false),
     )
     .unwrap();
 

@@ -88,11 +88,11 @@ fn create_resolving_functions(agent: &Agent, promise: &Value) -> ResolvingFuncti
     let already_resolved = Value::new_custom_object(Value::Null);
     already_resolved.set_slot("resolved", Value::from(false));
 
-    let resolve = Value::new_builtin_function(agent, promise_resolve_function);
+    let resolve = Value::new_builtin_function(agent, promise_resolve_function, false);
     resolve.set_slot("promise", promise.clone());
     resolve.set_slot("already resolved", already_resolved.clone());
 
-    let reject = Value::new_builtin_function(agent, promise_reject_function);
+    let reject = Value::new_builtin_function(agent, promise_reject_function, false);
     reject.set_slot("promise", promise.clone());
     reject.set_slot("already resolved", already_resolved);
 
@@ -181,7 +181,7 @@ fn get_capabilities_executor(args: Args) -> Result<Value, Value> {
 }
 
 pub(crate) fn new_promise_capability(agent: &Agent, constructor: Value) -> Result<Value, Value> {
-    let executor = Value::new_builtin_function(agent, get_capabilities_executor);
+    let executor = Value::new_builtin_function(agent, get_capabilities_executor, false);
     executor.set_slot("resolve", Value::Null);
     executor.set_slot("reject", Value::Null);
 
@@ -227,7 +227,7 @@ fn promise_reject(args: Args) -> Result<Value, Value> {
 }
 
 pub(crate) fn create_promise(agent: &Agent) -> Value {
-    let p = Value::new_builtin_function(agent, promise);
+    let p = Value::new_builtin_function(agent, promise, true);
 
     p.set(
         agent,
@@ -238,13 +238,13 @@ pub(crate) fn create_promise(agent: &Agent) -> Value {
     p.set(
         agent,
         ObjectKey::from("resolve"),
-        Value::new_builtin_function(agent, promise_resolve),
+        Value::new_builtin_function(agent, promise_resolve, false),
     )
     .unwrap();
     p.set(
         agent,
         ObjectKey::from("reject"),
-        Value::new_builtin_function(agent, promise_reject),
+        Value::new_builtin_function(agent, promise_reject, false),
     )
     .unwrap();
     agent

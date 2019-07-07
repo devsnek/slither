@@ -42,7 +42,7 @@ pub(crate) fn create_array_iterator_prototype(agent: &Agent) -> Value {
         .set(
             agent,
             ObjectKey::from("next"),
-            Value::new_builtin_function(agent, next),
+            Value::new_builtin_function(agent, next, false),
         )
         .unwrap();
 

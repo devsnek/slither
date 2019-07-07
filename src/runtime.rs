@@ -1,4 +1,4 @@
-use crate::value::{ObjectKey, ObjectKind};
+use crate::value::ObjectKey;
 use crate::{Agent, Value, ValueType};
 
 macro_rules! intrinsics {
@@ -7,7 +7,6 @@ macro_rules! intrinsics {
             (ToString, to_string),
             (GetIterator, get_iterator),
             (GetAsyncIterator, get_async_iterator),
-            (IsArray, is_array),
             (IteratorDone, iterator_done),
             (ObjectKeysLength, object_keys_length),
         );
@@ -55,17 +54,6 @@ fn iterator_done(agent: &Agent, accumulator: &mut Value) -> Result<(), Value> {
     } else {
         unreachable!();
     }
-    Ok(())
-}
-
-fn is_array(_agent: &Agent, accumulator: &mut Value) -> Result<(), Value> {
-    *accumulator = match accumulator {
-        Value::Object(o) => match o.kind {
-            ObjectKind::Array(..) => Value::True,
-            _ => Value::False,
-        },
-        _ => Value::False,
-    };
     Ok(())
 }
 

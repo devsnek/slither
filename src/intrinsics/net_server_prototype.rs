@@ -47,7 +47,7 @@ pub(crate) fn create_net_server_prototype(agent: &Agent) -> Value {
         .set(
             agent,
             ObjectKey::from("next"),
-            Value::new_builtin_function(agent, next),
+            Value::new_builtin_function(agent, next, false),
         )
         .unwrap();
 
@@ -55,7 +55,7 @@ pub(crate) fn create_net_server_prototype(agent: &Agent) -> Value {
         .set(
             agent,
             ObjectKey::from("close"),
-            Value::new_builtin_function(agent, close),
+            Value::new_builtin_function(agent, close, false),
         )
         .unwrap();
 

@@ -23,7 +23,7 @@ pub(crate) fn create_iterator_prototype(agent: &Agent) -> Value {
         .set(
             agent,
             ObjectKey::well_known_symbol("iterator"),
-            Value::new_builtin_function(agent, iterator),
+            Value::new_builtin_function(agent, iterator, false),
         )
         .unwrap();
 
@@ -31,7 +31,7 @@ pub(crate) fn create_iterator_prototype(agent: &Agent) -> Value {
         .set(
             agent,
             ObjectKey::from("map"),
-            Value::new_builtin_function(agent, map),
+            Value::new_builtin_function(agent, map, false),
         )
         .unwrap();
 

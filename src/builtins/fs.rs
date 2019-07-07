@@ -474,7 +474,10 @@ pub(crate) fn create(agent: &Agent) -> HashMap<String, Value> {
 
     macro_rules! method {
         ($name:expr, $fn:ident) => {
-            module.insert($name.to_string(), Value::new_builtin_function(agent, $fn));
+            module.insert(
+                $name.to_string(),
+                Value::new_builtin_function(agent, $fn, false),
+            );
         };
     }
     method!("readFile", read_file);

@@ -427,7 +427,7 @@ impl<'a, 'de> serde::Deserializer<'de> for Deserializer<'a, 'de> {
             Value::Object(ref o) => match o.kind {
                 ObjectKind::Array(..) => self.deserialize_seq(visitor),
                 ObjectKind::Buffer(..) => self.deserialize_byte_buf(visitor),
-                ObjectKind::BuiltinFunction(..) => self.deserialize_ignored_any(visitor),
+                ObjectKind::BuiltinFunction { .. } => self.deserialize_ignored_any(visitor),
                 ObjectKind::BytecodeFunction { .. } => self.deserialize_ignored_any(visitor),
                 _ => self.deserialize_map(visitor),
             },

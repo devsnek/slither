@@ -47,7 +47,7 @@ pub(crate) fn create_timer_iterator_prototype(agent: &Agent) -> Value {
         .set(
             agent,
             ObjectKey::from("next"),
-            Value::new_builtin_function(agent, next),
+            Value::new_builtin_function(agent, next, false),
         )
         .unwrap();
 
@@ -55,7 +55,7 @@ pub(crate) fn create_timer_iterator_prototype(agent: &Agent) -> Value {
         .set(
             agent,
             ObjectKey::from("stop"),
-            Value::new_builtin_function(agent, stop),
+            Value::new_builtin_function(agent, stop, false),
         )
         .unwrap();
 

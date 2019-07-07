@@ -12,7 +12,7 @@ pub(crate) fn create_async_iterator_prototype(agent: &Agent) -> Value {
         .set(
             agent,
             ObjectKey::well_known_symbol("asyncIterator"),
-            Value::new_builtin_function(agent, iterator),
+            Value::new_builtin_function(agent, iterator, false),
         )
         .unwrap();
 

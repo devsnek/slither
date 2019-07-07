@@ -66,7 +66,7 @@ pub(crate) fn create_regex_prototype(agent: &Agent) -> Value {
         .set(
             agent,
             ObjectKey::from("match"),
-            Value::new_builtin_function(agent, match_),
+            Value::new_builtin_function(agent, match_, false),
         )
         .unwrap();
 
@@ -74,7 +74,7 @@ pub(crate) fn create_regex_prototype(agent: &Agent) -> Value {
         .set(
             agent,
             ObjectKey::from("test"),
-            Value::new_builtin_function(agent, test),
+            Value::new_builtin_function(agent, test, false),
         )
         .unwrap();
 

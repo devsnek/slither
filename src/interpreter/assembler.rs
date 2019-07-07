@@ -1049,9 +1049,6 @@ impl Assembler {
                     }
                     Node::ArrayPattern(bindings, wildcard, ..) => {
                         let array_len = rscope.register();
-                        self.load_accumulator_with_register(&value);
-                        self.call_runtime(RuntimeFunction::IsArray);
-                        self.jump_if_false(&mut next);
 
                         self.load_accumulator_with_register(&value);
                         self.load_named_property("length");

@@ -284,7 +284,11 @@ pub(crate) enum ObjectKind {
         position: usize,
         scope: Gc<GcCell<Scope>>,
     },
-    BuiltinFunction(BuiltinFunction, GcCell<HashMap<String, Value>>),
+    BuiltinFunction {
+        function: BuiltinFunction,
+        slots: GcCell<HashMap<String, Value>>,
+        constructor: bool,
+    },
     Custom(GcCell<HashMap<String, Value>>),
 }
 
@@ -297,7 +301,7 @@ unsafe impl gc::Trace for ObjectKind {
             ObjectKind::BytecodeFunction { scope, .. } => {
                 mark(scope);
             }
-            ObjectKind::Custom(slots) | ObjectKind::BuiltinFunction(_, slots) => {
+            ObjectKind::Custom(slots) | ObjectKind::BuiltinFunction { slots, .. } => {
                 mark(slots);
             }
             _ => {}
@@ -320,7 +324,9 @@ impl std::fmt::Debug for ObjectKind {
             ObjectKind::BytecodeFunction { position, .. } => {
                 format!("CompiledFunction @ {}", position)
             }
-            ObjectKind::BuiltinFunction(f, ..) => format!("BuiltinFunction @ {:p}", f),
+            ObjectKind::BuiltinFunction { function, .. } => {
+                format!("BuiltinFunction @ {:p}", function)
+            }
         };
         write!(fmt, "{}", r)
     }
@@ -736,9 +742,13 @@ impl Value {
         }))
     }
 
-    pub fn new_builtin_function(agent: &Agent, f: BuiltinFunction) -> Value {
+    pub fn new_builtin_function(agent: &Agent, f: BuiltinFunction, constructor: bool) -> Value {
         Value::Object(Gc::new(ObjectInfo {
-            kind: ObjectKind::BuiltinFunction(f, GcCell::new(HashMap::new())),
+            kind: ObjectKind::BuiltinFunction {
+                function: f,
+                slots: GcCell::new(HashMap::new()),
+                constructor,
+            },
             properties: GcCell::new(IndexMap::new()),
             prototype: agent.intrinsics.function_prototype.clone(),
         }))
@@ -769,7 +779,7 @@ impl Value {
             Value::Symbol(..) => ValueType::Symbol,
             Value::Object(o) => match o.kind {
                 ObjectKind::BytecodeFunction { .. } => ValueType::Function,
-                ObjectKind::BuiltinFunction(..) => ValueType::Function,
+                ObjectKind::BuiltinFunction { .. } => ValueType::Function,
                 _ => ValueType::Object,
             },
             Value::Tuple(..) => ValueType::Tuple,
@@ -858,7 +868,7 @@ impl Value {
     pub(crate) fn get_slot(&self, key: &str) -> Value {
         if let Value::Object(o) = self {
             match &o.kind {
-                ObjectKind::Custom(slots) | ObjectKind::BuiltinFunction(_, slots) => {
+                ObjectKind::Custom(slots) | ObjectKind::BuiltinFunction { slots, .. } => {
                     match slots.borrow().get(key) {
                         Some(v) => v.clone(),
                         _ => panic!(),
@@ -874,7 +884,7 @@ impl Value {
     pub(crate) fn set_slot(&self, key: &str, value: Value) {
         if let Value::Object(o) = self {
             match &o.kind {
-                ObjectKind::Custom(slots) | ObjectKind::BuiltinFunction(_, slots) => {
+                ObjectKind::Custom(slots) | ObjectKind::BuiltinFunction { slots, .. } => {
                     slots.borrow_mut().insert(key.to_string(), value);
                 }
                 _ => panic!(),
@@ -887,7 +897,7 @@ impl Value {
     pub(crate) fn has_slot(&self, property: &str) -> bool {
         if let Value::Object(o) = self {
             match &o.kind {
-                ObjectKind::Custom(slots) | ObjectKind::BuiltinFunction(_, slots) => {
+                ObjectKind::Custom(slots) | ObjectKind::BuiltinFunction { slots, .. } => {
                     slots.borrow().contains_key(property)
                 }
                 _ => false,
@@ -972,21 +982,32 @@ impl Value {
                     ctx.borrow_mut().function = Some(self.clone());
                     evaluate_body(agent, ctx, *position, *kind, args, parameters)
                 }
-                ObjectKind::BuiltinFunction(f, ..) => {
-                    let c = Context::new(Scope::new(None));
-                    let mut b = c.borrow_mut();
-                    b.function = Some(self.clone());
-                    let args = BuiltinFunctionArgs {
-                        agent,
-                        context: &mut *b,
-                        arguments: args,
-                        this: if this == Value::Null {
-                            Value::Null
-                        } else {
-                            this.to_object(agent)?
-                        },
-                    };
-                    f(args)
+                ObjectKind::BuiltinFunction {
+                    function,
+                    constructor,
+                    ..
+                } => {
+                    if *constructor {
+                        Err(Value::new_error(
+                            agent,
+                            "value must be constructed with `new`",
+                        ))
+                    } else {
+                        let c = Context::new(Scope::new(None));
+                        let mut b = c.borrow_mut();
+                        b.function = Some(self.clone());
+                        let args = BuiltinFunctionArgs {
+                            agent,
+                            context: &mut *b,
+                            arguments: args,
+                            this: if this == Value::Null {
+                                Value::Null
+                            } else {
+                                this.to_object(agent)?
+                            },
+                        };
+                        function(args)
+                    }
                 }
                 _ => Err(Value::new_error(agent, "value is not a function")),
             },
@@ -1010,7 +1031,7 @@ impl Value {
                     ..
                 } => {
                     if *kind != FunctionKind::Normal
-                        || (*kind & FunctionKind::Arrow == FunctionKind::Arrow)
+                        || ((*kind & FunctionKind::Arrow) == FunctionKind::Arrow)
                     {
                         Err(Value::new_error(agent, "value is not a constructor"))
                     } else {
@@ -1030,26 +1051,34 @@ impl Value {
                         }
                     }
                 }
-                ObjectKind::BuiltinFunction(f, ..) => {
-                    let mut prototype = new_target.get(agent, ObjectKey::from("prototype"))?;
-                    if prototype.type_of() != ValueType::Object {
-                        prototype = agent.intrinsics.object_prototype.clone();
-                    }
-                    let this = Value::new_object(prototype);
-                    let c = Context::new(Scope::new(None));
-                    let mut cb = c.borrow_mut();
-                    cb.function = Some(self.clone());
-                    let args = BuiltinFunctionArgs {
-                        agent,
-                        context: &mut *cb,
-                        arguments: args,
-                        this: this.clone(),
-                    };
-                    let r = f(args)?;
-                    if r.type_of() == ValueType::Object {
-                        Ok(r)
+                ObjectKind::BuiltinFunction {
+                    function,
+                    constructor,
+                    ..
+                } => {
+                    if !constructor {
+                        Err(Value::new_error(agent, "value is not a constructor"))
                     } else {
-                        Ok(this)
+                        let mut prototype = new_target.get(agent, ObjectKey::from("prototype"))?;
+                        if prototype.type_of() != ValueType::Object {
+                            prototype = agent.intrinsics.object_prototype.clone();
+                        }
+                        let this = Value::new_object(prototype);
+                        let c = Context::new(Scope::new(None));
+                        let mut cb = c.borrow_mut();
+                        cb.function = Some(self.clone());
+                        let args = BuiltinFunctionArgs {
+                            agent,
+                            context: &mut *cb,
+                            arguments: args,
+                            this: this.clone(),
+                        };
+                        let r = function(args)?;
+                        if r.type_of() == ValueType::Object {
+                            Ok(r)
+                        } else {
+                            Ok(this)
+                        }
                     }
                 }
                 _ => Err(Value::new_error(agent, "value is not a function")),
