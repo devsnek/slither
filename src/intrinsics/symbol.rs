@@ -20,7 +20,7 @@ fn private(args: Args) -> Result<Value, Value> {
 }
 
 pub(crate) fn create_symbol(agent: &Agent) -> Value {
-    let s = Value::new_builtin_function(agent, symbol, true);
+    let s = Value::new_builtin_function(agent, symbol, false);
 
     s.set(
         agent,

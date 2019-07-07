@@ -31,7 +31,7 @@ lazy_static = "1.2"
 threadpool = "1.7"
 num_cpus = "1.9"
 regex = "1.1"
-rustyline = "3.0"
+rustyline = "5.0"
 unic = "0.9"
 phf = { version = "0.7" }
 ryu = "0.2"

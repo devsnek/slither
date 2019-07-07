@@ -63,7 +63,7 @@ fn start_repl() {
         let readline = rl.readline(">> ");
         match readline {
             Ok(line) => {
-                rl.add_history_entry(line.as_ref());
+                rl.add_history_entry(&line);
                 let ast = match Parser::parse(&line) {
                     Ok(a) => a,
                     Err(e) => match Parser::parse((line + ";").as_str()) {
