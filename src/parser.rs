@@ -204,8 +204,7 @@ pub enum Node {
 
     Block(Scope, Vec<Node>, Span),
 
-    IfStatement(Box<Node>, Box<Node>, Option<Box<Node>>, Span),
-    ConditionalExpression(Box<Node>, Box<Node>, Box<Node>, Span),
+    IfExpression(Box<Node>, Box<Node>, Option<Box<Node>>, Span),
 
     WhileLoop(Box<Node>, Box<Node>, Span),
     ForLoop(bool, String, Box<Node>, Box<Node>, Span),
@@ -1029,7 +1028,6 @@ impl<'a> Parser<'a> {
                 self.parse_function(false, FunctionKind::Generator, start)
             }
             Token::Class => self.parse_class(false),
-            Token::If => self.parse_if_statement(),
             Token::While => self.parse_while(),
             Token::For => self.parse_for(),
             Token::Continue if self.scope(ParseScope::Loop) => {
@@ -1050,12 +1048,21 @@ impl<'a> Parser<'a> {
             Token::At => self.parse_decorators(),
             Token::Import if self.scope(ParseScope::TopLevel) => self.parse_import(),
             Token::Export if self.scope(ParseScope::TopLevel) => self.parse_export(),
+            Token::If => {
+                let start = self.lexer.position();
+                self.lexer.next()?;
+                let expr = self.parse_if_expression(start)?;
+                Ok(Node::ExpressionStatement(
+                    Box::new(expr),
+                    Span(start, self.lexer.position()),
+                ))
+            }
             _ => {
                 let start = self.lexer.position();
-                let r = self.parse_expression()?;
+                let expr = self.parse_expression()?;
                 self.expect(Token::Semicolon)?;
                 Ok(Node::ExpressionStatement(
-                    Box::new(r),
+                    Box::new(expr),
                     Span(start, self.lexer.position()),
                 ))
             }
@@ -1157,41 +1164,6 @@ impl<'a> Parser<'a> {
                 Span(pos, self.lexer.position()),
             )
         })
-    }
-
-    fn parse_if_statement(&mut self) -> Result<Node, Error> {
-        let start = self.lexer.position();
-        self.expect(Token::If)?;
-        let test = self.parse_expression()?;
-        let consequent = self.parse_block(ParseScope::Block)?;
-        if self.eat(Token::Else) {
-            let alternative = if self.lexer.peek() == Ok(&Token::If) {
-                self.parse_if_statement()?
-            } else {
-                self.parse_block(ParseScope::Block)?
-            };
-            match constant_truthy(&test) {
-                Some(true) => Ok(consequent),
-                Some(false) => Ok(alternative),
-                None => Ok(Node::IfStatement(
-                    Box::new(test),
-                    Box::new(consequent),
-                    Some(Box::new(alternative)),
-                    Span(start, self.lexer.position()),
-                )),
-            }
-        } else {
-            match constant_truthy(&test) {
-                Some(true) => Ok(consequent),
-                Some(false) => Ok(Node::NullLiteral(Span(start, self.lexer.position()))),
-                None => Ok(Node::IfStatement(
-                    Box::new(test),
-                    Box::new(consequent),
-                    None,
-                    Span(start, self.lexer.position()),
-                )),
-            }
-        }
     }
 
     fn parse_while(&mut self) -> Result<Node, Error> {
@@ -1450,7 +1422,7 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        let mut lhs = self.parse_conditional_expression()?;
+        let mut lhs = self.parse_logical_or_expression()?;
 
         macro_rules! op_assign {
             ($op:expr) => {{
@@ -1483,29 +1455,6 @@ impl<'a> Parser<'a> {
             Node::ComputedMemberExpression(..) => Ok(()),
             _ => Err(Error::InvalidAssignmentTarget(self.lexer.position())),
         }
-    }
-
-    fn parse_conditional_expression(&mut self) -> Result<Node, Error> {
-        let start = self.lexer.position();
-        let lhs = self.parse_logical_or_expression()?;
-        if self.eat(Token::Question) {
-            let consequent = self.parse_assignment_expression()?;
-            self.expect(Token::Colon)?;
-            let alternative = self.parse_assignment_expression()?;
-            match constant_truthy(&lhs) {
-                Some(true) => return Ok(consequent),
-                Some(false) => return Ok(alternative),
-                None => {
-                    return Ok(Node::ConditionalExpression(
-                        Box::new(lhs),
-                        Box::new(consequent),
-                        Box::new(alternative),
-                        Span(start, self.lexer.position()),
-                    ));
-                }
-            }
-        }
-        Ok(lhs)
     }
 
     binop_production!(
@@ -1821,6 +1770,7 @@ impl<'a> Parser<'a> {
                     Ok(Node::TupleLiteral(list, Span(start, self.lexer.position())))
                 }
             }
+            Token::If => self.parse_if_expression(start),
             Token::Function => self.parse_function(true, FunctionKind::Normal, start),
             Token::Generator => self.parse_function(true, FunctionKind::Generator, start),
             Token::Async => {
@@ -1984,6 +1934,41 @@ impl<'a> Parser<'a> {
                 ))
             }
             _ => Err(Error::UnexpectedToken(start)),
+        }
+    }
+
+    fn parse_if_expression(&mut self, start: Position) -> Result<Node, Error> {
+        let test = self.parse_expression()?;
+        let consequent = self.parse_block(ParseScope::Block)?;
+        if self.eat(Token::Else) {
+            let alternative = if self.lexer.peek() == Ok(&Token::If) {
+                let start = self.lexer.position();
+                self.lexer.next()?;
+                self.parse_if_expression(start)?
+            } else {
+                self.parse_block(ParseScope::Block)?
+            };
+            match constant_truthy(&test) {
+                Some(true) => Ok(consequent),
+                Some(false) => Ok(alternative),
+                None => Ok(Node::IfExpression(
+                    Box::new(test),
+                    Box::new(consequent),
+                    Some(Box::new(alternative)),
+                    Span(start, self.lexer.position()),
+                )),
+            }
+        } else {
+            match constant_truthy(&test) {
+                Some(true) => Ok(consequent),
+                Some(false) => Ok(Node::NullLiteral(Span(start, self.lexer.position()))),
+                None => Ok(Node::IfExpression(
+                    Box::new(test),
+                    Box::new(consequent),
+                    None,
+                    Span(start, self.lexer.position()),
+                )),
+            }
         }
     }
 

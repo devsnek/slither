@@ -113,11 +113,8 @@ impl Assembler {
             Node::TemplateLiteral(quasis, exprs, ..) => self.visit_template(quasis, exprs),
             Node::Identifier(var, ..) => self.visit_identifier(var),
             Node::Block(scope, stmts, ..) => self.visit_block(scope, stmts),
-            Node::IfStatement(test, consequent, alternative, ..) => {
+            Node::IfExpression(test, consequent, alternative, ..) => {
                 self.visit_if(test, consequent, alternative)
-            }
-            Node::ConditionalExpression(test, consequent, alternative, ..) => {
-                self.visit_conditional(test, consequent, alternative)
             }
             Node::WhileLoop(test, body, ..) => self.visit_while(test, body),
             Node::ForLoop(r#async, binding, target, body, ..) => {
@@ -335,15 +332,6 @@ impl Assembler {
         if let Some(alternative) = alternative {
             self.visit(alternative);
         }
-    }
-
-    fn visit_conditional(&mut self, test: &Node, consequent: &Node, alternative: &Node) {
-        let mut alt = self.label();
-        self.visit(test);
-        self.jump_if_false(&mut alt);
-        self.visit(consequent);
-        self.mark(&mut alt);
-        self.visit(alternative);
     }
 
     fn visit_while(&mut self, test: &Node, body: &Node) {
