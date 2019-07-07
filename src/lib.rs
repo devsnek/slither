@@ -73,7 +73,7 @@ pub fn disassemble(code: &str) {
 
     let ast = match Parser::parse(code) {
         Ok(ast) => ast,
-        Err(e) => panic!(format!("{:?}", e)),
+        Err(e) => panic!(format!("Parsing error: {:?}", e)),
     };
     let _idx = agent.assembler.assemble(&ast);
 

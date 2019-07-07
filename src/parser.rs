@@ -299,7 +299,7 @@ impl<'a> Lexer<'a> {
         Lexer {
             chars: code.chars().peekable(),
             peeked: None,
-            line: 0,
+            line: 1,
             column: 0,
         }
     }
@@ -309,7 +309,7 @@ impl<'a> Lexer<'a> {
         if let Some('\n') = c {
             self.column = 0;
             self.line += 1;
-        } else {
+        } else if let Some(..) = c {
             self.column += 1;
         }
         c
@@ -614,13 +614,23 @@ impl<'a> Lexer<'a> {
                         Token::Operator(Operator::DivAssign)
                     }
                     Some('*') => {
+                        self.next_char();
+                        let mut depth = 1;
                         loop {
                             if self.chars.peek() == None {
                                 return Err(Error::UnexpectedEOF(self.position()));
                             }
-                            if let Some('*') = self.next_char() {
+                            let c1 = self.next_char();
+                            if let Some('/') = c1 {
+                                if let Some('*') = self.next_char() {
+                                    depth += 1;
+                                }
+                            } else if let Some('*') = c1 {
                                 if let Some('/') = self.next_char() {
-                                    break;
+                                    depth -= 1;
+                                    if depth == 0 {
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -975,6 +985,7 @@ impl<'a> Parser<'a> {
         let pos = self.lexer.position();
         match self.lexer.next()? {
             ref t if t == &token => Ok(token),
+            Token::EOF => Err(Error::UnexpectedEOF(pos)),
             _ => Err(Error::UnexpectedToken(pos)),
         }
     }
@@ -1721,11 +1732,11 @@ impl<'a> Parser<'a> {
             Token::Operator(Operator::Div) => {
                 let mut pattern = String::new();
                 loop {
-                    match self.lexer.chars.next() {
+                    match self.lexer.next_char() {
                         Some('/') => break,
                         Some('\\') => {
                             pattern.push('\\');
-                            pattern.push(self.lexer.chars.next().unwrap());
+                            pattern.push(self.lexer.next_char().unwrap());
                         }
                         Some(c) => {
                             pattern.push(c);
@@ -1823,12 +1834,12 @@ impl<'a> Parser<'a> {
                 let mut expressions = Vec::new();
                 let mut current = String::new();
                 loop {
-                    match self.lexer.chars.next() {
+                    match self.lexer.next_char() {
                         Some('$') => {
                             if self.lexer.chars.peek() == Some(&'{') {
                                 quasis.push(current);
                                 current = String::new();
-                                self.lexer.chars.next();
+                                self.lexer.next_char();
                                 let expr = self.parse_expression()?;
                                 expressions.push(expr);
                                 self.expect(Token::RightBrace)?;
@@ -1839,12 +1850,12 @@ impl<'a> Parser<'a> {
                         Some('`') => break,
                         Some(c) => {
                             if c == '\\' {
-                                match self.lexer.chars.next() {
+                                match self.lexer.next_char() {
                                     Some('n') => current.push('\n'),
                                     Some('t') => current.push('\t'),
                                     Some('\\') => current.push('\\'),
                                     Some('u') => {
-                                        if Some('{') != self.lexer.chars.next() {
+                                        if Some('{') != self.lexer.next_char() {
                                             return Err(Error::UnexpectedToken(
                                                 self.lexer.position(),
                                             ));
@@ -1852,7 +1863,7 @@ impl<'a> Parser<'a> {
                                         let mut n = String::new();
                                         macro_rules! digit {
                                             () => {
-                                                let next = self.lexer.chars.next();
+                                                let next = self.lexer.next_char();
                                                 match next {
                                                     Some('0'...'9') | Some('a'...'f')
                                                     | Some('A'...'F') => {
@@ -1885,21 +1896,21 @@ impl<'a> Parser<'a> {
                                                 ))
                                             }
                                         }
-                                        if Some('}') != self.lexer.chars.next() {
+                                        if Some('}') != self.lexer.next_char() {
                                             return Err(Error::UnexpectedToken(
                                                 self.lexer.position(),
                                             ));
                                         }
                                     }
                                     Some('U') => {
-                                        if Some('{') != self.lexer.chars.next() {
+                                        if Some('{') != self.lexer.next_char() {
                                             return Err(Error::UnexpectedToken(
                                                 self.lexer.position(),
                                             ));
                                         }
                                         let mut name = String::new();
                                         loop {
-                                            match self.lexer.chars.next() {
+                                            match self.lexer.next_char() {
                                                 Some('}') => break,
                                                 None => {
                                                     return Err(Error::UnexpectedEOF(
