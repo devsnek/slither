@@ -34,6 +34,36 @@ fn normalize(args: Args) -> Result<Value, Value> {
     }
 }
 
+fn substring(args: Args) -> Result<Value, Value> {
+    if let Value::Object(o) = args.this() {
+        if let ObjectKind::String(s) = &o.kind {
+            if let Value::Number(start) = args[0] {
+                let end = if let Value::Number(n) = args[1] {
+                    n as usize
+                } else if args[1] == Value::Null {
+                    s.len()
+                } else {
+                    return Err(Value::new_error(
+                        args.agent(),
+                        "second argument must be a number",
+                    ));
+                };
+                let start = start as usize;
+                Ok(Value::String(s[start..end].iter().cloned().collect()))
+            } else {
+                Err(Value::new_error(
+                    args.agent(),
+                    "first argument must be a number",
+                ))
+            }
+        } else {
+            Err(Value::new_error(args.agent(), "invalid receiver"))
+        }
+    } else {
+        Err(Value::new_error(args.agent(), "invalid receiver"))
+    }
+}
+
 pub(crate) fn create_string_prototype(agent: &Agent) -> Value {
     let p = Value::new_object(agent.intrinsics.object_prototype.clone());
 
@@ -41,6 +71,12 @@ pub(crate) fn create_string_prototype(agent: &Agent) -> Value {
         agent,
         ObjectKey::from("normalize"),
         Value::new_builtin_function(agent, normalize, false),
+    )
+    .unwrap();
+    p.set(
+        agent,
+        ObjectKey::from("substring"),
+        Value::new_builtin_function(agent, substring, false),
     )
     .unwrap();
 
