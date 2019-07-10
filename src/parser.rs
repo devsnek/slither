@@ -224,10 +224,10 @@ pub enum Node {
     ObjectPattern(IndexMap<String, String>, bool, Span),
     ArrayPattern(Vec<String>, bool, Span),
 
-    MemberExpression(Box<Node>, String, Span),
-    ComputedMemberExpression(Box<Node>, Box<Node>, Span),
-    CallExpression(Box<Node>, Vec<Node>, Span),
-    TailCallExpression(Box<Node>, Vec<Node>, Span),
+    MemberExpression(Box<Node>, String, bool, Span),
+    ComputedMemberExpression(Box<Node>, Box<Node>, bool, Span),
+    CallExpression(Box<Node>, Vec<Node>, bool, Span),
+    TailCallExpression(Box<Node>, Vec<Node>, bool, Span),
 
     FunctionExpression(FunctionKind, Option<String>, Vec<Node>, Box<Node>, Span),
     FunctionDeclaration(FunctionKind, String, Vec<Node>, Box<Node>, Span),
@@ -1219,8 +1219,8 @@ impl<'a> Parser<'a> {
             self.expect(Token::Semicolon)?;
             Ok(Node::ReturnStatement(
                 Some(Box::new(
-                    if let Node::CallExpression(callee, arguments, s) = expr {
-                        Node::TailCallExpression(callee, arguments, s)
+                    if let Node::CallExpression(callee, arguments, optional, s) = expr {
+                        Node::TailCallExpression(callee, arguments, optional, s)
                     } else {
                         expr
                     },
@@ -1298,7 +1298,7 @@ impl<'a> Parser<'a> {
         {
             let mut top = Node::FunctionExpression(kind, None, args, body, span);
             for d in decorators {
-                top = Node::CallExpression(Box::new(d), vec![top], Span::empty());
+                top = Node::CallExpression(Box::new(d), vec![top], false, Span::empty());
             }
             Ok(Node::LexicalInitialization(
                 name,
@@ -1590,11 +1590,13 @@ impl<'a> Parser<'a> {
             self.parse_primary_expression()?
         };
         loop {
+            let optional = self.eat(Token::Question);
             if self.eat(Token::Dot) {
                 let property = self.parse_identifier(true)?;
                 base = Node::MemberExpression(
                     Box::new(base),
                     property,
+                    optional,
                     Span(start, self.lexer.position()),
                 );
             } else if self.eat(Token::LeftBracket) {
@@ -1603,12 +1605,17 @@ impl<'a> Parser<'a> {
                 base = Node::ComputedMemberExpression(
                     Box::new(base),
                     Box::new(property),
+                    optional,
                     Span(start, self.lexer.position()),
                 );
             } else if calls && self.eat(Token::LeftParen) {
                 let (list, ..) = self.parse_expression_list(Token::RightParen)?;
-                base =
-                    Node::CallExpression(Box::new(base), list, Span(start, self.lexer.position()));
+                base = Node::CallExpression(
+                    Box::new(base),
+                    list,
+                    optional,
+                    Span(start, self.lexer.position()),
+                );
             } else {
                 return Ok(base);
             }

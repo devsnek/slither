@@ -76,6 +76,7 @@ macro_rules! OPS {
             (JumpIfTrue, AccumulatorUse::Read, OpArg::Position),
             (JumpIfFalse, AccumulatorUse::Read, OpArg::Position),
             (JumpIfNotEmpty, AccumulatorUse::Read, OpArg::Position),
+            (JumpIfNull, AccumulatorUse::Read, OpArg::Position),
 
             (PushTry, AccumulatorUse::None,OpArg::Position),
             (PopTry, AccumulatorUse::None),
@@ -790,6 +791,12 @@ impl Interpreter {
                 Op::JumpIfNotEmpty => {
                     let position = read_u32!() as usize;
                     if self.accumulator != Value::Empty {
+                        self.pc = position;
+                    }
+                }
+                Op::JumpIfNull => {
+                    let position = read_u32!() as usize;
+                    if self.accumulator == Value::Null {
                         self.pc = position;
                     }
                 }

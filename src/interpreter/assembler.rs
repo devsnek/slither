@@ -128,12 +128,18 @@ impl Assembler {
             Node::AwaitExpression(expr, ..) => self.visit_await(expr),
             Node::ThisExpression(..) => self.visit_this(),
             Node::NewExpression(callee, args, ..) => self.visit_new(callee, args),
-            Node::MemberExpression(target, key, ..) => self.visit_member_expression(target, key),
-            Node::ComputedMemberExpression(target, expr, ..) => {
-                self.visit_computed_member_expression(target, expr)
+            Node::MemberExpression(target, key, opt, ..) => {
+                self.visit_member_expression(target, key, *opt)
             }
-            Node::CallExpression(callee, args, ..) => self.visit_call(callee, args, false),
-            Node::TailCallExpression(callee, args, ..) => self.visit_call(callee, args, true),
+            Node::ComputedMemberExpression(target, expr, opt, ..) => {
+                self.visit_computed_member_expression(target, expr, *opt)
+            }
+            Node::CallExpression(callee, args, opt, ..) => {
+                self.visit_call(callee, args, *opt, false)
+            }
+            Node::TailCallExpression(callee, args, opt, ..) => {
+                self.visit_call(callee, args, *opt, true)
+            }
             Node::FunctionExpression(kind, name, args, body, ..) => {
                 self.visit_function_expression(*kind, name, args, body)
             }
@@ -325,13 +331,16 @@ impl Assembler {
 
     fn visit_if(&mut self, test: &Node, consequent: &Node, alternative: &Option<Box<Node>>) {
         let mut alt = self.label();
+        let mut end = self.label();
         self.visit(test);
         self.jump_if_false(&mut alt);
         self.visit(consequent);
+        self.jump(&mut end);
         self.mark(&mut alt);
         if let Some(alternative) = alternative {
             self.visit(alternative);
         }
+        self.mark(&mut end);
     }
 
     fn visit_while(&mut self, test: &Node, body: &Node) {
@@ -621,21 +630,45 @@ impl Assembler {
         self.push_op(Op::GetThis);
     }
 
-    fn visit_member_expression(&mut self, target: &Node, key: &str) {
+    fn visit_member_expression(&mut self, target: &Node, key: &str, opt: bool) {
+        let mut null = self.label();
+        let mut end = self.label();
         self.visit(target);
+        if opt {
+            self.jump_if_null(&mut null);
+        }
         self.load_named_property(key);
+        if opt {
+            self.jump(&mut end);
+            self.mark(&mut null);
+            self.load_null();
+            self.mark(&mut end);
+        }
     }
 
-    fn visit_computed_member_expression(&mut self, base: &Node, key: &Node) {
+    fn visit_computed_member_expression(&mut self, base: &Node, key: &Node, opt: bool) {
+        let mut null = self.label();
+        let mut end = self.label();
         let rscope = RegisterScope::new(self);
         let obj = rscope.register();
         self.visit(base);
+        if opt {
+            self.jump_if_null(&mut null);
+        }
         self.store_accumulator_in_register(&obj);
         self.visit(key);
         self.load_computed_property(&obj);
+        if opt {
+            self.jump(&mut end);
+            self.mark(&mut null);
+            self.load_null();
+            self.mark(&mut end);
+        }
     }
 
-    fn visit_call(&mut self, callee_node: &Node, args: &[Node], tail: bool) {
+    fn visit_call(&mut self, callee_node: &Node, args: &[Node], opt: bool, tail: bool) {
+        let mut end = self.label();
+        let mut null = self.label();
         let rscope = RegisterScope::new(self);
 
         let receiver = rscope.register();
@@ -646,6 +679,9 @@ impl Assembler {
                 self.visit(base);
                 self.store_accumulator_in_register(&receiver);
                 self.load_named_property(prop);
+                if opt {
+                    self.jump_if_null(&mut null);
+                }
                 self.store_accumulator_in_register(&callee);
             }
             Node::ComputedMemberExpression(base, key, ..) => {
@@ -653,12 +689,18 @@ impl Assembler {
                 self.store_accumulator_in_register(&receiver);
                 self.visit(key);
                 self.load_computed_property(&receiver);
+                if opt {
+                    self.jump_if_null(&mut null);
+                }
                 self.store_accumulator_in_register(&callee);
             }
             _ => {
                 self.load_null();
                 self.store_accumulator_in_register(&receiver);
                 self.visit(callee_node);
+                if opt {
+                    self.jump_if_null(&mut null);
+                }
                 self.store_accumulator_in_register(&callee);
             }
         };
@@ -676,6 +718,12 @@ impl Assembler {
         self.push_u32(callee.id);
         self.push_u32(rarg);
         self.push_u8(args.len() as u8);
+        if opt {
+            self.jump(&mut end);
+            self.mark(&mut null);
+            self.load_null();
+            self.mark(&mut end);
+        }
     }
 
     fn visit_new(&mut self, callee: &Node, args: &[Node]) {
@@ -1136,6 +1184,11 @@ impl Assembler {
 
     fn jump_if_not_empty(&mut self, label: &mut Label) {
         self.push_op(Op::JumpIfNotEmpty);
+        self.jmp(label);
+    }
+
+    fn jump_if_null(&mut self, label: &mut Label) {
+        self.push_op(Op::JumpIfNull);
         self.jmp(label);
     }
 
