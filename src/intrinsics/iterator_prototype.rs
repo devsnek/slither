@@ -16,6 +16,26 @@ fn map(args: Args) -> Result<Value, Value> {
     Ok(iterator)
 }
 
+fn foreach(args: Args) -> Result<Value, Value> {
+    let iterated = args.this().to_iterator(args.agent())?;
+    if args[0].type_of() != ValueType::Function {
+        return Err(Value::new_error(args.agent(), "cb is not a function"));
+    }
+    if let Value::Iterator(iterator, next) = iterated {
+        loop {
+            let result = next.call(args.agent(), (*iterator).clone(), vec![])?;
+            let done = result.get(args.agent(), ObjectKey::from("done"))?;
+            if done == Value::from(true) {
+                return Ok(Value::Null);
+            }
+            let value = result.get(args.agent(), ObjectKey::from("value"))?;
+            args[0].call(args.agent(), Value::Null, vec![value])?;
+        }
+    } else {
+        unreachable!();
+    }
+}
+
 pub(crate) fn create_iterator_prototype(agent: &Agent) -> Value {
     let proto = Value::new_object(agent.intrinsics.object_prototype.clone());
 
@@ -32,6 +52,13 @@ pub(crate) fn create_iterator_prototype(agent: &Agent) -> Value {
             agent,
             ObjectKey::from("map"),
             Value::new_builtin_function(agent, map, false),
+        )
+        .unwrap();
+    proto
+        .set(
+            agent,
+            ObjectKey::from("forEach"),
+            Value::new_builtin_function(agent, foreach, false),
         )
         .unwrap();
 
