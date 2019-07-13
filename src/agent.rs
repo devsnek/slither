@@ -228,7 +228,7 @@ impl Agent {
         }
     }
 
-    fn resolve(&self, specifier: &str, referrer: &str) -> std::io::Result<String> {
+    pub fn resolve(&self, specifier: &str, referrer: &str) -> std::io::Result<String> {
         let filename = std::path::Path::new(referrer)
             .parent()
             .unwrap()
@@ -241,7 +241,7 @@ impl Agent {
                 .unwrap()
                 .to_string()),
             Ok(_) => {
-                let r = filename.with_file_name("module.sl");
+                let r = filename.join("module.sl");
                 match std::fs::metadata(&r) {
                     Ok(_) => Ok(r.canonicalize().unwrap().to_str().unwrap().to_string()),
                     Err(e) => Err(e),

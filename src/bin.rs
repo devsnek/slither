@@ -14,38 +14,41 @@ fn main() {
         )
         .get_matches();
 
-    let source = if matches.is_present("FILENAME") {
-        let filename = matches.value_of("FILENAME").unwrap();
-        std::fs::read_to_string(filename).unwrap()
-    } else if matches.is_present("eval") {
-        matches.value_of("eval").unwrap().to_string()
-    } else {
+    if !matches.is_present("FILENAME") && !matches.is_present("eval") {
         start_repl();
         return;
-    };
+    }
 
-    if matches.is_present("disassemble") {
-        disassemble(source.as_str());
-    } else if matches.is_present("eval") {
-        let mut agent = Agent::new();
-        let value = agent.run("eval", source.as_str());
-        agent.run_jobs();
-        match value {
-            Ok(v) => println!("{}", Value::inspect(&agent, &v)),
-            Err(e) => println!("Uncaught Exception: {}", Value::inspect(&agent, &e)),
-        };
+    if matches.is_present("eval") {
+        let source = matches.value_of("eval").unwrap().to_string();
+        if matches.is_present("disassemble") {
+            disassemble(&source);
+        } else {
+            let mut agent = Agent::new();
+            let value = agent.run("eval", &source);
+            agent.run_jobs();
+            match value {
+                Ok(v) => println!("{}", Value::inspect(&agent, &v)),
+                Err(e) => println!("Uncaught Exception: {}", Value::inspect(&agent, &e)),
+            };
+        }
     } else {
         let filename = matches.value_of("FILENAME").unwrap();
         let referrer = std::env::current_dir().unwrap().join("slither");
         let referrer = referrer.to_str().unwrap();
-
         let mut agent = Agent::new();
-        match agent.import(filename, referrer) {
-            Ok(..) => {
-                agent.run_jobs();
-            }
-            Err(e) => println!("Uncaught Exception: {}", Value::inspect(&agent, &e)),
-        };
+        if matches.is_present("disassemble") {
+            let filename = agent.resolve(filename, referrer).unwrap();
+            let source = std::fs::read_to_string(filename).unwrap();
+            disassemble(&source);
+        } else {
+            match agent.import(filename, referrer) {
+                Ok(..) => {
+                    agent.run_jobs();
+                }
+                Err(e) => println!("Uncaught Exception: {}", Value::inspect(&agent, &e)),
+            };
+        }
     }
 }
 
