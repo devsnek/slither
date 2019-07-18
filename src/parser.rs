@@ -1386,6 +1386,11 @@ impl<'a> Parser<'a> {
                 self.lexer.next()?;
                 self.parse_function(false, FunctionKind::Normal, start)
             }
+            Token::Generator => {
+                let start = self.lexer.position();
+                self.lexer.next()?;
+                self.parse_function(false, FunctionKind::Generator, start)
+            }
             _ => Err(Error::UnexpectedToken(self.lexer.position())),
         }?;
         Ok(Node::ExportDeclaration(
@@ -1616,6 +1621,8 @@ impl<'a> Parser<'a> {
                     optional,
                     Span(start, self.lexer.position()),
                 );
+            } else if optional {
+                return Err(Error::UnexpectedToken(self.lexer.position()));
             } else {
                 return Ok(base);
             }
