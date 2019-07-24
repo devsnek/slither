@@ -35,6 +35,7 @@ pub enum Operator {
     BitwiseNOT,
     LogicalAND,
     LogicalOR,
+    Coalesce,
     Assign,
     Equal,
     NotEqual,
@@ -559,7 +560,13 @@ impl<'a> Lexer<'a> {
                 ')' => Token::RightParen,
                 ':' => Token::Colon,
                 ';' => Token::Semicolon,
-                '?' => Token::Question,
+                '?' => match self.chars.peek() {
+                    Some('?') => {
+                        self.next_char();
+                        Token::Operator(Operator::Coalesce)
+                    }
+                    _ => Token::Question,
+                },
                 '.' => match self.chars.peek() {
                     Some('.') => {
                         self.next_char();
@@ -1427,7 +1434,7 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        let mut lhs = self.parse_logical_or_expression()?;
+        let mut lhs = self.parse_coalesce_expression()?;
 
         macro_rules! op_assign {
             ($op:expr) => {{
@@ -1461,6 +1468,12 @@ impl<'a> Parser<'a> {
             _ => Err(Error::InvalidAssignmentTarget(self.lexer.position())),
         }
     }
+
+    binop_production!(
+        parse_coalesce_expression,
+        parse_logical_or_expression,
+        [Operator::Coalesce]
+    );
 
     binop_production!(
         parse_logical_or_expression,

@@ -487,6 +487,15 @@ impl Assembler {
             return;
         }
 
+        if op == Operator::Coalesce {
+            let mut end = self.label();
+            self.visit(lhs);
+            self.jump_if_not_null(&mut end);
+            self.visit(rhs);
+            self.mark(&mut end);
+            return;
+        }
+
         if let Node::UnaryExpression(Operator::Typeof, v, ..) = lhs {
             if let Node::StringLiteral(check, ..) = rhs {
                 if op == Operator::Equal {
@@ -1189,6 +1198,11 @@ impl Assembler {
 
     fn jump_if_null(&mut self, label: &mut Label) {
         self.push_op(Op::JumpIfNull);
+        self.jmp(label);
+    }
+
+    fn jump_if_not_null(&mut self, label: &mut Label) {
+        self.push_op(Op::JumpIfNotNull);
         self.jmp(label);
     }
 
