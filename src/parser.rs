@@ -225,6 +225,7 @@ pub enum Node {
     ObjectPattern(IndexMap<String, String>, bool, Span),
     ArrayPattern(Vec<String>, bool, Span),
 
+    OptionalChain(Box<Node>),
     MemberExpression(Box<Node>, String, bool, Span),
     ComputedMemberExpression(Box<Node>, Box<Node>, bool, Span),
     CallExpression(Box<Node>, Vec<Node>, bool, Span),
@@ -1607,8 +1608,12 @@ impl<'a> Parser<'a> {
         } else {
             self.parse_primary_expression()?
         };
+        let mut optional_chain = false;
         loop {
             let optional = self.eat(Token::Question);
+            if optional {
+                optional_chain = true;
+            }
             if self.eat(Token::Dot) {
                 let property = self.parse_identifier(true)?;
                 base = Node::MemberExpression(
@@ -1636,6 +1641,8 @@ impl<'a> Parser<'a> {
                 );
             } else if optional {
                 return Err(Error::UnexpectedToken(self.lexer.position()));
+            } else if optional_chain {
+                return Ok(Node::OptionalChain(Box::new(base)));
             } else {
                 return Ok(base);
             }
