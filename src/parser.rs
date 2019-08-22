@@ -105,6 +105,44 @@ enum Token {
     EOF,
 }
 
+impl Token {
+    fn precedence(&self) -> u8 {
+        match self {
+            Token::Operator(op) => match op {
+                Operator::Assign => 2,
+                Operator::AddAssign => 2,
+                Operator::SubAssign => 2,
+                Operator::MulAssign => 2,
+                Operator::PowAssign => 2,
+                Operator::DivAssign => 2,
+                Operator::ModAssign => 2,
+                Operator::LogicalOR => 4,
+                Operator::LogicalAND => 5,
+                Operator::BitwiseOR => 6,
+                Operator::BitwiseXOR => 7,
+                Operator::BitwiseAND => 8,
+                Operator::Equal => 9,
+                Operator::NotEqual => 9,
+                Operator::LessThan => 10,
+                Operator::GreaterThan => 10,
+                Operator::LessThanOrEqual => 10,
+                Operator::GreaterThanOrEqual => 10,
+                Operator::Has => 10,
+                Operator::LeftShift => 11,
+                Operator::RightShift => 11,
+                Operator::Add => 12,
+                Operator::Sub => 12,
+                Operator::Mul => 13,
+                Operator::Div => 13,
+                Operator::Mod => 13,
+                Operator::Pow => 14,
+                _ => 0,
+            },
+            _ => 0,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Copy)]
 #[repr(u8)]
 pub enum FunctionKind {
@@ -908,25 +946,6 @@ fn constant_truthy(node: &Node) -> Option<bool> {
     }
 }
 
-macro_rules! binop_production {
-    ( $name:ident, $lower:ident, [ $( $op:path ),* ] ) => {
-        fn $name(&mut self) -> Result<Node, Error> {
-            let start = self.lexer.position();
-            let mut lhs = self.$lower()?;
-            match self.lexer.peek()? {
-                Token::Operator(op) if $( op == &$op )||* => {
-                    let op = op.clone();
-                    self.lexer.next()?;
-                    let rhs = self.$name()?;
-                    lhs = self.build_binary(op, lhs, rhs, Span(start, self.lexer.position()));
-                }
-                _ => {},
-            }
-            Ok(lhs)
-        }
-    }
-}
-
 pub struct Parser<'a> {
     lexer: Lexer<'a>,
     scope: Vec<Scope>,
@@ -1435,7 +1454,8 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        let mut lhs = self.parse_coalesce_expression()?;
+        let mut lhs =
+            self.parse_binary_expression(Token::Operator(Operator::LogicalOR).precedence())?;
 
         macro_rules! op_assign {
             ($op:expr) => {{
@@ -1461,6 +1481,30 @@ impl<'a> Parser<'a> {
         Ok(lhs)
     }
 
+    fn parse_binary_expression(&mut self, precedence: u8) -> Result<Node, Error> {
+        let start = self.lexer.position();
+        let mut x = self.parse_unary_expression()?;
+        let mut p = self.lexer.peek()?.precedence();
+        if p >= precedence {
+            loop {
+                while self.lexer.peek()?.precedence() == p {
+                    if let Token::Operator(op) = self.lexer.next()? {
+                        let next_p = if op == Operator::Pow { p } else { p + 1 };
+                        let y = self.parse_binary_expression(next_p)?;
+                        x = self.build_binary(op, x, y, Span(start, self.lexer.position()));
+                    } else {
+                        return Err(Error::UnexpectedToken(self.lexer.position()));
+                    }
+                }
+                p -= 1;
+                if p < precedence {
+                    break;
+                }
+            }
+        }
+        Ok(x)
+    }
+
     fn check_assignment_target(&self, node: &Node) -> Result<(), Error> {
         match node {
             Node::Identifier(..) => Ok(()),
@@ -1469,84 +1513,6 @@ impl<'a> Parser<'a> {
             _ => Err(Error::InvalidAssignmentTarget(self.lexer.position())),
         }
     }
-
-    binop_production!(
-        parse_coalesce_expression,
-        parse_logical_or_expression,
-        [Operator::Coalesce]
-    );
-
-    binop_production!(
-        parse_logical_or_expression,
-        parse_logical_and_expression,
-        [Operator::LogicalOR]
-    );
-
-    binop_production!(
-        parse_logical_and_expression,
-        parse_bitwise_or_expression,
-        [Operator::LogicalAND]
-    );
-
-    binop_production!(
-        parse_bitwise_or_expression,
-        parse_bitwise_xor_expression,
-        [Operator::BitwiseOR]
-    );
-
-    binop_production!(
-        parse_bitwise_xor_expression,
-        parse_bitwise_and_expression,
-        [Operator::BitwiseXOR]
-    );
-
-    binop_production!(
-        parse_bitwise_and_expression,
-        parse_equality_expression,
-        [Operator::BitwiseAND]
-    );
-
-    binop_production!(
-        parse_equality_expression,
-        parse_relational_expression,
-        [Operator::Equal, Operator::NotEqual]
-    );
-
-    binop_production!(
-        parse_relational_expression,
-        parse_shift_expression,
-        [
-            Operator::LessThan,
-            Operator::GreaterThan,
-            Operator::LessThanOrEqual,
-            Operator::GreaterThanOrEqual,
-            Operator::Has
-        ]
-    );
-
-    binop_production!(
-        parse_shift_expression,
-        parse_additive_expression,
-        [Operator::LeftShift, Operator::RightShift]
-    );
-
-    binop_production!(
-        parse_additive_expression,
-        parse_multiplicate_expression,
-        [Operator::Add, Operator::Sub]
-    );
-
-    binop_production!(
-        parse_multiplicate_expression,
-        parse_exponentiation_expression,
-        [Operator::Mul, Operator::Div, Operator::Mod]
-    );
-
-    binop_production!(
-        parse_exponentiation_expression,
-        parse_unary_expression,
-        [Operator::Pow]
-    );
 
     fn parse_unary_expression(&mut self) -> Result<Node, Error> {
         let start = self.lexer.position();
