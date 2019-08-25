@@ -78,7 +78,7 @@ pub struct Agent {
     pub(crate) mio_map: RefCell<HashMap<mio::Token, MioMapType>>,
     mio_token: Cell<usize>,
     pub(crate) pool: ThreadPool,
-    uncaught_exception_handler: Option<Box<Fn(&Agent, Value) -> ()>>,
+    uncaught_exception_handler: Option<Box<dyn Fn(&Agent, Value) -> ()>>,
     modules: GcCell<HashMap<String, Gc<GcCell<Module>>>>,
 }
 

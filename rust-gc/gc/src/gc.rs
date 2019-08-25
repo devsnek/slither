@@ -14,7 +14,7 @@ const USED_SPACE_RATIO: f64 = 0.7;
 struct GcState {
     bytes_allocated: usize,
     threshold: usize,
-    boxes_start: Option<NonNull<GcBox<Trace>>>,
+    boxes_start: Option<NonNull<GcBox<dyn Trace>>>,
 }
 
 impl Drop for GcState {
@@ -68,7 +68,7 @@ pub struct GcBoxHeader {
     // We are using a word word bool - there is a full 63 bits of unused data :(
     // XXX: Should be able to store marked in the high bit of roots?
     roots: Cell<usize>,
-    next: Option<NonNull<GcBox<Trace>>>,
+    next: Option<NonNull<GcBox<dyn Trace>>>,
     marked: Cell<bool>,
 }
 
@@ -153,10 +153,10 @@ impl<T: Trace + ?Sized> GcBox<T> {
 /// Collects garbage.
 fn collect_garbage(st: &mut GcState) {
     struct Unmarked {
-        incoming: *mut Option<NonNull<GcBox<Trace>>>,
-        this: NonNull<GcBox<Trace>>,
+        incoming: *mut Option<NonNull<GcBox<dyn Trace>>>,
+        this: NonNull<GcBox<dyn Trace>>,
     }
-    unsafe fn mark(head: &mut Option<NonNull<GcBox<Trace>>>) -> Vec<Unmarked> {
+    unsafe fn mark(head: &mut Option<NonNull<GcBox<dyn Trace>>>) -> Vec<Unmarked> {
         // Walk the tree, tracing and marking the nodes
         let mut mark_head = *head;
         while let Some(node) = mark_head {

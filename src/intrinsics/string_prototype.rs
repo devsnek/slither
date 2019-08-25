@@ -19,12 +19,10 @@ fn normalize(args: Args) -> Result<Value, Value> {
                     }
                 })),
                 Value::Null => Ok(Value::from(s.iter().cloned().nfc().collect::<String>())),
-                _ => {
-                    return Err(Value::new_error(
-                        args.agent(),
-                        "The normalization form should be one of NFC, NFD, NFKC, NFKD.",
-                    ));
-                }
+                _ => Err(Value::new_error(
+                    args.agent(),
+                    "The normalization form should be one of NFC, NFD, NFKC, NFKD.",
+                )),
             }
         } else {
             Err(Value::new_error(args.agent(), "invalid receiver"))

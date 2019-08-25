@@ -358,7 +358,7 @@ impl<'a> Lexer<'a> {
         Ok(match self.next_char() {
             Some(c) => match c {
                 ' ' | '\t' | '\n' => self.inner_next()?,
-                '0'...'9' => {
+                '0'..='9' => {
                     let start = self.position();
                     if c == '0' && self.chars.peek() != Some(&'.') {
                         let radix = match self.chars.peek() {
@@ -379,9 +379,9 @@ impl<'a> Lexer<'a> {
                                         }
                                     }
                                     '0' | '1' => str.push(self.next_char().unwrap()),
-                                    '2'...'7' if radix > 7 => str.push(self.next_char().unwrap()),
+                                    '2'..='7' if radix > 7 => str.push(self.next_char().unwrap()),
                                     '8' | '9' if radix > 15 => str.push(self.next_char().unwrap()),
-                                    'a'...'f' | 'A'...'F' if radix > 15 => {
+                                    'a'..='f' | 'A'..='F' if radix > 15 => {
                                         str.push(self.next_char().unwrap())
                                     }
                                     _ => break,
@@ -408,7 +408,7 @@ impl<'a> Lexer<'a> {
                                     }
                                     continue;
                                 }
-                                '0'...'9' => {
+                                '0'..='9' => {
                                     if in_exp {
                                         exp_str.push(self.next_char().unwrap());
                                     } else {
@@ -482,8 +482,8 @@ impl<'a> Lexer<'a> {
                                         () => {
                                             let next = self.next_char();
                                             match next {
-                                                Some('0'...'9') | Some('a'...'f')
-                                                | Some('A'...'F') => {
+                                                Some('0'..='9') | Some('a'..='f')
+                                                | Some('A'..='F') => {
                                                     n.push(next.unwrap());
                                                 }
                                                 _ => {
@@ -542,11 +542,11 @@ impl<'a> Lexer<'a> {
                     }
                     Token::StringLiteral(str)
                 }
-                'a'...'z' | 'A'...'Z' | '_' => {
+                'a'..='z' | 'A'..='Z' | '_' => {
                     let mut ident = c.to_string();
                     while let Some(c) = self.chars.peek() {
                         match c {
-                            'a'...'z' | 'A'...'Z' | '0'...'9' | '_' => {
+                            'a'..='z' | 'A'..='Z' | '0'..='9' | '_' => {
                                 ident.push(self.next_char().unwrap())
                             }
                             _ => break,
@@ -1815,8 +1815,8 @@ impl<'a> Parser<'a> {
                                             () => {
                                                 let next = self.lexer.next_char();
                                                 match next {
-                                                    Some('0'...'9') | Some('a'...'f')
-                                                    | Some('A'...'F') => {
+                                                    Some('0'..='9') | Some('a'..='f')
+                                                    | Some('A'..='F') => {
                                                         n.push(next.unwrap());
                                                     }
                                                     _ => {

@@ -33,16 +33,15 @@ pub(crate) fn promise_reaction_job(agent: &Agent, args: Vec<Value>) -> Result<()
     let kind = reaction.get_slot("kind");
     let handler = reaction.get_slot("handler");
 
-    let mut handler_result;
-    if handler == Value::Null {
+    let handler_result = if handler == Value::Null {
         if kind == Value::from("fulfill") {
-            handler_result = Ok(argument);
+            Ok(argument)
         } else {
-            handler_result = Err(argument);
+            Err(argument)
         }
     } else {
-        handler_result = handler.call(agent, Value::Null, vec![argument]);
-    }
+        handler.call(agent, Value::Null, vec![argument])
+    };
 
     if promise != Value::Null {
         match handler_result {

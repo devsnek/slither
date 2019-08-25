@@ -10,8 +10,13 @@ lazy_static! {
     static ref RESPONSES: Mutex<HashMap<Token, FsResponse>> = Mutex::new(HashMap::new());
 }
 
+pub(crate) enum Encoding {
+    None,
+    UTF8,
+}
+
 pub(crate) enum FsResponse {
-    Read(String),
+    Read(Encoding, Vec<u8>),
     Metadata(std::fs::Metadata),
     Exists(bool),
     Success,
@@ -22,11 +27,24 @@ pub(crate) fn handle(agent: &Agent, token: Token, promise: &Value) -> bool {
     let fsr = RESPONSES.lock().unwrap().remove(&token).unwrap();
     let promise = promise.clone();
     match fsr {
-        FsResponse::Read(s) => {
-            promise
-                .get_slot("resolve")
-                .call(agent, promise, vec![Value::from(s)])
-                .unwrap();
+        FsResponse::Read(encoding, s) => {
+            let data = match encoding {
+                Encoding::None => Ok(Value::new_buffer_from_vec(agent, s)),
+                Encoding::UTF8 => match String::from_utf8(s) {
+                    Ok(string) => Ok(Value::from(string)),
+                    Err(e) => Err(Value::new_error(agent, e.to_string().as_str())),
+                },
+            };
+            match data {
+                Ok(v) => promise
+                    .get_slot("resolve")
+                    .call(agent, promise, vec![v])
+                    .unwrap(),
+                Err(e) => promise
+                    .get_slot("reject")
+                    .call(agent, promise, vec![e])
+                    .unwrap(),
+            };
         }
         FsResponse::Metadata(m) => {
             let o = Value::new_object(agent.intrinsics.object_prototype.clone());
@@ -99,6 +117,11 @@ pub(crate) fn handle(agent: &Agent, token: Token, promise: &Value) -> bool {
 
 fn read_file(args: Args) -> Result<Value, Value> {
     let filename = args[0].as_string(args.agent())?;
+    let encoding = match &args[1] {
+        Value::Null => Encoding::None,
+        Value::String(s) if s == "utf8" => Encoding::UTF8,
+        _ => return Err(Value::new_error(args.agent(), "invalid encoding")),
+    };
     let promise = new_promise_capability(args.agent(), args.agent().intrinsics.promise.clone())?;
 
     let (registration, set_readiness) = Registration::new2();
@@ -115,9 +138,12 @@ fn read_file(args: Args) -> Result<Value, Value> {
 
     args.agent()
         .pool
-        .execute(move || match std::fs::read_to_string(filename) {
+        .execute(move || match std::fs::read(filename) {
             Ok(s) => {
-                RESPONSES.lock().unwrap().insert(token, FsResponse::Read(s));
+                RESPONSES
+                    .lock()
+                    .unwrap()
+                    .insert(token, FsResponse::Read(encoding, s));
                 set_readiness.set_readiness(Ready::readable()).unwrap();
             }
             Err(e) => {
